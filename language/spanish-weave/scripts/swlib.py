@@ -9,6 +9,7 @@ Statuses: queue -> active -> known, with shaky as the penalty box (see README "H
 import contextlib
 import csv
 import datetime as dt
+import functools
 import hashlib
 import json
 import os
@@ -25,6 +26,7 @@ except ImportError:  # Windows: no locking (untested platform)
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
+NOTES = PLUGIN_ROOT / 'data' / 'notes.csv'
 
 # ---- promotion rules (documented in README "How words advance") ----
 WINDOW = 20             # target number of active (learning) words
@@ -36,10 +38,15 @@ PEEK_WINDOW = 7         # a known word peeked on 2 different days within this ma
 ASSUMED_WEIGHT = 1      # a day with only opt-in "assumed" exposure (sw.py log-chat-day) counts this much
 STAGES = [(400, 4), (150, 3), (40, 2)]  # (known words, stage): first match wins; otherwise Stage 1
 
+# ---- spaced review: the quiz (README "Quiz yourself") ----
+INTERVALS = [1, 3, 7, 14, 30, 60, 120]  # days to a word's next review, by box; each right answer moves it up a box
+PRODUCE_FROM_BOX = 2   # from this box on the quiz asks for the Spanish (production), before that for the meaning
+KNOWN_BOX = {'graduated': 2, 'recovered': 1, 'marked': 3}  # box a word starts in when it becomes known
+
 
 # Same spelling as an English word with another meaning, so Spanish use can't be told apart in English prose:
 # never counted. (Words English borrowed with the same meaning, like gratis or loco, still count.)
-UNMEASURABLE = {'solo', 'mayor'}
+UNMEASURABLE = {'solo', 'mayor', 'sensible'}
 DETERMINER = (r"(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|estos|estas|ese|esa|esos|esas|mi|mis|tu|tus|su|sus"
               r"|nuestro|nuestra|nuestros|nuestras)\s+")
 ARTICLE = r"(?:el|la|los|las) "
@@ -300,8 +307,10 @@ def promote(state, day=None, chat=None):
     for w in state['words']:
         if w['status'] == 'active' and graduates(w, chat):
             set_status(w, 'known', day)
+            schedule(w, day, KNOWN_BOX['graduated'])
         elif w['status'] == 'shaky' and days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS:
             set_status(w, 'known', day)
+            schedule(w, day, KNOWN_BOX['recovered'])
     refill(state, day)
     state['stage'] = stage_for(state)
     return state
@@ -339,6 +348,7 @@ def apply_event(state, es, kind, day=None):
             set_status(w, 'shaky', day)
     elif kind == 'known':
         set_status(w, 'known', day)
+        schedule(w, day, KNOWN_BOX['marked'])
     elif kind == 'active':
         w['last_bad'] = day  # restart its graduation count
         set_status(w, 'active', day)
@@ -383,9 +393,100 @@ def version(state):
 
 
 def public_state(state):
-    """What the extension gets: stage, pause flag, and the words in use."""
-    return {'version': version(state), 'stage': stage_for(state), 'paused': bool(state.get('paused')),
-            'words': [{k: w[k] for k in ('es', 'en', 'hint', 'status')} for w in introduced(state)]}
+    """What the extension gets: stage, pause flag, and the words in use (with a usage note where there is one)."""
+    words = []
+    for w in introduced(state):
+        words.append({k: w[k] for k in ('es', 'en', 'hint', 'status')})
+        if note(w['es']):
+            words[-1]['note'] = note(w['es'])
+    return {'version': version(state), 'stage': stage_for(state), 'paused': bool(state.get('paused')), 'words': words}
+
+
+# ---- usage notes ----
+
+@functools.lru_cache(maxsize=None)
+def load_notes(path=NOTES):
+    """Usage notes, mostly false friends ("el éxito": "not 'exit' (that's la salida)"), by key. Shown next to the
+    gloss in chat, the quiz, the extension and exports; never stored in the word state, so editing notes.csv is enough."""
+    try:
+        with open(path, encoding='utf-8', newline='') as file:
+            return {key(r['es']): r['note'].strip() for r in csv.DictReader(file)
+                    if (r.get('es') or '').strip() and (r.get('note') or '').strip()}
+    except OSError:
+        return {}
+
+
+def note(es):
+    return load_notes().get(key(es), '')
+
+
+# ---- spaced review: the quiz ----
+
+def schedule(word, day, box):
+    """Puts the word in a box; its next review is INTERVALS[box] days after day."""
+    word['box'] = max(0, min(box, len(INTERVALS) - 1))
+    word['due'] = (dt.date.fromisoformat(day) + dt.timedelta(days=INTERVALS[word['box']])).isoformat()
+
+
+def due_date(word):
+    """When the word is next up for review: its schedule, else right away for a learning word never quizzed. Known
+    words with no schedule (seeded by setup or the placement test) wait until they are missed or marked."""
+    if word.get('due'):
+        return word['due']
+    return word['added'] if word['status'] in ('active', 'shaky') else None
+
+
+def due_reviews(state, day=None, limit=10):
+    """The quiz queue: introduced words due by day and not reviewed today, shaky first, then the most overdue."""
+    day = day or today()
+    ready = [w for w in state['words'] if w['status'] != 'queue' and (due_date(w) or '9999') <= day
+             and not any(d == day for d, _ in w.get('reviews') or [])]
+    return sorted(ready, key=lambda w: (w['status'] != 'shaky', due_date(w)))[:limit]
+
+
+def direction(word):
+    """'recognize' (what does the Spanish mean?) for new and missed words; 'produce' (how do you say it?) once the
+    word has been recalled twice in a row. Producing a word is harder and builds a stronger memory."""
+    return 'produce' if word.get('box', 0) >= PRODUCE_FROM_BOX else 'recognize'
+
+
+def meanings(en):
+    """English answers that match a gloss: "the problem" -> problem; "to be (state or place)" -> be; "so / then"."""
+    out = set()
+    for part in re.split(r'\s*/\s*', re.sub(r'\([^)]*\)', ' ', fold(en))):
+        part = re.sub(r'\s+', ' ', part).strip(' .!?')
+        if part:
+            out |= {part, re.sub(r'^(the|to|a|an) ', '', part)}
+    return out
+
+
+def check(word, answer, way):
+    """True or False for a quiz answer, or None when a person should judge: an English answer that matches no listed
+    meaning word for word may still be right. Accents, ñ, capitals and a missing or different el/la don't matter."""
+    given = fold(answer).strip(' .,!?¡¿"\'')
+    if not given:
+        return False
+    if way == 'produce':
+        bare = lambda text: re.sub(r'^(el|la|los|las|un|una|unos|unas) ', '', fold(text))
+        return bare(given) == bare(word['es'])
+    return True if re.sub(r'^(the|to|a|an) ', '', given) in meanings(word['en']) else None
+
+
+def review(state, es, right, day=None):
+    """Records a quiz answer. Right: the word moves up a box, so its next review comes later, and the day counts as
+    an exposure day. Wrong: back to box 0, so it comes up again tomorrow, and the word turns shaky."""
+    day = day or today()
+    w = find(state, es)
+    if w is None or w['status'] == 'queue':
+        return None
+    if right:
+        apply_event(state, w['es'], 'seen', day)
+        schedule(w, day, w.get('box', 0) + 1)
+    else:
+        apply_event(state, w['es'], 'asked', day)
+        schedule(w, day, 0)
+    w['reviews'] = ((w.get('reviews') or []) + [[day, int(bool(right))]])[-10:]
+    return w
 
 
 # ---- chat exposure from Claude Code transcripts ----

@@ -31,6 +31,7 @@ Questions:
    - None (default)
    - A few basic words
    - I can read simple Spanish
+   - Not sure: take a 2-minute placement test
 2. Where should Spanish show up? (pick any)
    - Claude Code (always on with the plugin)
    - Codex CLI (default when installed; only offered if `codex --version` works)
@@ -53,6 +54,7 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | Answer | Effect |
 | --- | --- |
 | 1. None / a few basic words / simple Spanish | `--known-top 0` / `--known-top 40` / `--known-top 150` |
+| 1. Placement test | `--known-top 0`, then the placement test after setup (step 5) |
 | 2. Codex CLI | `--codex` |
 | 2. Chrome extension | pass answers 3 and 4; give the Chrome steps at the end |
 | 2. Preferences block | run `export` at the end |
@@ -138,9 +140,14 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 5. Preferences block: run `python3 "$SW" export` (claude.ai) and `python3 "$SW" export --chatgpt` (ChatGPT) and
    show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
    about once a week.
-6. Commands: `/spanish-weave:status`, `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`,
-   `/spanish-weave:stage 1-4|auto`, `/spanish-weave:pause`, `/spanish-weave:resume`, and `/spanish-weave:export` for a
-   claude.ai or ChatGPT preferences block.
+6. Placement test, if they chose it: run `python3 "$SW" placement --items`, show the intro and numbered list as
+   printed in one code block, ask for the numbers of the words they know (never say which are made up), then
+   run `python3 "$SW" placement --answers "<their numbers>" --apply` and relay the estimate and stage. Do this
+   before exporting a preferences block, so the block includes those words.
+7. Commands: `/spanish-weave:status`, `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`,
+   `/spanish-weave:stage 1-4|auto`, `/spanish-weave:pause`, `/spanish-weave:resume`, `/spanish-weave:quiz`,
+   `/spanish-weave:placement`, `/spanish-weave:anki`, `/spanish-weave:output on|off`, and `/spanish-weave:export`
+   for a claude.ai or ChatGPT preferences block.
 
 You are done when `check` is all `ok` and only the HUMAN steps above remain. If you cloned the repo only to read
 these instructions, delete that clone (setup keeps its own copy in `~/.spanish-weave`).

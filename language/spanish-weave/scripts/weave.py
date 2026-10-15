@@ -22,6 +22,7 @@ LOT, SOME = (6, 30), (3, 10)  # chat exposure (distinct days, replies) for the "
 TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
 SHORT = 40  # replies with fewer prose words are too short to measure
 RECALL_EVERY = 3
+OUTPUT_EVERY = 5  # with output practice on, every fifth reply invites the user to write a little Spanish
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
 LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
 # Spanish grammar words on no list: several in one reply mean it slipped into Spanish sentences.
@@ -61,10 +62,11 @@ def tier(word, seen):
     return 'some' if days >= SOME[0] and replies >= SOME[1] else 'rare'
 
 
-def brief(state, seen, recall=None):
+def brief(state, seen, recall=None, output=False):
     stage = swlib.stage_for(state)
     target, cap, per_sentence = STAGES[min(stage, 4)]
-    entry = lambda w: w['es'] if w['status'] == 'known' else f'{w["es"]} = {w["en"]}' + (f', "{w["hint"]}"' if stage <= 2 else '')
+    entry = lambda w: w['es'] if w['status'] == 'known' else (f'{w["es"]} = {w["en"]}' + (f', "{w["hint"]}"' if stage <= 2 else '')
+                                                              + (f' — {swlib.note(w["es"])}' if swlib.note(w['es']) else ''))
     words = sorted(swlib.introduced(state), key=lambda w: (w['status'] != 'shaky', -seen.get(w['es'], {}).get('n', 0)))
     swap = lambda w: f'{w["en"]} → {w["es"]}'
     def group(name, show=entry):
@@ -96,7 +98,8 @@ def brief(state, seen, recall=None):
             'urgent topics. Spanish goes only in your chat reply: never in files, code, configs, commit or PR text, messages '
             'to other agents, subagent prompts, or drafts and documents meant to be shared. No bold on Spanish words and no '
             'inline glosses. End the reply with one footer line glossing the learning words you used that are not glossed '
-            'earlier in this chat, at most 8, like: (sin = without, "seen"); nothing to gloss, no footer.\n'
+            'earlier in this chat, at most 8, like: (sin = without, "seen"); keep a word\'s note (after the —) in its gloss; '
+            'nothing to gloss, no footer.\n'
             f'Learning now (use 2 to 4 per reply): {group("learn")}\n'
             f'Rarely seen (pepper in a couple per reply where the sentence makes the meaning obvious): {group("rare")}\n'
             + (band_line(state) if banded else
@@ -105,6 +108,13 @@ def brief(state, seen, recall=None):
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["es"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["es"]} = {recall["en"]}, "{recall["hint"]}"')
+    if (state.get('prefs') or {}).get('output_practice'):
+        text += ('\nOutput practice is on: if the user\'s message answers your last "Your turn" line, open with one short line '
+                 'of feedback (their Spanish, corrected if needed), then answer as usual.')
+        if output:
+            text += (' In this reply, if the topic allows, end with one optional line inviting the user to write a few words '
+                     'of Spanish with a learning word, like: Your turn: how would you say "without the cache"? (sin). '
+                     'Skip it in code-heavy, urgent or zero-Spanish answers.')
     return text
 
 
@@ -182,14 +192,23 @@ def next_recall(state, session):
         entry['t'] = int(time.time())
         pick = None
         if (entry['n'] - 1) % RECALL_EVERY == 0:
-            pool = [w for w in swlib.introduced(state) if w['status'] in ('shaky', 'active')]
-            pick = next((w for w in pool if w['es'] not in entry['recalled']), None)
+            fresh = lambda w: w['es'] not in entry['recalled']
+            learning = [w for w in swlib.introduced(state) if w['status'] in ('shaky', 'active') and fresh(w)]
+            due = [w for w in swlib.due_reviews(state, limit=len(state['words'])) if w['status'] == 'known' and fresh(w)]
+            # Every other cue goes to a known word whose spaced review is due, so known words stay known.
+            first, then = (due, learning) if len(entry['recalled']) % 2 else (learning, due)
+            pick = next(iter(first + then), None)
             if pick:
                 entry['recalled'].append(pick['es'])
         if len(sessions) > 200:  # keep the newest chats only
             sessions = dict(sorted(sessions.items(), key=lambda kv: kv[1].get('t', 0))[-200:])
         swlib.write_json(path, sessions)
     return pick
+
+
+def turn(session):
+    """How many prompts this chat has had (next_recall counts them)."""
+    return ((swlib.read_json(swlib.home() / 'sessions.json', {}) or {}).get(session) or {}).get('n', 0) if session else 0
 
 
 def process_args(pid):
@@ -308,7 +327,9 @@ def main(argv):
         return 0
     if state.get('paused'):
         return 0
-    text = brief(state, exposure(), next_recall(state, data.get('session_id')) if hook else None)
+    recall = next_recall(state, data.get('session_id')) if hook else None
+    count = turn(data.get('session_id')) if hook else 0
+    text = brief(state, exposure(), recall, output=count > 0 and count % OUTPUT_EVERY == 0)
     if hook:
         try:
             reply = last_reply(data['transcript_path'])

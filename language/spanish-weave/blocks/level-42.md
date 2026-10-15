@@ -1,6 +1,6 @@
 # Spanish Weave level 42 of 42 (Stage 4)
 
-Learning: words ranked 1026-1032 of the [Spanish Weave list](../data/lexicon.csv). Known: words ranked 1-1025. This is the last level.
+Learning: words ranked 1026-1043 of the [Spanish Weave list](../data/lexicon.csv). Known: words ranked 1-1025. This is the last level.
 
 ## claude.ai
 
@@ -35,7 +35,7 @@ SPANISH WEAVE
 
 - "word?" = translate in one line. "quiz" = ask me what 3 recent words meant. "story" = retell your last answer as a short story at my stage. "easier" / "harder" shifts one stage for this chat. Apart from the recall cue, never quiz me or comment on the method.
 
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): la clave = the key / password, "lah KLAH-beh" (1/1); la tabla = the table (data), "lah TAH-blah" (1/1); ejecutar = to run (a program), "eh-heh-koo-TAHR" (1/1); depurar = to debug, "deh-poo-RAHR" (1/1); compilar = to compile, "kohm-pee-LAHR" (1/1); el registro = the log / record, "el rreh-HEES-troh" (1/1); la búsqueda = the search, "lah BOOS-keh-dah" (1/1) | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1032nd most frequent | Level 42 of 42
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): perderse = to get lost, "pehr-DEHR-seh" (1/1); el examen = the exam, "el ek-SAH-men" (1/1); estadounidense = American (from the US), "es-tah-dow-nee-DEN-seh" (1/1); la nota = the grade / note, "lah NOH-tah" (1/1); llamarse = to be called, "yah-MAHR-seh" (1/1); el curso = the course, "el KOOR-soh" (1/1); el código = the code, "el KOH-dee-goh" (1/1); la función = the function, "lah foon-SYOHN" (1/1); los datos = the data, "lohs DAH-tohs" (1/1); el valor = the value, "el bah-LOR" (1/1); la versión = the version, "lah behr-SYOHN" (1/1); la clave = the key / password, "lah KLAH-beh" (1/1); la tabla = the table (data), "lah TAH-blah" (1/1); ejecutar = to run (a program), "eh-heh-koo-TAHR" (1/1); depurar = to debug, "deh-poo-RAHR" (1/1); compilar = to compile, "kohm-pee-LAHR" (1/1); el registro = the log / record, "el rreh-HEES-troh" (1/1); la búsqueda = the search, "lah BOOS-keh-dah" (1/1) | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1043rd most frequent | Level 42 of 42
 ```
 
 ## ChatGPT
@@ -45,7 +45,7 @@ Settings > Personalization > Custom instructions. Each box fits the 1,500-charac
 "What would you like ChatGPT to know about you?"
 
 ```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): la clave = the key / password, "lah KLAH-beh"; la tabla = the table (data), "lah TAH-blah"; ejecutar = to run (a program), "eh-heh-koo-TAHR"; depurar = to debug, "deh-poo-RAHR"; compilar = to compile, "kohm-pee-LAHR"; el registro = the log / record, "el rreh-HEES-troh"; la búsqueda = the search, "lah BOOS-keh-dah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1032nd most frequent | Level 42 of 42
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): perderse = to get lost, "pehr-DEHR-seh"; el examen = the exam, "el ek-SAH-men"; estadounidense = American (from the US), "es-tah-dow-nee-DEN-seh"; la nota = the grade / note, "lah NOH-tah"; llamarse = to be called, "yah-MAHR-seh"; el curso = the course, "el KOOR-soh"; el código = the code, "el KOH-dee-goh"; la función = the function, "lah foon-SYOHN"; los datos = the data, "lohs DAH-tohs"; el valor = the value, "el bah-LOR"; la versión = the version, "lah behr-SYOHN"; la clave = the key / password, "lah KLAH-beh"; la tabla = the table (data), "lah TAH-blah"; ejecutar = to run (a program), "eh-heh-koo-TAHR"; depurar = to debug, "deh-poo-RAHR"; compilar = to compile, "kohm-pee-LAHR"; el registro = the log / record, "el rreh-HEES-troh"; la búsqueda = the search, "lah BOOS-keh-dah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1043rd most frequent | Level 42 of 42
 ```
 
 "How would you like ChatGPT to respond?"

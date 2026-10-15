@@ -176,3 +176,19 @@ def log_chat_day(state, day=None):
     """Opt-in: count today as an "assumed" exposure day for every learning word (chats that can't be scanned)."""
     day = day or dt.date.today().isoformat()
     return sum(swlib.apply_event(state, w['es'], 'assumed', day) for w in state['words'] if w['status'] in ('active', 'shaky'))
+
+
+ANKI_HEADERS = ['#separator:tab', '#html:false', '#notetype:Basic (and reversed card)', '#deck:Spanish Weave',
+                '#tags column:3']
+
+
+def anki(state, every=False):
+    """An Anki import file (File > Import; Anki 2.1.55+ reads the # headers): one "Basic (and reversed card)" note
+    per word in a Spanish Weave deck, so Anki quizzes both directions on its own spaced-repetition schedule (FSRS).
+    Front: the Spanish. Back: meaning, sound hint and note. Tags: spanish-weave and the word's status."""
+    clean = lambda text: ' '.join(str(text).split())  # no tabs or newlines inside a field
+    lines = list(ANKI_HEADERS)
+    for w in state['words'] if every else swlib.introduced(state):
+        back = f'{w["en"]} — "{w["hint"]}"' + (f' — {swlib.note(w["es"])}' if swlib.note(w['es']) else '')
+        lines.append('\t'.join(clean(x) for x in (w['es'], back, f'spanish-weave spanish-weave::{w["status"]}')))
+    return '\n'.join(lines) + '\n'
