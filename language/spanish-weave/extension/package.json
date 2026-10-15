@@ -1,0 +1,13 @@
+{
+  "name": "spanish-weave",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Spanish Weave Chrome extension: swaps a few English words for Spanish on any website.",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.5"
+  }
+}

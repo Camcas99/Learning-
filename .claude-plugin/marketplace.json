@@ -1,0 +1,14 @@
+{
+  "name": "learning",
+  "description": "Plugins from Camcas99's learning repo.",
+  "owner": {
+    "name": "Camcas99"
+  },
+  "plugins": [
+    {
+      "name": "spanish-weave",
+      "source": "./language/spanish-weave",
+      "description": "Weaves a few Latin American Spanish words into Claude's chat replies, at your level, and syncs your words with the Spanish Weave Chrome extension."
+    }
+  ]
+}

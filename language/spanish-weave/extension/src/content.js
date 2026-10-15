@@ -1,0 +1,233 @@
+// Content script: watch readable text (tweets on X, captions, comments and bios on Instagram, prose elsewhere), ask
+// the background for swaps, paint them, handle the delayed gloss, click/Enter flip, Alt+click/Alt+Enter speech and
+// seen/peek/flip events. Every async reply belongs to one config generation.
+import { flatten, applySwaps, revert, toggle, isSwap, swapWord, showGender, SWAP_CLASS } from './text.js';
+import { hashKey } from './hash.js';
+import { siteEnabled, hasSiteAccess } from './settings.js';
+import { selector, readable, textRoot } from './page.js';
+import { speak } from './speech.js';
+
+let config = null;
+let observer = null;
+let near = null;
+let visible = null;
+let timer = null;
+let generation = 0;
+const memo = new Map();
+const keys = new WeakMap(); // element -> revision:text hash, kept off the DOM so pages can't read it
+const pending = new Map();
+const inflight = new Set();
+const tracked = new Set();
+const visibleWords = new Set();
+const seen = new Set();
+const failures = new Map(); // text key -> failed model attempts; retried with backoff
+// Text keys already painted once. A repaint (single-page navigation, a restart) doesn't replay the reveal animation.
+// Kept across restarts; cleared when it gets large.
+const painted = new Set();
+const MAX_RETRIES = 3;
+const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
+let tipTimer = null;
+const send = (msg) => chrome.runtime.sendMessage(msg);
+const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+const targets = () => selector(location.href);
+// Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
+const swapFor = (e) => {
+  const span = e.isTrusted && e.target?.closest?.(`span.${SWAP_CLASS}`);
+  return span && isSwap(span) ? span : null;
+};
+const say = (span) => speak(span.getAttribute('data-es')); // only the visible Spanish word, never the list
+
+function record(span, event) {
+  const word = swapWord(span);
+  if (!word || !on()) return;
+  const id = new Date().toISOString().slice(0, 10) + ':' + event + ':' + word;
+  const daily = event === 'seen' || event === 'peek';
+  if (daily && seen.has(id)) return;
+  if (daily) seen.add(id);
+  void send({ type: 'event', word, event }).then((r) => {
+    if (!r?.ok && daily) seen.delete(id);
+  }).catch(() => { if (daily) seen.delete(id); });
+}
+// The gloss appears only after a short dwell; reaching it counts as a peek (the reader needed the meaning).
+function hideTip() {
+  clearTimeout(tipTimer); tipTimer = null;
+  for (const el of document.querySelectorAll(`.${SWAP_CLASS}.sw-tip`)) el.classList.remove('sw-tip');
+}
+function armTip(e) {
+  const span = swapFor(e);
+  if (!span || !on() || span.classList.contains('sw-tip')) return;
+  hideTip();
+  tipTimer = setTimeout(() => {
+    tipTimer = null;
+    if (!span.isConnected || span.classList.contains('sw-en')) return;
+    span.classList.add('sw-tip');
+    if (config.settings.speak) say(span);
+    if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
+  }, TIP_DELAY_MS);
+}
+function disarmTip(e) {
+  const span = swapFor(e);
+  if (span && !span.contains(e.relatedTarget)) hideTip();
+}
+function seenVisible() {
+  if (document.visibilityState === 'hidden') return;
+  for (const span of visibleWords) if (span.isConnected) record(span, 'seen');
+}
+function paint(el, key) {
+  if (!on() || keys.get(el) !== key || !readable(el, location.href)) return;
+  const swaps = memo.get(key);
+  if (!swaps?.length) return;
+  applySwaps(el, swaps, { gender: config.settings.genderColors });
+  const first = !painted.has(key);
+  if (painted.size > 5000) painted.clear();
+  painted.add(key);
+  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) {
+    if (!isSwap(span)) continue;
+    if (first) span.classList.add('sw-new'); // content.css animates only these
+    visible.observe(span);
+  }
+  observer?.takeRecords();
+}
+function consider(el) {
+  if (!on() || !el.isConnected) return;
+  if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
+  observer?.takeRecords();
+  if (!readable(el, location.href)) { keys.delete(el); return; }
+  const text = flatten(el).text;
+  const key = `${config.revision}:${hashKey(text)}`;
+  keys.set(el, key);
+  if (memo.has(key)) { paint(el, key); return; }
+  let p = pending.get(key);
+  if (!p) { p = { text, els: new Set() }; pending.set(key, p); }
+  p.els.add(el);
+  if (!timer) timer = setTimeout(flush, 250);
+}
+async function flush() {
+  timer = null;
+  if (!on()) return;
+  const gen = generation;
+  const items = [...pending].filter(([key]) => !inflight.has(key)).slice(0, 8).map(([key, p]) => ({ key, text: p.text }));
+  if (!items.length) return;
+  for (const i of items) inflight.add(i.key);
+  let result;
+  try { result = await send({ type: 'swaps', revision: config.revision, items }); }
+  catch { result = { error: 'Extension unavailable' }; }
+  if (gen !== generation || !on()) return;
+  for (const i of items) {
+    inflight.delete(i.key);
+    const p = pending.get(i.key);
+    pending.delete(i.key);
+    const swaps = result?.results?.[i.key];
+    if (!Array.isArray(swaps)) {
+      // A failed model call (usually the free tier's rate limit) is retried instead of leaving the passage English.
+      const tries = (failures.get(i.key) || 0) + 1;
+      failures.set(i.key, tries);
+      if (p && tries <= MAX_RETRIES) {
+        const wait = Math.max(result?.retryAfterMs || 0, 5000 * tries);
+        setTimeout(() => { if (gen === generation) for (const el of p.els) if (keys.get(el) === i.key) { keys.delete(el); consider(el); } }, wait);
+      }
+      continue;
+    }
+    failures.delete(i.key);
+    memo.set(i.key, swaps);
+    if (p) for (const el of p.els) paint(el, i.key);
+  }
+  if (result?.stale) { update(await send({ type: 'config' })); return; }
+  if ([...pending.keys()].some((k) => !inflight.has(k))) timer = setTimeout(flush, 50);
+}
+function track(root) {
+  if (root.nodeType !== 1) return;
+  const elements = root.matches(targets()) ? [root, ...root.querySelectorAll(targets())] : root.querySelectorAll(targets());
+  for (const el of elements) {
+    if (tracked.has(el) || !readable(el, location.href)) continue;
+    tracked.add(el);
+    near.observe(el);
+  }
+}
+function mutations(records) {
+  const changed = new Set();
+  for (const r of records) {
+    for (const n of r.addedNodes || []) if (n.nodeType === 1) track(n);
+    const base = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+    const el = textRoot(base, location.href); // on Instagram, an edit in a nested span belongs to the outer caption
+    if (el && tracked.has(el)) changed.add(el);
+    else if (el) track(el);
+  }
+  for (const el of changed) {
+    if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
+    keys.delete(el);
+    if (readable(el, location.href)) { near.unobserve(el); near.observe(el); }
+  }
+  observer?.takeRecords();
+  for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
+  for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
+}
+function start() {
+  if (observer || !on()) return;
+  visible = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && e.intersectionRatio >= 0.5) visibleWords.add(e.target);
+      else visibleWords.delete(e.target);
+    }
+    seenVisible();
+  }, { threshold: [0, 0.5] });
+  near = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting && !keys.has(e.target)) consider(e.target);
+  }, { rootMargin: '600px' });
+  observer = new MutationObserver(mutations);
+  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  track(document.documentElement);
+}
+function stop() {
+  generation++;
+  observer?.disconnect(); observer = null;
+  near?.disconnect(); visible?.disconnect();
+  clearTimeout(timer); timer = null;
+  pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  for (const el of tracked) { revert(el); keys.delete(el); }
+  tracked.clear(); visibleWords.clear();
+}
+function update(next, retry = false) {
+  if (!next?.settings || !next.revision) return;
+  if (!retry && next.revision === config?.revision) {
+    // Display settings keep the revision: take them as they are, and switch gender cues in place, no model calls.
+    const regender = next.settings.genderColors !== config.settings.genderColors;
+    config = next;
+    if (regender) showGender(document.documentElement, config.settings.genderColors);
+    return;
+  }
+  stop(); config = next; start();
+}
+function reveal(e) {
+  const span = swapFor(e);
+  if (!span || !on()) return;
+  if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.altKey) {
+    // Alt/Option: hear the word instead of flipping it. Records nothing, and a gloss still waiting won't become a peek.
+    clearTimeout(tipTimer); tipTimer = null;
+    say(span);
+    return;
+  }
+  hideTip();
+  if (toggle(span)) record(span, 'flip');
+  observer?.takeRecords();
+}
+chrome.runtime.onMessage.addListener((msg) => {
+  if (['config', 'retry'].includes(msg?.type)) update(msg.config, msg.type === 'retry');
+});
+document.addEventListener('click', reveal, true);
+document.addEventListener('keydown', reveal, true);
+document.addEventListener('mouseover', armTip, true);
+document.addEventListener('focusin', armTip, true);
+document.addEventListener('mouseout', disarmTip, true);
+document.addEventListener('focusout', disarmTip, true);
+window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+document.addEventListener('visibilitychange', seenVisible);
+window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
+// SPA navigation can reuse DOM nodes without changing their text.
+let page = location.href;
+setInterval(() => {
+  if (page !== location.href) { page = location.href; if (config) update(config, true); }
+}, 1000);
+void send({ type: 'config' }).then(update).catch(() => {});

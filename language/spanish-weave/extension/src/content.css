@@ -1,0 +1,57 @@
+.sw-word {
+  position: relative;
+  cursor: pointer;
+  font-weight: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: rgba(128, 128, 128, 0.75);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+/* Only a swap's first appearance animates (content.js adds .sw-new), not repaints after navigating. */
+.sw-word.sw-new {
+  animation: sw-reveal 500ms ease-out;
+}
+/* Words still being learned get a faint tint so they stand out from known filler; never bold. */
+.sw-word[data-sw-status="active"], .sw-word[data-sw-status="shaky"] {
+  text-decoration-color: rgba(64, 140, 255, 0.9);
+  text-decoration-thickness: 1.5px;
+}
+/* Noun gender (popup: Color noun gender). Mid-tone hues, about 3.5:1 on white and 4:1 on black, so the line shows on
+   light and dark pages without touching the text. A learning noun keeps its thicker line. The gloss also says
+   masc. or fem., so the cue never rests on color alone. */
+.sw-word[data-sw-gender="m"] { text-decoration-color: rgba(0, 140, 140, 0.9); }
+.sw-word[data-sw-gender="f"] { text-decoration-color: rgba(220, 70, 130, 0.9); }
+/* A known noun keeps a fainter line, so learning words still stand out. */
+.sw-word[data-sw-status="known"][data-sw-gender="m"] { text-decoration-color: rgba(0, 140, 140, 0.45); }
+.sw-word[data-sw-status="known"][data-sw-gender="f"] { text-decoration-color: rgba(220, 70, 130, 0.45); }
+/* The gloss appears after a short dwell (content.js adds .sw-tip), giving a moment to recall first. */
+.sw-word.sw-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  padding: 3px 7px;
+  width: max-content;
+  max-width: min(22em, 80vw); /* a usage note wraps instead of running off the page */
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.3;
+  text-align: left;
+  white-space: normal;
+  color: #fff;
+  background: #1d1f23;
+  border: 1px solid #555;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 2147483647;
+}
+/* A swap "decodes" into place: from faint and blurred to sharp. Opacity and blur only, never the text itself:
+   content.js treats text changes under tracked elements as page edits and would revert them. */
+@keyframes sw-reveal {
+  from { opacity: 0.2; filter: blur(3px); }
+  to { opacity: 1; filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-word.sw-new { animation: none; }
+}
