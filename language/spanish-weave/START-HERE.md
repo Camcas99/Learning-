@@ -60,7 +60,8 @@ you could actually translate.
    longer gaps (3 days, a week, two weeks...). Missed words come back tomorrow. That spacing is what turns
    "I've seen it" into "I know it".
 5. **Say words out loud.** The hints show the stressed syllable in capitals: `también` = `tahm-BYEN`. In Chrome,
-   Alt+click (Option+click on a Mac) a Spanish word to hear it.
+   Alt+click (Option+click on a Mac) a Spanish word to hear it, or turn on "Say words aloud" in the extension's
+   popup. Underline colors tell you a noun's gender: teal for masculine (el), rose for feminine (la).
 6. **Once you know about 40 words, try writing a little:** `/spanish-weave:output on` adds an optional "Your turn"
    line every fifth reply. Answer it and you'll get a gentle one-line correction.
 7. **Keep it honest.** `/spanish-weave:known pero` for words you truly know; `/spanish-weave:learn pero` for ones you

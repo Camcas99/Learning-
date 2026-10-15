@@ -55,11 +55,26 @@ Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
   runs (`claude -p`, `codex exec`).
 - **claude.ai and ChatGPT**: the same rules as a pasted preferences block. No hooks there, so the block is static
   until you refresh it.
-- **Any website in Chrome** (extension): a few English words on the page become Spanish. Hover for the meaning,
-  click to flip back. On for every site by default; turn sites off from the toolbar popup, or set it to only the
+- **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
+  Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default; turn sites off from the toolbar popup, or set it to only the
   sites you turn on. Swaps are chosen by Gemini on your own key.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
+
+### In Chrome
+
+- **Swapped words** have a dotted underline and fade in. Hover for a moment and the meaning appears (the pause is
+  deliberate: a beat to recall it first); click to flip a word back to English.
+- **Noun gender:** masculine nouns get a teal underline and feminine nouns a rose one, and the gloss says "masc." or
+  "fem." (el agua and el alma are feminine despite "el"). Turn it off with "Color noun gender" in the popup.
+- **Notes:** false friends show their note after the gloss: `long · "LAHR-goh" · not 'large' (that's grande)`.
+- **Hear it:** Alt+click (Option+click on a Mac) or Alt+Enter says the word aloud, preferring a Latin American
+  voice, without flipping it. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome may
+  keep a page silent until you've clicked on it once.
+- **Instagram:** instagram.com works out of the box, like X: captions, comments and profile bios. The markup is
+  modeled on instagram.com's structure, which changes often, so if Instagram stops getting Spanish, the selectors
+  in `extension/src/page.js` (the `SITES` table) are the place to look. The Instagram app itself can't be changed;
+  on a phone, use instagram.com in a browser that supports extensions.
 
 ## Commands (Claude Code)
 
@@ -156,6 +171,8 @@ correction before answering your message.
 | Productive recall | The quiz asks for the Spanish once you recognize a word | Slamecka & Graf 1978 |
 | Vocabulary-size placement | Yes/No test with made-up words | Meara & Buxton 1987; Izura et al. 2014 |
 | Contrastive notes | False-friend notes | Cross-linguistic influence (Odlin 1989) |
+| Input enhancement | Gender colors and the fade-in make form noticeable | Sharwood Smith 1993; Schmidt 1990 |
+| Hearing the word | Alt+click speech next to the respelled hint | Paivio 1986 (dual coding) |
 | Pushed output | "Your turn" lines | Swain 1985 |
 | Corrective feedback | Quiz answers, "Your turn" corrections | Lyster & Ranta 1997 |
 
