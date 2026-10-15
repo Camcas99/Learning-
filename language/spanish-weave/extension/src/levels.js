@@ -54,7 +54,7 @@ export const L2_EXTRA = [
   W('como', 'like / as', 'KOH-moh'),
   W('cuando', 'when', 'KWAHN-doh'),
   W('dónde', 'where', 'DOHN-deh'),
-  W('por qué', 'why', 'por keh'),
+  W('por qué', 'why', 'por KEH'),
   W('cómo', 'how', 'KOH-moh'),
   W('quién', 'who', 'kyen'),
   W('qué', 'what', 'keh'),
@@ -171,11 +171,11 @@ export const L2_EXTRA = [
   W('hay que', 'you have to / we need to', 'eye keh'),
   W('me gusta', 'I like', 'meh GOOS-tah'),
   W('sé', 'I know', 'seh'),
-  W('no sé', "I don't know", 'noh seh'),
+  W('no sé', "I don't know", 'noh SEH'),
   W('por favor', 'please', 'por fah-BOR'),
   W('hola', 'hello', 'OH-lah'),
   W('lo siento', 'sorry', 'loh SYEN-toh'),
-  W('qué tal', "how's it going", 'keh tahl'),
+  W('qué tal', "how's it going", 'KEH tahl'),
 ];
 
 export const L2_WORDS = [...L1_WORDS, ...L2_EXTRA];
@@ -226,7 +226,7 @@ function indexFor(level, sharedWords) {
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("canción" for "song") and keep the accents from the list.
       const canon = w.es.replace(ARTICLE_RE, '');
-      idx.set(stripped, { ...about, canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /, '') });
+      idx.set(stripped, { ...about, canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /i, '') });
     }
   }
   const folded = new Map();

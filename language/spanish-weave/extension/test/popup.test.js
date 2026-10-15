@@ -10,7 +10,7 @@ test('popup: "Say words aloud" and "Color noun gender" toggles', async () => {
   const originalGlobals = Object.fromEntries(names.map((k) => [k, globalThis[k]]));
   const html = readFileSync(new URL('../src/popup.html', import.meta.url), 'utf8');
   win.document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/, '');
-  let settings = { ...cleanSettings(), newSitesEnabled: true };
+  let settings = { ...cleanSettings({ speak: true }), newSitesEnabled: true };
   const saves = [];
   Object.assign(globalThis, {
     window: win, document: win.document,
@@ -29,14 +29,14 @@ test('popup: "Say words aloud" and "Color noun gender" toggles', async () => {
     await wait();
     const speak = win.document.getElementById('speak');
     const gender = win.document.getElementById('genderColors');
-    expect([speak.checked, gender.checked]).toEqual([false, true]);
+    expect([speak.checked, gender.checked]).toEqual([true, true]); // both show what is saved
     expect(win.document.body.textContent).toContain('Alt+click');
-    speak.checked = true; speak.dispatchEvent(new win.Event('change'));
+    speak.checked = false; speak.dispatchEvent(new win.Event('change'));
     await wait();
     gender.checked = false; gender.dispatchEvent(new win.Event('change'));
     await wait();
-    expect(saves).toEqual([{ speak: true }, { genderColors: false }]);
-    expect([speak.checked, gender.checked]).toEqual([true, false]);
+    expect(saves).toEqual([{ speak: false }, { genderColors: false }]);
+    expect([speak.checked, gender.checked]).toEqual([false, false]);
     expect(win.document.getElementById('notice').textContent).toBe('');
   } finally {
     await win.happyDOM.close();

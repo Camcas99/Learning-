@@ -485,6 +485,27 @@ def meanings(en):
     return out
 
 
+GENDER_OF = {'el': 'm', 'los': 'm', 'un': 'm', 'unos': 'm', 'la': 'f', 'las': 'f', 'una': 'f', 'unas': 'f'}
+
+
+def article_of(text):
+    """The article a Spanish answer starts with ("la problema" -> "la"), or ''."""
+    m = re.match(r'(el|la|los|las|un|una|unos|unas) ', key(text))
+    return m.group(1) if m else ''
+
+
+def gender_slip(es, article):
+    """True when article gives the listed noun es the wrong gender and the noun's ending doesn't tell its gender, so it
+    has to be remembered: la problema, el mano, la día, el clase. On la casa, whose -a says feminine, a wrong article
+    is only a slip."""
+    m = re.match(r'(el|la|los|las|un|una|unos|unas) (\S+)', key(es))
+    given = GENDER_OF.get(key(article or ''))
+    if not m or not given or given == GENDER_OF[m.group(1)]:
+        return False
+    gender, noun = GENDER_OF[m.group(1)], fold(m.group(2))
+    return not (gender == 'm' and re.search(r'os?$', noun) or gender == 'f' and re.search(r'as?$', noun))
+
+
 def bare_fold(text):
     """Folded, without a leading article: "La Canción" -> "cancion"."""
     return re.sub(r'^(el|la|los|las|un|una|unos|unas) ', '', fold(text))
@@ -522,11 +543,12 @@ def check(word, answer, way):
 UNDO = ('box', 'status', 'changed', 'last_bad')  # what an answer can change, saved with it so a same-day redo can undo it
 
 
-def review(state, es, right, day=None):
+def review(state, es, right, day=None, hold=False):
     """Records a quiz answer. A second answer the same day replaces the first (a retried command or a corrected
     verdict), so answers can't stack boxes and a wrong verdict can be taken back.
 
-    Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day.
+    Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day. With hold
+    (right, but with a gender_slip), it stays in its box and comes back at the same gap.
     Wrong: a learning word starts its three clean days over and comes back tomorrow. A known word drops two boxes;
     if it wasn't even recognized, it turns shaky, so it shows up more in chat until it's known again."""
     day = day or today()
@@ -540,7 +562,7 @@ def review(state, es, right, day=None):
     before = [w.get(k, 0 if k == 'box' else '') for k in UNDO]
     if right:
         apply_event(state, w['es'], 'seen', day)
-        schedule(w, day, box + 1)
+        schedule(w, day, box if hold else box + 1)
     elif w['status'] == 'known' and way == 'produce':
         schedule(w, day, box - 2)  # still recognized: only production slipped
     elif w['status'] == 'known':

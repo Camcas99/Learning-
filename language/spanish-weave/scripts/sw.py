@@ -21,7 +21,9 @@
   sw.py check                                        verify the state, extension folder and native host
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
                                                      N questions with answers instead, default 5, for Claude to ask)
-  sw.py review WORD right|wrong                      record one quiz answer
+  sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
+                                                     it wasn't the listed one; a noun whose ending doesn't give
+                                                     its gender away then stays in its box)
   sw.py placement [--items] [--answers NUMS] [--apply]
                                                      2-minute placement test (Yes/No vocabulary test); NUMS like
                                                      "1, 4, 9-12"
@@ -394,6 +396,8 @@ def tip(word, given):
     article = r'^(el|la|los|las|un|una|unos|unas) '
     mine, theirs = re.match(article, swlib.key(word['es'])), re.match(article, swlib.key(given))
     if mine and theirs and mine.group(1) != theirs.group(1):
+        if swlib.gender_slip(word['es'], theirs.group(1)):
+            return f"  (it's {word['es']}: the ending doesn't give its gender away, so it comes back at the same gap)"
         return f"  (it's {word['es']})"
     typed, spelled = re.sub(article, '', swlib.key(given)), re.sub(article, '', word['es'])
     if typed == swlib.key(spelled):
@@ -441,8 +445,9 @@ def run_quiz(plan, ask=input, say=print):
             result = judge(word, way, ask, say, f'{n}/{len(plan)}  ')
             if result is None:
                 break
+            hold = result[0] and way == 'produce' and swlib.gender_slip(word['es'], swlib.article_of(result[1]))
             with swlib.editing() as state:
-                swlib.review(state, word['es'], result[0])
+                swlib.review(state, word['es'], result[0], hold=hold)
             right += result[0]
             answered += 1
             if not result[0]:
@@ -481,11 +486,14 @@ def quiz(args):
 
 def review_cmd(args):
     with swlib.editing() as state:
-        word = swlib.review(state, args.word, args.result == 'right')
+        found = swlib.find(state, args.word)
+        hold = bool(found and args.result == 'right' and swlib.gender_slip(found['es'], args.article))
+        word = swlib.review(state, args.word, args.result == 'right', hold=hold)
     if word is None:
         sys.exit(f'Not a word you are learning or know: {args.word}')
     status = {'active': 'learning', 'shaky': 'shaky', 'known': 'known'}[word['status']]
-    print(f'{word["es"]}: {args.result}; next review {word["due"]} ({status})')
+    slip = f' with the wrong article, so same gap again (it\'s {word["es"]})' if hold else ''
+    print(f'{word["es"]}: {args.result}{slip}; next review {word["due"]} ({status})')
 
 
 def item_numbers(text, last):
@@ -625,6 +633,7 @@ def main(argv=None):
     p = sub.add_parser('review')
     p.add_argument('word')
     p.add_argument('result', choices=['right', 'wrong'])
+    p.add_argument('--article', choices=sorted(swlib.GENDER_OF), help='the el/la/un/una the learner used, if not the listed one')
     p.set_defaults(run=review_cmd)
     p = sub.add_parser('placement')
     p.add_argument('--items', action='store_true', help='print the numbered test instead of asking')

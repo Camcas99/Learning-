@@ -77,7 +77,7 @@ come up in your quizzes over the next few weeks, so any you don't really know go
 
 | Hint | Means |
 |---|---|
-| CAPITALS | the stressed syllable: ahora = `ah-OH-rah` |
+| CAPITALS | the stressed syllable: ahora = `ah-OH-rah`; in a phrase, an accented short word too: por qué = `por KEH` |
 | `ah eh ee oh oo` | the five Spanish vowels, short and clean |
 | `rr` | a rolled r: perro = `PEH-rroh` |
 | `b` | both b and v (they sound the same): vez = `bes` |

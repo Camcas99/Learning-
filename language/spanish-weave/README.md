@@ -110,7 +110,7 @@ Every word comes with a respelling for an English reader, like `también = also,
 
 | In a hint | Means |
 |---|---|
-| CAPITALS | the stressed syllable: `ah-OH-rah` (ahora). One-syllable words have none |
+| CAPITALS | the stressed syllable: `ah-OH-rah` (ahora). One-syllable words have none, except in a phrase when a written accent marks the stress: por qué = `por KEH` (porque is `POR-keh`) |
 | `ah eh ee oh oo` | the five Spanish vowels, always short and clean: casa = `KAH-sah` |
 | `eye ay oy ow` | vowel pairs said as one sound: hay = `eye`, ley = `lay`, hoy = `oy`, restaurante = `rres-tow-RAHN-teh` |
 | `rr` | a rolled r: perro = `PEH-rroh`; also any r at the start of a word: rojo = `RROH-hoh` |
@@ -149,6 +149,9 @@ respells each syllable. Try it: `python3 scripts/hints.py "la computadora"`.
 - Missing accents, ñ typed as n, capitals and a wrong el/la don't count against you; the answer line shows the
   right spelling and article, and says when the accent makes it a different word (si is "if", sí is "yes"). When
   you answer with another Spanish word for the same meaning (recordar for acordarse), you decide if it counts.
+- One exception for el/la: when a noun's ending doesn't give its gender away (el problema, el día, la mano, la
+  clase), the wrong article still counts as recalled, but the word stays in its box and comes back at the same gap,
+  because that gender has to be remembered. On la casa, whose -a says feminine, it's only a slip.
 - Answering the same word again on the same day replaces the earlier answer, so a wrong call can be corrected.
 
 ## Placement test
@@ -246,9 +249,11 @@ Spanish words") plus the exceptions, so a thousand known words still fit in abou
 **Words in the right sense.** The brief and the pasted blocks carry short guards for the words that are easiest to
 swap in the wrong sense, each added once its word is in use: es and soy only for what something is ("it's ready"
 stays English, since es listo means "is clever"), esto and eso never before a noun, question words only in
-questions, sino for "not X but Y", también and entonces never for "too" or "so" before an adjective, para
-never for a duration, and a listed noun brings its own article (never "the el"). The extension's prompt has the same
-guards.
+questions, sino for "not X but Y", también and entonces never for "too" or "so" before an adjective, bien never
+for the filler "Well,", desde never for "since" meaning because, el tiempo never for "this time" (vez), para never
+for a duration, no Spanish preposition before a clause, and a listed noun brings its own article (never "the el")
+with any Spanish adjective next to it agreeing (la idea nueva). The extension's prompt has the same guards; the
+ChatGPT block, which has a 1,500-character limit, carries the most common ones.
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
 one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor` and

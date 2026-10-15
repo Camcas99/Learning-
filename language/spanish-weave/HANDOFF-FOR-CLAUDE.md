@@ -65,8 +65,10 @@ pasted block's rules in your own replies.
     questions first, then producing the Spanish after two right answers in a row. You run it: ask one question at a
     time, judge leniently (accents and el/la don't count against them, and another Spanish word with the same
     meaning does count; the false friend in a note doesn't), and record each answer with
-    `sw.py review "<word>" right|wrong`. Recording a word again the same day replaces the earlier answer, so you can
-    fix a wrong call. At the end, ask each missed word once more without recording it, so they finish on a success.
+    `sw.py review "<word>" right|wrong`. If the word was right but with the wrong el/la, add
+    `--article <the one they used>`: a noun whose ending doesn't give its gender away (el problema, la mano) then
+    comes back at the same gap. Recording a word again the same day replaces the earlier answer, so you can fix a
+    wrong call. At the end, ask each missed word once more without recording it, so they finish on a success.
   - `/spanish-weave:placement`: a Yes/No vocabulary test with made-up words to catch guessing. Never reveal which
     items are made up. If they pick 3 or more made-up words, nothing is marked: offer a retake, kindly. Words it
     marks known get a first quiz check over the next four weeks.
@@ -100,7 +102,7 @@ This is the part I care about most.
 
 ## Working on the code
 
-- Tests: `python3 -m unittest discover -s tests` (54 tests) and `cd extension && bun install && bun test` (90).
+- Tests: `python3 -m unittest discover -s tests` (55 tests) and `cd extension && bun install && bun test` (90).
   Keep them green, and add tests with anything you change.
 - After changing the word list or the rules: `python3 scripts/hints.py --check` (every hint must match the
   pronunciation rules; `--fill` writes hints for new rows) and `python3 scripts/make_blocks.py` (regenerates the

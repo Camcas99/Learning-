@@ -40,9 +40,12 @@ GUARDS = [
     (('qué', 'cómo', 'dónde', 'quién', 'cuál', 'cuánto', 'por qué'), 'question words only in questions'),
     (('pero',), '"not X but Y" is sino'),
     (('también', 'entonces'), 'también and entonces never for "too" or "so" before an adjective'),
-    (('porque',), 'porque never for "because of"'),
+    (('porque', 'desde'), 'porque never for "because of", desde never for "since" meaning because'),
+    (('bien',), 'bien never for the filler "Well,"'),
+    (('el tiempo',), 'el tiempo never for "this time" (vez) or clock time (hora)'),
     (('para',), 'para never after ask, wait, look or pay, or for a duration'),
-    (('antes de', 'después de', 'durante'), 'antes de, después de and durante never before a clause'),
+    (('antes de', 'después de', 'durante', 'hasta', 'sin'), 'antes de, después de, durante, hasta and sin never before '
+                                                             'a clause'),
     (('más',), 'más means more, never and'),
     (('muy', 'mucho'), 'muy before an adjective or adverb, "very much" is mucho'),
     (('si', 'sí'), 'si is if, sí is yes'),
@@ -82,7 +85,8 @@ def guards(state):
     in_use = {swlib.key(w['es']) for w in swlib.introduced(state)}
     texts = [text for words, text in GUARDS if in_use.intersection(words)]
     if any(re.match(swlib.ARTICLE, es) for es in in_use):
-        texts.append('a listed noun brings its own article, never "the el"')
+        texts.append('a listed noun brings its own article, never "the el", and a Spanish adjective next to it agrees '
+                     '(la idea nueva)')
     return f' ({"; ".join(texts)})' if texts else ''
 
 

@@ -5,7 +5,8 @@ Spanish spelling maps to sound almost one to one, so a hint can be computed inst
   1. group the letters into sound units (ch, ll, rr are one sound; the u in que/qui/gue/gui is silent),
   2. split the units into syllables around their vowels,
   3. find the stressed syllable (a written accent wins; otherwise the spelling rule decides),
-  4. respell each syllable for an English reader, stressed syllable in capitals.
+  4. respell each syllable for an English reader, stressed syllable in capitals. A one-syllable word has no capitals,
+     except inside a phrase when a written accent marks it stressed: por qué = por KEH, not porque = POR-keh.
 Latin American pronunciation: z and soft c sound like s, ll and y like y, and b and v are the same sound (spelled b).
 
 Usage: python3 scripts/hints.py WORD...     print the hint for each word or phrase
@@ -15,6 +16,7 @@ Usage: python3 scripts/hints.py WORD...     print the hint for each word or phra
 import argparse
 import csv
 from pathlib import Path
+import re
 import sys
 
 LEXICON = Path(__file__).resolve().parent.parent / 'data' / 'lexicon.csv'
@@ -23,7 +25,8 @@ ACCENTS = {'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u'}
 VOWELS = set('aeiouáéíóúü') | {'Y'}  # Y: a y that sounds like the vowel i (y, muy, hay, estoy)
 WEAK = {'i', 'u', 'ü', 'Y'}  # glide into a neighbouring vowel; accented í and ú do not
 CLUSTERS = {'pl', 'pr', 'bl', 'br', 'fl', 'fr', 'cl', 'cr', 'gl', 'gr', 'dr', 'tr', 'kl', 'kr'}  # never split
-ARTICLES = {'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas'}
+# el, la, los and las lean on the next word, so they're unstressed; un and una are stressed words (una vez = OO-nah bes).
+UNSTRESSED = {'el', 'la', 'los', 'las'}
 FRONT = set('eiéí')  # c and g go soft before these
 
 # Vowel sounds, after accents are dropped. Closed syllables (ending in a consonant) adjust e and o below.
@@ -34,8 +37,10 @@ NUCLEUS = {
     'ai': 'eye', 'ei': 'ay', 'oi': 'oy', 'au': 'ow', 'eu': 'eh-oo', 'ou': 'ow',
     'uai': 'wye', 'uei': 'way', 'iai': 'yeye', 'iei': 'yay',
 }
-# Exceptions the rules can't know: x sounding like the Spanish j, and English loanwords.
-OVERRIDES = {'méxico': 'MEH-hee-koh', 'mexicano': 'meh-hee-KAH-noh'}
+# x keeps an old spelling of the Spanish j in a few names: México, mexicana, Texas, texano.
+X_AS_J = re.compile(r'^(m[eé]xic|texa[sn])')
+# Exceptions the rules can't know.
+OVERRIDES = {'oaxaca': 'wah-HAH-kah'}
 
 
 def units(word):
@@ -51,8 +56,8 @@ def units(word):
             i += 2
         elif word[i] == 'x':
             # x sounds like ks and splits across syllables (éxito = EK-see-toh); before a soft c its s merges
-            # into the c (excelente = ek-seh-LEN-teh)
-            out += ['k'] if pair[1:] == 'c' and after in FRONT else ['k', 's']
+            # into the c (excelente = ek-seh-LEN-teh); at the start of a word it's just s (xilófono = see-LOH-foh-noh)
+            out += ['s'] if i == 0 else ['k'] if pair[1:] == 'c' and after in FRONT else ['k', 's']
             i += 1
         elif word[i] == 'y' and i == len(word) - 1:
             out.append('Y')  # word-final y is a vowel: y, muy, hay, hoy, estoy
@@ -128,10 +133,13 @@ def nucleus(vowels, coda):
     return sound
 
 
-def respell_word(word, unstressed=False):
+def respell_word(word, unstressed=False, phrase=False):
+    """phrase: the word sits in a longer phrase, where a one-syllable word with a written accent shows its stress."""
     word = word.lower()
     if word in OVERRIDES:
         return OVERRIDES[word].lower() if unstressed else OVERRIDES[word]
+    if X_AS_J.match(word):
+        word = word.replace('x', 'j', 1)
     us = units(word)
     sylls = syllables(us)
     hit = stress(word, sylls)
@@ -153,22 +161,24 @@ def respell_word(word, unstressed=False):
         if ''.join(onset) and sound.startswith('eye'):
             sound = sound[1:]  # bailar = bye-LAHR, not beye-LAHR
         part = ''.join(onset) + sound + ''.join(coda)
-        out.append(part.upper() if k == hit and len(sylls) > 1 and not unstressed else part)
+        marked = len(sylls) > 1 or (phrase and any(u in 'áéíóú' for u in syl))
+        out.append(part.upper() if k == hit and marked and not unstressed else part)
         index += len(syl)
     return '-'.join(out)
 
 
-def respell_adverb(word, unstressed=False):
+def respell_adverb(word, unstressed=False, phrase=False):
     """-mente adverbs keep the adjective's stress and add their own: rápidamente = RRAH-pee-dah-MEN-teh."""
     if len(word) > 5 and word.endswith('mente') and not unstressed:
         return respell_word(word[:-5]) + '-MEN-teh'
-    return respell_word(word, unstressed)
+    return respell_word(word, unstressed, phrase)
 
 
 def respell(phrase):
-    """Hint for a word or phrase; a leading article stays unstressed ("el problema" = "el proh-BLEH-mah")."""
+    """Hint for a word or phrase; a leading el/la/los/las stays unstressed ("el problema" = "el proh-BLEH-mah")."""
     words = phrase.strip(' ¿?¡!.,').split()
-    return ' '.join(respell_adverb(w.lower(), unstressed=(i == 0 and len(words) > 1 and w.lower() in ARTICLES))
+    return ' '.join(respell_adverb(w.lower(), unstressed=(i == 0 and len(words) > 1 and w.lower() in UNSTRESSED),
+                                   phrase=len(words) > 1)
                     for i, w in enumerate(words))
 
 

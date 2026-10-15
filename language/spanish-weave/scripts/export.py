@@ -31,7 +31,7 @@ RULES = [
      "ones; most sentences carry one or two Spanish words. When a word doesn't fit a spot, use another from the lists "
      "rather than leaving the sentence all English. Keep track of how much Spanish you've used in this chat and "
      "correct toward the target. Stage 5: all Spanish, only when I ask.",
-     "Share of words in Spanish: {stages_short}. Aim for the target; most sentences carry one or two."),
+     "Spanish share: {stages_short}. Aim for the target; most sentences carry one or two."),
     ("Connectors and adverbs on my lists are default swaps: write the Spanish every time the English word has that "
      "meaning (and = y, but = pero, so = entonces, with = con, without = sin, very = muy, also = "
      "también, now = ahora, because = porque, for = para, and the like once they're on my lists). Under target is "
@@ -46,14 +46,16 @@ RULES = [
      "never a state or place (\"it's ready\" stays English: es listo means \"is clever\"); esto and "
      "eso only on their own, never before a noun; qué, cómo, dónde and quién only in questions (\"what you need\" "
      "stays English); \"not X but Y\" is sino; también and entonces never for \"too\" or \"so\" before an adjective; "
-     "porque never for \"because of\"; para never after ask, wait, look or pay, or for a duration; antes de, después "
-     "de and durante never before a clause; más means \"more\", never \"and\"; muy before an adjective or adverb "
-     "(\"very much\" is mucho); si is \"if\", sí is \"yes\"; para nada is \"not at all\". A listed noun brings its "
-     "own article, never \"the el\". True cognates are free; look-alikes aren't (actualmente is not \"actually\").",
+     "porque never for \"because of\", desde never for \"since\" meaning because; bien never for the filler "
+     "\"Well,\"; el tiempo never for \"this time\" (vez) or clock time (hora); para never after ask, wait, look or "
+     "pay, or for a duration; antes de, después de, durante, hasta and sin never before a clause; más means \"more\", "
+     "never \"and\"; muy before an adjective or adverb (\"very much\" is mucho); si is \"if\", sí is \"yes\"; para "
+     "nada is \"not at all\". A listed noun brings its own article, never \"the el\", and a Spanish adjective next to "
+     "it agrees (la idea nueva). True cognates are free; look-alikes aren't (actualmente is not \"actually\").",
      "Exact sense only: es/soy = what something is, never states or places (it's ready ≠ es listo); esto/eso never "
      "before a noun; qué/cómo/dónde only in questions; not X but Y = sino; too/so + adjective ≠ también/entonces; "
-     "para not after ask/wait/look/pay or for durations; no antes de/después de before a clause; si = if, "
-     "sí = yes."),
+     "para not after ask/wait/look/pay or for durations; no antes de/después de before a clause; filler 'well' ≠ "
+     "bien; si = if, sí = yes."),
     ("Comprehension beats the stage. If a reply would be hard to follow, use simpler Spanish, then less Spanish.",
      "Comprehension beats the stage."),
     ("Never gloss inline, and no bold on Spanish words. End with one footer line glossing the Active and Shaky words "

@@ -88,7 +88,11 @@ class Hints(unittest.TestCase):
             'vez': 'bes', 'nuevo': 'NWEH-boh', 'rápido': 'RRAH-pee-doh', 'siempre': 'SYEM-preh',
             'éxito': 'EK-see-toh', 'excelente': 'ek-seh-LEN-teh', 'México': 'MEH-hee-koh', 'bailar': 'bye-LAHR',
             'reloj': 'rreh-LOH',
-            'rápidamente': 'RRAH-pee-dah-MEN-teh', 'el problema': 'el proh-BLEH-mah', 'una idea': 'oo-nah ee-DEH-ah',
+            'rápidamente': 'RRAH-pee-dah-MEN-teh', 'el problema': 'el proh-BLEH-mah', 'una idea': 'OO-nah ee-DEH-ah',
+            # In a phrase a written accent shows a one-syllable word's stress, so por qué doesn't read like porque.
+            'por qué': 'por KEH', 'no sé': 'noh SEH', 'una vez más': 'OO-nah bes MAHS', 'un poco': 'oon POH-koh',
+            'xilófono': 'see-LOH-foh-noh', 'texto': 'TEKS-toh', 'mexicana': 'meh-hee-KAH-nah', 'Texas': 'TEH-hahs',
+            'Oaxaca': 'wah-HAH-kah',
         }
         self.assertEqual({word: hints.respell(word) for word in cases}, cases)
 
@@ -273,9 +277,12 @@ class Brief(Home):
         self.assertIn('también and entonces never for "too" or "so" before an adjective', fresh)
         self.assertNotIn('es and soy', fresh)
         self.assertNotIn('the el', fresh)  # no nouns yet
+        self.assertIn('antes de, después de, durante, hasta and sin never before a clause', fresh)  # sin is in use
         later = weave.brief(grown(400), {})
         for guard in ('es and soy only for what something is', 'esto and eso only on their own', 'si is if, sí is yes',
-                      'question words only in questions', 'never "the el"'):
+                      'question words only in questions', 'never "the el"', 'bien never for the filler "Well,"',
+                      'desde never for "since" meaning because', 'el tiempo never for "this time"',
+                      'a Spanish adjective next to it agrees (la idea nueva)'):
             self.assertIn(guard, later)
 
     def test_recall_every_third_turn_shaky_first(self):
@@ -389,9 +396,9 @@ class Scale(Home):
             if known >= 400:
                 self.assertIn('most common Spanish words', brief)
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
-                # bytes each, and the usage guards (es vs está, esto vs este, sino...) add about 400 bytes once every
-                # word is in use, so this budget is 3,700 (about 3,590 at 1,000 known words).
-                self.assertLess(len(brief.encode()), 3700, known)
+                # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
+                # every word is in use, so this budget is 3,900 (about 3,800 at 1,000 known words).
+                self.assertLess(len(brief.encode()), 3900, known)
         # The longest export: just under the band cutoff, every known word is named.
         self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)
 
@@ -504,7 +511,8 @@ class Review(Home):
         self.assertTrue(swlib.check(word('el año', 'the year'), 'ano', 'produce'))
         self.assertIsNone(swlib.check(word('acordarse', 'to remember'), 'recordar', 'produce'))  # a listed synonym
         self.assertFalse(swlib.check(word('pero', 'but'), 'perro', 'produce'))
-        self.assertEqual(sw.tip(word('el problema', 'the problem'), 'la problema'), "  (it's el problema)")
+        self.assertEqual(sw.tip(word('la casa', 'the house'), 'el casa'), "  (it's la casa)")
+        self.assertIn('comes back at the same gap', sw.tip(word('el problema', 'the problem'), 'la problema'))
         self.assertEqual(sw.tip(word('también', 'also'), 'tambien'), '  (spelled también)')
         self.assertEqual(sw.tip(word('también', 'also'), 'también'), '')
         self.assertEqual(sw.tip(word('sí', 'yes'), 'si'), '  (spelled sí; si is another word: if)')
@@ -551,6 +559,27 @@ class Review(Home):
         self.assertTrue(out.getvalue().startswith('Nothing to review'))  # words arrived today: due tomorrow
         with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
             sw.main(['quiz', '-n', '0'])
+
+    def test_wrong_article_on_a_noun_to_remember_keeps_its_box(self):
+        cases = [('el problema', 'la'), ('la mano', 'el'), ('el día', 'una'), ('la clase', 'el'), ('la casa', 'el'),
+                 ('el libro', 'la'), ('el problema', 'el'), ('el problema', '')]
+        self.assertEqual([swlib.gender_slip(es, a) for es, a in cases], [True, True, True, True, False, False, False, False])
+        self.met_long_ago(5)
+        with swlib.editing() as state:
+            for es in ('el problema', 'la casa'):
+                swlib.set_status(swlib.find(state, es), 'active', '2026-01-01')
+        plan = [(dict(swlib.find(state, 'el problema')), 'produce')]
+        said = []
+        self.assertEqual(sw.run_quiz(plan, ask=lambda prompt: 'la problema', say=said.append), (1, 1))  # recalled
+        self.assertIn("(it's el problema: the ending doesn't give its gender away", '\n'.join(said))
+        problema = swlib.find(swlib.load_state(), 'el problema')
+        self.assertEqual((problema['box'], problema['reviews'][-1][1]), (0, 1))  # right, but the same gap again
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['review', 'el problema', 'right', '--article', 'la'])
+            sw.main(['review', 'la casa', 'right', '--article', 'el'])  # -a says feminine: only a slip
+        lines = out.getvalue().splitlines()
+        self.assertIn('wrong article, so same gap again', lines[0])
+        self.assertNotIn('same gap', lines[1])
 
     def test_recall_cue_alternates_with_due_known_words(self):
         state = {'stage': 1, 'stage_pinned': True, 'words': [

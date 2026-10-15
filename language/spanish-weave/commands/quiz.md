@@ -13,7 +13,9 @@ meaning and close synonyms of it count as right, and so does another correct Spa
 one short line whether it was right and give the answer from the plan (Spanish, meaning, sound hint, and the note
 after the — if there is one); if they dropped an accent that makes it another word (si/sí), say so in a few words.
 Then record it with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" review "<the Spanish from the plan>" right` (or
-`wrong`); recording again the same day replaces the earlier answer, so a wrong call can be fixed. If the user wants
+`wrong`); recording again the same day replaces the earlier answer, so a wrong call can be fixed. If a Spanish answer
+was right but used another article than the plan's (la problema for el problema), add `--article <the one they
+used>` (el, la, los, las, un, una, unos or unas only) and mention the right article in your one line. If the user wants
 to stop, stop. When all questions are done, ask each missed one once more (practice only: don't record it), then
 give the score from the first answers in one line. If the plan says there is nothing to review, relay that line,
 with its date. Write no other Spanish during the quiz.
