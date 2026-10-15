@@ -38,8 +38,9 @@ asks again and never resets your progress.
 Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), as a file path or pasted into the extension popup.
 2. Extension: in Chrome, `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, pick the folder it names.
-3. Extension: click the Spanish Weave toolbar icon and **Allow all websites** (Chrome asks once; until then it only
-   runs on X). If you chose only sites you turn on, tick **This site** in the same popup on each site you want.
+3. Extension: click the Spanish Weave toolbar icon and **Allow all websites** (Chrome asks once; until then it runs
+   only on X and Instagram). If you chose only sites you turn on, tick the checkbox next to the site's name in the
+   same popup on each site you want.
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/spanish-weave:export` (or `/spanish-weave:export --chatgpt`)
@@ -272,7 +273,8 @@ The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level
 Everything stays on your machine in `~/.spanish-weave` (override with `SPANISH_WEAVE_HOME`). The hook reads your
 local Claude Code and Codex transcripts to count exposure and never sends them anywhere. By default the extension
 runs on every site you allow, and readable page text from those sites goes to Google's Gemini API with your key
-(free-tier keys allow Google to train on prompts); webmail, AI chat sites and local addresses start off. It talks
+(free-tier keys allow Google to train on prompts); webmail, AI chat sites and local addresses start off, and
+Instagram direct messages are never read. It talks
 to the plugin through a Chrome native messaging host that only this extension's ID may call. If setup stored
 your Gemini key, it sits in `~/.spanish-weave/gemini_key` (mode 600) and is handed only to the extension's
 background worker, never to the pages it runs on.

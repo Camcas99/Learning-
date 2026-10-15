@@ -1,5 +1,5 @@
 // Pronunciation through the Web Speech API: Alt+click (Option+click) or Alt+Enter on a swap, and the gloss when
-// the popup's "Say words aloud" is on. synth and Utterance are injectable, so tests use fakes.
+// the popup's "Say words aloud when the meaning shows" is on. synth and Utterance are injectable, so tests use fakes.
 export const RATE = 0.9; // a touch slower than normal speech, for a learner
 const LATAM = ['es-mx', 'es-us', 'es-419'];
 const tag = (voice) => String(voice?.lang || '').replace(/_/g, '-').toLowerCase(); // Android says es_MX

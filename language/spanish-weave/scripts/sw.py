@@ -214,9 +214,9 @@ def setup(args):
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
     print('  3. Pin the Spanish Weave toolbar icon (puzzle piece menu) and click it:')
     if sites == 'all':
-        print('     click "Allow all websites" (Chrome asks once; until then it runs only on X).')
+        print('     click "Allow all websites" (Chrome asks once; until then it runs only on X and Instagram).')
     else:
-        print('     on each site you want, tick "This site" (Chrome asks for that site).')
+        print("     on each site you want, tick the checkbox next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
     print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
