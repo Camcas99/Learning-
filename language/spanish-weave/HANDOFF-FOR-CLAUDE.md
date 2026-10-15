@@ -36,8 +36,14 @@ granted:
      words, and their progress is tracked automatically.
   3. *Wants it everywhere:* also the Chrome extension, on any site including X and instagram.com. It needs a free
      Gemini API key, which they paste into the extension popup themselves. Never ask for the key in chat.
+- **On a phone:** the paste-in block (1) works in the Claude and ChatGPT phone apps, since it's an account setting.
+  The full version (2) works from a phone through Remote Control: Claude Code runs on their computer
+  (`claude remote-control`, or the Claude desktop app) and they drive it from the Claude app. A cloud session started
+  from the phone starts on a fresh machine each time, so it can't keep their progress, and the extension (3) needs
+  Chrome on a computer.
 - **If they already know some Spanish**, offer the 2-minute placement test (`/spanish-weave:placement`) so they
   don't start with words they know.
+- **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`.
 - Needs: Python 3.9+, Claude Code for the plugin, Chrome (or Chromium) for the extension. No pip installs.
 
 If you're a Claude without tools (a plain chat), you can still help: walk them through option 1, and follow the

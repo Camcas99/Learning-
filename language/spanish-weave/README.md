@@ -56,6 +56,19 @@ through level 42.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
+**Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`, then
+rerun `/spanish-weave:setup` if the extension changed (it never resets your progress).
+
+### On a phone
+
+- **claude.ai or ChatGPT:** the pasted block is an account setting, so it works in their phone apps too.
+- **Claude Code:** through Remote Control. Run `claude remote-control` on your computer (or use the Claude desktop
+  app) and open that session in the Claude app. The hook runs on your computer, so progress is kept. A cloud
+  session started from the phone begins on a fresh machine each time, so its word state wouldn't last.
+- **Chrome extension:** computers only. Chrome on Android and iPhone doesn't run extensions. Some other Android
+  browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one, and without the native host it
+  would only use its built-in word lists.
+
 ## What it does
 
 - **Claude Code and Codex**: a prompt hook gives the model your stage and word lists every turn. Every sentence
@@ -84,8 +97,8 @@ All of it shares one word list on your machine, so words you see on the web coun
 - **Instagram:** instagram.com works out of the box, like X: captions, comments and profile bios. The markup is
   modeled on instagram.com's structure, which changes often, so if Instagram stops getting Spanish, the selectors
   in `extension/src/page.js` (the `SITES` table) are the place to look. Direct messages are never read, like
-  webmail. The Instagram app itself can't be changed; on a phone, use instagram.com in a browser that supports
-  extensions.
+  webmail. The Instagram app itself can't be changed, and Chrome on phones doesn't run extensions (see "On a
+  phone" above).
 
 ## Commands (Claude Code)
 
@@ -311,6 +324,9 @@ python3 tests/model_eval.py --out /tmp/sw-eval    # live check via claude -p, is
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/sw-eval   # simulate claude.ai with a block
 node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X and article pages + real Gemini
 ```
+
+When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in
+`.claude-plugin/plugin.json` and `extension/manifest.json`: installed copies only update when the version changes.
 
 To add a word, append a row `es,en,` to `data/lexicon.csv` (in the rank where it belongs), run
 `python3 scripts/hints.py --fill` to generate its hint, then `python3 scripts/make_blocks.py`.

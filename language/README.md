@@ -13,6 +13,24 @@ Learning Latin American Spanish.
 - [`spanish-weave/START-HERE.md`](spanish-weave/START-HERE.md): a welcome letter and how-to for a friend.
 - [`spanish-weave/HANDOFF-FOR-CLAUDE.md`](spanish-weave/HANDOFF-FOR-CLAUDE.md): a handoff letter for their Claude.
 
+### Send this to a friend
+
+```text
+I made a tool that teaches Latin American Spanish by mixing a few Spanish words into what you already read.
+Start here: https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/START-HERE.md
+
+If you use Claude Code, tell it:
+Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave folder). Read language/spanish-weave/HANDOFF-FOR-CLAUDE.md first.
+
+No Claude Code? Paste the block from this page into claude.ai (Settings > Profile) or ChatGPT (Custom instructions). It works on your phone too:
+https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/blocks/level-01.md
+```
+
+Their Claude installs it with `claude plugin marketplace add Camcas99/Learning-` and
+`claude plugin install spanish-weave@learning`, and later gets updates with `claude plugin marketplace update
+learning` and `claude plugin update spanish-weave@learning`. To download every file instead:
+`git clone https://github.com/Camcas99/Learning-.git`.
+
 ## Start here
 
 The quickest start needs no install: open
