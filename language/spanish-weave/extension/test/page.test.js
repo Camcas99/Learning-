@@ -65,6 +65,12 @@ describe('Instagram', () => {
     expect(accepted(IG)).toEqual(['ok']);
     for (const path of ['accounts/login/', 'accounts/edit/', 'accounts/password/change/']) expect(accepted(IG + path)).toEqual([]);
   });
+  test('direct messages never leave the page', () => {
+    page('<span dir="auto" id="dm">Can you send me the new address and the door code before tonight</span>');
+    expect(accepted(IG)).toEqual(['dm']); // the same text in a caption would be read
+    for (const path of ['direct/inbox/', 'direct/t/1234567890/', 'direct', 'direct/requests/']) expect(accepted(IG + path)).toEqual([]);
+    expect(accepted(IG + 'directions.travel/')).toEqual(['dm']); // a profile whose name starts with "direct"
+  });
   test('an edit inside a nested span belongs to the outer caption', () => {
     page(FEED);
     const caption = document.getElementById('caption');

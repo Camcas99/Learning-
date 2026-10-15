@@ -98,12 +98,12 @@ export const L2_EXTRA = [
   W('eso', 'that', 'EH-soh'),
   // prepositions
   W('en', 'in', 'en'),
-  W('sobre', 'on / about', 'SOH-breh'),
+  W('sobre', 'about (a topic) / on top of', 'SOH-breh'),
   W('entre', 'between', 'EN-treh'),
   W('después de', 'after', 'des-PWES deh'),
   W('antes de', 'before', 'AHN-tes deh'),
   W('durante', 'during', 'doo-RAHN-teh'),
-  W('desde', 'since', 'DES-deh'),
+  W('desde', 'since (a time) / from', 'DES-deh'),
   // nouns
   W('el tiempo', 'time / the weather', 'el TYEM-poh'),
   W('la vida', 'life', 'lah BEE-dah'),
@@ -140,7 +140,7 @@ export const L2_EXTRA = [
   W('fácil', 'easy', 'FAH-seel'),
   W('fuerte', 'strong', 'FWEHR-teh'),
   W('largo', 'long', 'LAHR-goh', "not 'large' (that's grande)"),
-  W('caliente', 'hot', 'kah-LYEN-teh'),
+  W('caliente', 'hot (to the touch)', 'kah-LYEN-teh', "not hot weather or feeling hot (that's calor)"),
   W('frío', 'cold', 'FREE-oh'),
   W('feliz', 'happy', 'feh-LEES'),
   W('triste', 'sad', 'TREES-teh'),
@@ -165,7 +165,7 @@ export const L2_EXTRA = [
   W('genial', 'great / cool', 'heh-NYAHL'),
   W('imposible', 'impossible', 'eem-poh-SEE-bleh'),
   // fixed phrases and greetings
-  W('es', "it's / is", 'es'),
+  W('es', "it's / is (what something is)", 'es', "a state or place takes está (está listo = it's ready)"),
   W('hay', 'there is / there are', 'eye'),
   W('creo que', 'I think that', 'KREH-oh keh'),
   W('hay que', 'you have to / we need to', 'eye keh'),
@@ -199,7 +199,8 @@ const ARTICLE_RE = /^(?:los|las|el|la|unos|unas|una|un)\s+/i;
 export const exactEs = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 // Feminine nouns that take "el"/"un" for sound (stressed a- or ha-): el agua, un alma.
-const EL_FEMININE = new Set(['agua', 'alma', 'hambre', 'águila', 'aula', 'área', 'arma', 'hacha', 'ave'].map(normalizeEs));
+const EL_FEMININE = new Set(['agua', 'alma', 'hambre', 'águila', 'aula', 'área', 'arma', 'hacha', 'ave', 'ala', 'hada',
+  'habla', 'ancla'].map(normalizeEs));
 // Fixed phrases that start with un/una but are not nouns, so they get no gender cue.
 const NOT_NOUNS = new Set(['un poco', 'una vez más'].map(normalizeEs));
 

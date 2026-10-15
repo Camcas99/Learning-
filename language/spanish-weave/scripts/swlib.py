@@ -40,8 +40,10 @@ STAGES = [(400, 4), (150, 3), (40, 2)]  # (known words, stage): first match wins
 
 # ---- spaced review: the quiz (README "Quiz yourself") ----
 INTERVALS = [1, 3, 7, 14, 30, 60, 120]  # days to a word's next review, by box; each right answer moves it up a box
-PRODUCE_FROM_BOX = 2   # from this box on the quiz asks for the Spanish (production), before that for the meaning
+PRODUCE_AFTER = 2      # right answers in a row before the quiz asks for the Spanish (production) instead of the meaning
 KNOWN_BOX = {'graduated': 2, 'recovered': 1, 'marked': 3}  # box a word starts in when it becomes known
+FIRST_QUIZ_DAYS = 1    # a new learning word is first quizzed this many days after it arrives
+SEED_SPREAD = 28       # words seeded known (setup, placement) get a first check spread over this many days
 
 
 # Same spelling as an English word with another meaning, so Spanish use can't be told apart in English prose:
@@ -168,8 +170,11 @@ def seed_known(state, n, day=None):
     known keep their status, so seeding never resets progress. Returns how many words changed."""
     day = day or today()
     seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue']
-    for w in seeded:
+    for i, w in enumerate(seeded):
         set_status(w, 'known', day)
+        # A first check, spread out so a big seed doesn't come due all at once; a miss sends the word back to learning.
+        w['box'] = 1
+        w['due'] = (dt.date.fromisoformat(day) + dt.timedelta(days=INTERVALS[1] + i % SEED_SPREAD)).isoformat()
     return len(seeded)
 
 
@@ -179,11 +184,15 @@ def blank(word):
 
 
 def merge_lexicon(state, lexicon=None):
-    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list); never drops any."""
-    have = {key(w['es']) for w in state['words']}
+    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list) and takes the list's current
+    meaning and sound hint for the others, so a corrected gloss reaches everyone; never drops a word."""
+    have = {key(w['es']): w for w in state['words']}
     for w in lexicon or load_lexicon():
-        if key(w['es']) not in have:
+        mine = have.get(key(w['es']))
+        if mine is None:
             state['words'].append(blank(w))
+        else:
+            mine.update(en=w['en'], hint=w['hint'])
     return state
 
 
@@ -307,10 +316,14 @@ def promote(state, day=None, chat=None):
     for w in state['words']:
         if w['status'] == 'active' and graduates(w, chat):
             set_status(w, 'known', day)
-            schedule(w, day, KNOWN_BOX['graduated'])
-        elif w['status'] == 'shaky' and days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS:
+            schedule(w, day, max(w.get('box', 0), KNOWN_BOX['graduated']))
+        elif (w['status'] == 'shaky' and days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS
+              and (any(d > (w['last_bad'] or w['changed']) for d in exposure_days(w, chat))
+                   or norm(w['es']) in UNMEASURABLE)):
+            # A week with no slips, and at least one sighting since the last one: a word nobody saw isn't relearned.
+            # Chat can't count UNMEASURABLE words, so for them the clean week alone has to do.
             set_status(w, 'known', day)
-            schedule(w, day, KNOWN_BOX['recovered'])
+            schedule(w, day, max(w.get('box', 0), KNOWN_BOX['recovered']))
     refill(state, day)
     state['stage'] = stage_for(state)
     return state
@@ -336,6 +349,7 @@ def apply_event(state, es, kind, day=None):
     elif kind in ('flip', 'asked'):
         w['last_bad'] = day
         set_status(w, 'shaky', day)
+        schedule(w, day, 0)  # a slip: quiz it again from the first box, starting tomorrow
     elif kind == 'peek':
         peeks = w.setdefault('peeks', [])
         if not peeks or peeks[-1] != day:
@@ -346,9 +360,11 @@ def apply_event(state, es, kind, day=None):
         elif w['status'] == 'known' and len(peeks) >= 2 and days_between(peeks[-2], day) < PEEK_WINDOW:
             w['last_bad'] = day
             set_status(w, 'shaky', day)
+            schedule(w, day, 0)
     elif kind == 'known':
+        if w['status'] != 'known':  # marking an already known word again keeps its review schedule
+            schedule(w, day, KNOWN_BOX['marked'])
         set_status(w, 'known', day)
-        schedule(w, day, KNOWN_BOX['marked'])
     elif kind == 'active':
         w['last_bad'] = day  # restart its graduation count
         set_status(w, 'active', day)
@@ -388,8 +404,10 @@ def known_band(state):
 
 
 def version(state):
-    # Notes are in it too: the extension caches swaps with their notes, so an edited notes.csv must look like a new list.
-    blob = json.dumps([stage_for(state), state.get('paused'), [(w['es'], w['status'], note(w['es'])) for w in introduced(state)]])
+    # Glosses, hints and notes are in it too: the extension caches swaps with them, so an edited lexicon.csv or
+    # notes.csv must look like a new list.
+    blob = json.dumps([stage_for(state), state.get('paused'),
+                       [(w['es'], w['status'], w['en'], w['hint'], note(w['es'])) for w in introduced(state)]])
     return hashlib.sha1(blob.encode()).hexdigest()[:10]
 
 
@@ -430,25 +448,31 @@ def schedule(word, day, box):
 
 
 def due_date(word):
-    """When the word is next up for review: its schedule, else right away for a learning word never quizzed. Known
-    words with no schedule (seeded by setup or the placement test) wait until they are missed or marked."""
+    """When the word is next up for review: its schedule; a learning word never quizzed, the day after it arrived; a
+    known word from before the quiz existed, a week after it became known. None: never reviewed (seeded long ago)."""
     if word.get('due'):
         return word['due']
-    return word['added'] if word['status'] in ('active', 'shaky') else None
+    later = lambda day, days: (dt.date.fromisoformat(day) + dt.timedelta(days=days)).isoformat()
+    if word['status'] in ('active', 'shaky') and word.get('added'):
+        return later(word['added'], FIRST_QUIZ_DAYS)
+    if word['status'] == 'known' and word.get('changed', '') > word.get('added', ''):
+        return later(word['changed'], INTERVALS[KNOWN_BOX['graduated']])
+    return None
 
 
 def due_reviews(state, day=None, limit=10):
     """The quiz queue: introduced words due by day and not reviewed today, shaky first, then the most overdue."""
     day = day or today()
     ready = [w for w in state['words'] if w['status'] != 'queue' and (due_date(w) or '9999') <= day
-             and not any(d == day for d, _ in w.get('reviews') or [])]
+             and not any(d == day for d, *_ in w.get('reviews') or [])]
     return sorted(ready, key=lambda w: (w['status'] != 'shaky', due_date(w)))[:limit]
 
 
 def direction(word):
-    """'recognize' (what does the Spanish mean?) for new and missed words; 'produce' (how do you say it?) once the
-    word has been recalled twice in a row. Producing a word is harder and builds a stronger memory."""
-    return 'produce' if word.get('box', 0) >= PRODUCE_FROM_BOX else 'recognize'
+    """'produce' (how do you say it?) once the last PRODUCE_AFTER quiz answers were right, else 'recognize' (what does
+    it mean?). Recognition comes first; producing a word is the harder retrieval and builds a stronger memory."""
+    recent = [ok for _, ok, *_ in (word.get('reviews') or [])][-PRODUCE_AFTER:]
+    return 'produce' if len(recent) == PRODUCE_AFTER and all(recent) else 'recognize'
 
 
 def meanings(en):
@@ -461,32 +485,70 @@ def meanings(en):
     return out
 
 
+def bare_fold(text):
+    """Folded, without a leading article: "La Canción" -> "cancion"."""
+    return re.sub(r'^(el|la|los|las|un|una|unos|unas) ', '', fold(text))
+
+
+@functools.lru_cache(maxsize=None)
+def listed_meanings():
+    """Every listed word (bare, folded) -> its meanings, to tell a synonym ("recordar" for acordarse) from a mistake."""
+    out = {}
+    for w in load_lexicon():
+        out.setdefault(bare_fold(w['es']), set()).update(meanings(w['en']))
+    return out
+
+
 def check(word, answer, way):
     """True or False for a quiz answer, or None when a person should judge: an English answer that matches no listed
-    meaning word for word may still be right. Accents, ñ, capitals and a missing or different el/la don't matter."""
+    meaning word for word, or another listed Spanish word with the same meaning. Accents, ñ, capitals and a missing or
+    different el/la don't count against the answer."""
     given = fold(answer).strip(' .,!?¡¿"\'')
     if not given:
         return False
     if way == 'produce':
-        bare = lambda text: re.sub(r'^(el|la|los|las|un|una|unos|unas) ', '', fold(text))
-        return bare(given) == bare(word['es'])
-    return True if re.sub(r'^(the|to|a|an) ', '', given) in meanings(word['en']) else None
+        if bare_fold(given) == bare_fold(word['es']):
+            return True
+        return None if listed_meanings().get(bare_fold(given), set()) & meanings(word['en']) else False
+    english = re.sub(r'^(the|to|a|an) ', '', given)
+    if english in meanings(word['en']):
+        return True
+    lookalike = re.match(r"not '([^']+)'", note(word['es']))
+    if lookalike and english in meanings(lookalike.group(1)):
+        return False  # the false friend itself ("actually" for actualmente) is a mistake, not a synonym
+    return None
+
+
+UNDO = ('box', 'status', 'changed', 'last_bad')  # what an answer can change, saved with it so a same-day redo can undo it
 
 
 def review(state, es, right, day=None):
-    """Records a quiz answer. Right: the word moves up a box, so its next review comes later, and the day counts as
-    an exposure day. Wrong: back to box 0, so it comes up again tomorrow, and the word turns shaky."""
+    """Records a quiz answer. A second answer the same day replaces the first (a retried command or a corrected
+    verdict), so answers can't stack boxes and a wrong verdict can be taken back.
+
+    Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day.
+    Wrong: a learning word starts its three clean days over and comes back tomorrow. A known word drops two boxes;
+    if it wasn't even recognized, it turns shaky, so it shows up more in chat until it's known again."""
     day = day or today()
     w = find(state, es)
     if w is None or w['status'] == 'queue':
         return None
+    reviews = list(w.get('reviews') or [])
+    if reviews and reviews[-1][0] == day:  # undo the earlier answer from today first
+        w.update(zip(UNDO, reviews.pop()[2:]))
+    way, box = direction(dict(w, reviews=reviews)), w.get('box', 0)
+    before = [w.get(k, 0 if k == 'box' else '') for k in UNDO]
     if right:
         apply_event(state, w['es'], 'seen', day)
-        schedule(w, day, w.get('box', 0) + 1)
+        schedule(w, day, box + 1)
+    elif w['status'] == 'known' and way == 'produce':
+        schedule(w, day, box - 2)  # still recognized: only production slipped
+    elif w['status'] == 'known':
+        apply_event(state, w['es'], 'asked', day)  # not recognized: shaky, first box
     else:
-        apply_event(state, w['es'], 'asked', day)
+        w['last_bad'] = day
         schedule(w, day, 0)
-    w['reviews'] = ((w.get('reviews') or []) + [[day, int(bool(right))]])[-10:]
+    w['reviews'] = (reviews + [[day, int(bool(right))] + before])[-10:]
     return w
 
 

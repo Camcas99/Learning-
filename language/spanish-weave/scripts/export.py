@@ -11,9 +11,8 @@ import swlib
 
 CHATGPT_LIMIT = 1500   # characters per ChatGPT custom-instructions field (Free and Go; paid plans allow 5,000)
 KNOWN_LIST_MAX = swlib.COLLAPSE_AT  # above this many known words, the state line names a rank band instead
-STAGE_SHAPES = {1: '', 2: '', 3: ' plus about one short, fully Spanish sentence in five (2 in a ten-sentence reply, '
-                'in the explanation around any steps)',
-                4: ' plus about two in five (4 in ten), English for complex or technical ideas'}
+STAGE_SHAPES = {1: '', 2: '', 3: ' plus one short, fully Spanish sentence in five, in the explanation around any steps',
+                4: ' plus two in five, English for complex or technical ideas'}
 
 # (full text for claude.ai, short text for ChatGPT). Order matters: it is the order of the pasted block.
 RULES = [
@@ -24,7 +23,7 @@ RULES = [
     ("Apply only in chat replies to me. Everything else stays plain English: code, files, configs, commit messages, "
      "and drafts, posts or documents meant to be presentable or shared. If I'm not reading it, or unlikely to, no Spanish.",
      "Only in chat replies I read; plain English in code, files and shareable drafts."),
-    ("My stage and words are in the Spanish Weave state line below (I update it from time to time). Active and Shaky are "
+    ("My stage and words are in the Spanish Weave state line below. Active and Shaky are "
      "the words I'm learning; Known words I've seen a lot. Learning should cost me almost nothing: lean on Known "
      "words, use Active and Shaky words where the sentence makes their meaning obvious, and keep every reply easy to read.",
      "Words are in my Spanish Weave state line: lean on Known, use Active/Shaky where meaning is obvious."),
@@ -34,22 +33,27 @@ RULES = [
      "correct toward the target. Stage 5: all Spanish, only when I ask.",
      "Share of words in Spanish: {stages_short}. Aim for the target; most sentences carry one or two."),
     ("Connectors and adverbs on my lists are default swaps: write the Spanish every time the English word has that "
-     "meaning in your chat prose (and = y, but = pero, so = entonces, with = con, without = sin, very = muy, also = "
+     "meaning (and = y, but = pero, so = entonces, with = con, without = sin, very = muy, also = "
      "también, now = ahora, because = porque, for = para, and the like once they're on my lists). Under target is "
      "the usual miss, so count as you write.",
      "Default swaps every time the meaning fits: y, pero, entonces, con, sin, muy, también, ahora, porque, para."),
     ("Below Stage 3, Spanish words drop into English sentences and English grammar stays: no fully Spanish sentences "
      "or clauses, and no Spanish articles, verbs or other words that aren't on my lists, like \"The build passes "
-     "ahora, pero the cache is stale, entonces I cleared it.\" At Stage 3+, Spanish sentences are short and guessable "
-     "from the surrounding English.",
+     "ahora, pero the cache is stale, entonces I cleared it.\" At Stage 3+, Spanish sentences are short, Latin "
+     "American (ustedes, never vosotros) and guessable from the surrounding English.",
      "Below Stage 3 every sentence stays English grammar with list words swapped in; no Spanish outside my lists."),
-    ("Use a word only where it means exactly what the English would there: para never follows ask, wait, look or "
-     "thank and never marks a duration or a cause (those take por); antes de, después de and durante go before "
-     "nouns, never clauses; más means \"more\", never \"and\"; muy only before an adjective or adverb (\"very "
-     "much\" is mucho); si is \"if\", sí is \"yes\"; para nada is \"not at all\", never a plain \"not\". Obvious "
-     "cognates are free.",
-     "Exact sense only: para not after ask/wait/look/thank or for durations; antes de/después de before nouns; "
-     "más = more; muy before adjectives; si = if, sí = yes."),
+    ("Use a word only where it means exactly what the English would there: es and soy only for what something is, "
+     "never a state or place (\"it's ready\" stays English: es listo means \"is clever\"); esto and "
+     "eso only on their own, never before a noun; qué, cómo, dónde and quién only in questions (\"what you need\" "
+     "stays English); \"not X but Y\" is sino; también and entonces never for \"too\" or \"so\" before an adjective; "
+     "porque never for \"because of\"; para never after ask, wait, look or pay, or for a duration; antes de, después "
+     "de and durante never before a clause; más means \"more\", never \"and\"; muy before an adjective or adverb "
+     "(\"very much\" is mucho); si is \"if\", sí is \"yes\"; para nada is \"not at all\". A listed noun brings its "
+     "own article, never \"the el\". True cognates are free; look-alikes aren't (actualmente is not \"actually\").",
+     "Exact sense only: es/soy = what something is, never states or places (it's ready ≠ es listo); esto/eso never "
+     "before a noun; qué/cómo/dónde only in questions; not X but Y = sino; too/so + adjective ≠ también/entonces; "
+     "para not after ask/wait/look/pay or for durations; no antes de/después de before a clause; si = if, "
+     "sí = yes."),
     ("Comprehension beats the stage. If a reply would be hard to follow, use simpler Spanish, then less Spanish.",
      "Comprehension beats the stage."),
     ("Never gloss inline, and no bold on Spanish words. End with one footer line glossing the Active and Shaky words "
@@ -76,11 +80,12 @@ RULES = [
 
 def stage_text(short=False):
     from weave import STAGES
+    # Stage 1 spells out what each number is; the others follow its pattern.
     if short:
-        return '; '.join(f'S{n} ~{t}%, ~{round(t * 1.5)} per 150 words (max {c}%, {p}/sentence)'
-                         for n, (t, c, p) in STAGES.items())
-    return '; '.join(f'Stage {n} about {t}% of words, about {round(t * 1.5)} Spanish words in a 150-word reply '
-                     f'(cap {c}%, at most {p} in a sentence){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
+        return '; '.join(f'S{n} ~{t}% (max {c}%, {p}{" per sentence" if n == 1 else ""})' for n, (t, c, p) in STAGES.items())
+    return '; '.join(f'Stage {n} about {t}% of words ({"about " if n == 1 else ""}{round(t * 1.5)}'
+                     f'{" Spanish words in a 150-word reply" if n == 1 else ""}; cap {c}%, at most {p}'
+                     f'{" in a sentence" if n == 1 else ""}){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
 
 
 def rules(short=False):
@@ -178,8 +183,11 @@ def log_chat_day(state, day=None):
     return sum(swlib.apply_event(state, w['es'], 'assumed', day) for w in state['words'] if w['status'] in ('active', 'shaky'))
 
 
-ANKI_HEADERS = ['#separator:tab', '#html:false', '#notetype:Basic (and reversed card)', '#deck:Spanish Weave',
-                '#tags column:3']
+# The deck goes in a column: Anki creates a deck named there (2.1.55+), but ignores a #deck: header naming a deck
+# that doesn't exist yet (before 25.09).
+ANKI_HEADERS = ['#separator:tab', '#html:false', '#notetype:Basic (and reversed card)', '#tags column:3',
+                '#deck column:4']
+ANKI_DECK = 'Spanish Weave'
 
 
 def anki(state, every=False):
@@ -190,5 +198,5 @@ def anki(state, every=False):
     lines = list(ANKI_HEADERS)
     for w in state['words'] if every else swlib.introduced(state):
         back = f'{w["en"]} — "{w["hint"]}"' + (f' — {swlib.note(w["es"])}' if swlib.note(w['es']) else '')
-        lines.append('\t'.join(clean(x) for x in (w['es'], back, f'spanish-weave spanish-weave::{w["status"]}')))
+        lines.append('\t'.join(clean(x) for x in (w['es'], back, f'spanish-weave spanish-weave::{w["status"]}', ANKI_DECK)))
     return '\n'.join(lines) + '\n'

@@ -70,6 +70,13 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     const casa = caption.querySelector('[data-es="casa"]');
     expect(casa.dataset.swGender).toBe('f');
     expect(casa.dataset.tip).toBe('house / home · fem. · "KAH-sah"');
+    expect(casa.classList.contains('sw-new')).toBe(true); // a first appearance animates
+    // Keyboard focus shows the gloss after the pause; it isn't spoken unless "Say words aloud" is on.
+    casa.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
+    await wait(800);
+    expect(casa.classList.contains('sw-tip')).toBe(true);
+    expect(spoken).toHaveLength(0);
+    casa.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
 
     // Alt+click and Alt+Enter speak the Spanish word in a Latin American voice: no flip, no event.
     const y = caption.querySelector('[data-es="y"]');
@@ -126,20 +133,35 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     expect(sent[3]).toContain('until the light was gone again #travel');
     expect([...caption.querySelectorAll('.sw-word')].map((s) => s.textContent)).toEqual(['y', 'casa']);
 
-    // Gender colors off: repainted from memory without the attribute or label, no new requests; notes stay.
+    // Gender colors off: switched in place without the attribute or label, no new requests; notes stay, and a word
+    // flipped to English stays flipped.
+    const flipped = caption.querySelector('[data-es="casa"]');
+    flipped.dispatchEvent(user(new win.MouseEvent('click', { bubbles: true })));
+    expect(flipped.textContent).toBe('house');
     settings.genderColors = false; broadcast();
     await wait(50);
     const spans = [...win.document.querySelectorAll('.sw-word')];
-    expect(spans.map((s) => s.textContent)).toEqual(['y', 'casa', 'y', 'largo', 'día']);
+    expect(spans.map((s) => s.textContent)).toEqual(['y', 'house', 'y', 'largo', 'día']);
+    expect(spans[1]).toBe(flipped);
     for (const s of spans) {
       expect(s.hasAttribute('data-sw-gender')).toBe(false);
       expect(s.dataset.tip).not.toMatch(/masc|fem/);
     }
     expect($('comment-new').querySelector('[data-es="largo"]').dataset.tip).toContain("not 'large'");
+    expect($('comment-new').querySelector('[data-es="día"]').getAttribute('aria-label')).toBe('día: day. Show English');
     settings.genderColors = true; broadcast();
     await wait(50);
-    expect(caption.querySelector('[data-es="casa"]').dataset.swGender).toBe('f');
+    expect(flipped.dataset.swGender).toBe('f');
+    expect(flipped.dataset.tip).toBe('house / home · fem. · "KAH-sah"');
+    expect(flipped.textContent).toBe('house');
+    expect($('comment-new').querySelector('[data-es="día"]').getAttribute('aria-label')).toBe('día: day, masculine. Show English');
     expect(sent).toHaveLength(4);
+
+    // A restart (as on single-page navigation) paints the same passages again without replaying the reveal.
+    for (const fn of listeners) fn({ type: 'retry', config: config() });
+    await wait();
+    expect([...win.document.querySelectorAll('.sw-word')].map((s) => s.textContent)).toEqual(['y', 'casa', 'y', 'largo', 'día']);
+    expect(win.document.querySelectorAll('.sw-word.sw-new')).toHaveLength(0);
 
     // Nothing in the DOM names a learning word beyond the visible Spanish one.
     const html = win.document.body.innerHTML;

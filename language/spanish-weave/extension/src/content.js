@@ -1,7 +1,7 @@
 // Content script: watch readable text (tweets on X, captions, comments and bios on Instagram, prose elsewhere), ask
 // the background for swaps, paint them, handle the delayed gloss, click/Enter flip, Alt+click/Alt+Enter speech and
 // seen/peek/flip events. Every async reply belongs to one config generation.
-import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } from './text.js';
+import { flatten, applySwaps, revert, toggle, isSwap, swapWord, showGender, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable, textRoot } from './page.js';
@@ -21,6 +21,9 @@ const tracked = new Set();
 const visibleWords = new Set();
 const seen = new Set();
 const failures = new Map(); // text key -> failed model attempts; retried with backoff
+// Text keys already painted once. A repaint (single-page navigation, a restart) doesn't replay the reveal animation.
+// Kept across restarts; cleared when it gets large.
+const painted = new Set();
 const MAX_RETRIES = 3;
 const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
 let tipTimer = null;
@@ -75,7 +78,14 @@ function paint(el, key) {
   const swaps = memo.get(key);
   if (!swaps?.length) return;
   applySwaps(el, swaps, { gender: config.settings.genderColors });
-  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) if (isSwap(span)) visible.observe(span);
+  const first = !painted.has(key);
+  if (painted.size > 5000) painted.clear();
+  painted.add(key);
+  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) {
+    if (!isSwap(span)) continue;
+    if (first) span.classList.add('sw-new'); // content.css animates only these
+    visible.observe(span);
+  }
   observer?.takeRecords();
 }
 function consider(el) {
@@ -180,10 +190,10 @@ function stop() {
 function update(next, retry = false) {
   if (!next?.settings || !next.revision) return;
   if (!retry && next.revision === config?.revision) {
-    // Display settings keep the revision: take them as they are, and repaint gender cues from memory, no model calls.
-    const repaint = next.settings.genderColors !== config.settings.genderColors;
+    // Display settings keep the revision: take them as they are, and switch gender cues in place, no model calls.
+    const regender = next.settings.genderColors !== config.settings.genderColors;
     config = next;
-    if (repaint) for (const el of tracked) if (memo.has(keys.get(el))) consider(el);
+    if (regender) showGender(document.documentElement, config.settings.genderColors);
     return;
   }
   stop(); config = next; start();

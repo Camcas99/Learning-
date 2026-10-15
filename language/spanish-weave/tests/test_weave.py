@@ -23,6 +23,7 @@ import sw_host  # noqa: E402
 import sw  # noqa: E402
 import export  # noqa: E402
 import hints  # noqa: E402
+import make_blocks  # noqa: E402
 import placement  # noqa: E402
 
 
@@ -169,10 +170,24 @@ class Rules(Home):
         swlib.promote(state, '2026-10-10', {})
         self.assertEqual(swlib.find(state, 'con')['status'], 'shaky')
         swlib.apply_event(state, 'con', 'peek', '2026-10-09')  # restarts the clock
+        swlib.promote(state, '2026-10-16', {})
+        self.assertEqual(swlib.find(state, 'con')['status'], 'shaky')  # a clean week, but not seen since: no evidence
+        swlib.apply_event(state, 'con', 'seen', '2026-10-12')
         swlib.promote(state, '2026-10-15', {})
         self.assertEqual(swlib.find(state, 'con')['status'], 'shaky')
         swlib.promote(state, '2026-10-16', {})
         self.assertEqual(swlib.find(state, 'con')['status'], 'known')
+        swlib.apply_event(state, 'solo', 'asked', '2026-10-16')  # chat can't count solo: a clean week is enough
+        swlib.promote(state, '2026-10-23', {})
+        self.assertEqual(swlib.find(state, 'solo')['status'], 'known')
+
+    def test_merge_takes_corrected_glosses(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.find(state, 'pero').update(en='old gloss', hint='old hint')
+        before = swlib.version(state)
+        swlib.merge_lexicon(state)
+        self.assertEqual((swlib.find(state, 'pero')['en'], swlib.find(state, 'pero')['hint']), ('but', 'PEH-roh'))
+        self.assertNotEqual(swlib.version(state), before)  # the extension refetches swaps with the new gloss
 
     def test_known_word_peeked_twice_in_a_week_becomes_shaky(self):
         state = swlib.new_state('2026-10-01')
@@ -252,6 +267,17 @@ class Brief(Home):
         self.assertNotIn('"hint"', three)
         self.assertIn('about 40%', weave.brief(self.state(4), self.seen))
 
+    def test_guards_follow_the_words_in_use(self):
+        fresh = weave.brief(swlib.new_state('2026-10-01'), {})  # y, pero, entonces, con, sin
+        self.assertIn('"not X but Y" is sino', fresh)
+        self.assertIn('también and entonces never for "too" or "so" before an adjective', fresh)
+        self.assertNotIn('es and soy', fresh)
+        self.assertNotIn('the el', fresh)  # no nouns yet
+        later = weave.brief(grown(400), {})
+        for guard in ('es and soy only for what something is', 'esto and eso only on their own', 'si is if, sí is yes',
+                      'question words only in questions', 'never "the el"'):
+            self.assertIn(guard, later)
+
     def test_recall_every_third_turn_shaky_first(self):
         state = self.state()
         picks = [weave.next_recall(state, 's1') for _ in range(7)]
@@ -298,9 +324,11 @@ class Brief(Home):
         self.assertIn('Spanish Weave (Stage 1)', context)
         self.assertIn('Recall: y?', context)
         self.assertLess(len(context), 3000)
-        sw.main(['pause'])
+        with mock.patch('sys.stdout', new=io.StringIO()):
+            sw.main(['pause'])
         self.assertEqual(self.run_hook({'session_id': 'x'}), '')
-        sw.main(['resume'])
+        with mock.patch('sys.stdout', new=io.StringIO()):
+            sw.main(['resume'])
         self.assertIn('Spanish Weave', self.run_hook({}))
 
     def test_no_spanish_in_scripted_runs(self):
@@ -357,12 +385,15 @@ class Scale(Home):
             about, respond = export.chatgpt(state)
             self.assertLessEqual(len(about), export.CHATGPT_LIMIT)
             self.assertLessEqual(len(respond), export.CHATGPT_LIMIT)
-            self.assertLess(len(export.claude_ai(state)), 6000)
+            self.assertLess(len(export.claude_ai(state)), make_blocks.CLAUDE_AI_MAX)
             if known >= 400:
                 self.assertIn('most common Spanish words', brief)
-                # French Weave's budget was 3,100 bytes; Spanish glosses run a little longer and accented letters
-                # take 2 bytes each, so this budget is 3,300 (about 3,180 at 1,000 known words).
-                self.assertLess(len(brief.encode()), 3300, known)
+                # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
+                # bytes each, and the usage guards (es vs está, esto vs este, sino...) add about 400 bytes once every
+                # word is in use, so this budget is 3,700 (about 3,590 at 1,000 known words).
+                self.assertLess(len(brief.encode()), 3700, known)
+        # The longest export: just under the band cutoff, every known word is named.
+        self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)
 
     def test_state_line_round_trips(self):
         for known in (30, 400):
@@ -403,33 +434,61 @@ class Scale(Home):
 class Review(Home):
     def test_boxes_intervals_and_direction(self):
         state = swlib.new_state('2026-10-01')
-        self.assertEqual([w['es'] for w in swlib.due_reviews(state, '2026-10-01')], ['y', 'pero', 'entonces', 'con', 'sin'])
-        pero = swlib.review(state, 'pero', True, '2026-10-01')
-        self.assertEqual((pero['box'], pero['due'], pero['days']), (1, '2026-10-04', ['2026-10-01']))  # retrieval counts as exposure
+        self.assertEqual(swlib.due_reviews(state, '2026-10-01'), [])  # new words wait a day, so they're met first
+        self.assertEqual([w['es'] for w in swlib.due_reviews(state, '2026-10-02')], ['y', 'pero', 'entonces', 'con', 'sin'])
+        pero = swlib.review(state, 'pero', True, '2026-10-02')
+        self.assertEqual((pero['box'], pero['due'], pero['days']), (1, '2026-10-05', ['2026-10-02']))  # retrieval counts as exposure
         self.assertEqual(swlib.direction(pero), 'recognize')
-        self.assertNotIn('pero', [w['es'] for w in swlib.due_reviews(state, '2026-10-01')])  # once a day
-        swlib.review(state, 'pero', True, '2026-10-04')
-        self.assertEqual((pero['box'], pero['due'], swlib.direction(pero)), (2, '2026-10-11', 'produce'))
-        swlib.review(state, 'pero', False, '2026-10-11')
-        self.assertEqual((pero['box'], pero['due'], pero['status']), (0, '2026-10-12', 'shaky'))
-        self.assertEqual(pero['reviews'], [['2026-10-01', 1], ['2026-10-04', 1], ['2026-10-11', 0]])
-        self.assertEqual(swlib.due_reviews(state, '2026-10-12')[0]['es'], 'pero')  # shaky words come first
-        self.assertIsNone(swlib.review(state, 'quién', True, '2026-10-12'))  # not introduced yet
+        self.assertNotIn('pero', [w['es'] for w in swlib.due_reviews(state, '2026-10-02')])  # once a day
+        swlib.review(state, 'pero', True, '2026-10-05')
+        self.assertEqual((pero['box'], pero['due'], swlib.direction(pero)), (2, '2026-10-12', 'produce'))  # two right in a row
+        swlib.review(state, 'pero', False, '2026-10-12')
+        # Still learning: back to the first box and its three clean days start over, but it doesn't turn shaky.
+        self.assertEqual((pero['box'], pero['due'], pero['status'], pero['last_bad']), (0, '2026-10-13', 'active', '2026-10-12'))
+        self.assertEqual(swlib.direction(pero), 'recognize')
+        self.assertEqual([r[:2] for r in pero['reviews']], [['2026-10-02', 1], ['2026-10-05', 1], ['2026-10-12', 0]])
+        swlib.apply_event(state, 'con', 'flip', '2026-10-12')
+        self.assertEqual(swlib.due_reviews(state, '2026-10-13')[0]['es'], 'con')  # shaky words come first
+        self.assertIsNone(swlib.review(state, 'quién', True, '2026-10-13'))  # not introduced yet
+
+    def test_same_day_answers_replace_each_other(self):
+        state = swlib.new_state('2026-10-01')
+        for _ in range(3):  # a retried command can't stack boxes
+            swlib.review(state, 'pero', True, '2026-10-02')
+        pero = swlib.find(state, 'pero')
+        self.assertEqual((pero['box'], len(pero['reviews'])), (1, 1))
+        swlib.apply_event(state, 'y', 'known', '2026-10-02')
+        y = swlib.find(state, 'y')
+        swlib.review(state, 'y', False, '2026-10-20')  # a known word not recognized turns shaky
+        self.assertEqual((y['status'], y['box'], y['last_bad']), ('shaky', 0, '2026-10-20'))
+        swlib.review(state, 'y', True, '2026-10-20')  # the verdict was wrong: undone, then counted right
+        self.assertEqual((y['status'], y['box'], y['last_bad'], y['due']), ('known', 4, '', '2026-11-19'))
 
     def test_known_words_get_spaced_reviews(self):
         state = swlib.new_state('2026-10-01', known_top=40)
-        self.assertNotIn('known', {w['status'] for w in swlib.due_reviews(state, '2027-01-01', limit=100)})  # seeded: no schedule
+        seeded = [w for w in state['words'] if w['status'] == 'known']
+        self.assertEqual({w['box'] for w in seeded}, {1})
+        dues = sorted({w['due'] for w in seeded})
+        self.assertEqual((dues[0], dues[-1], len(dues)), ('2026-10-04', '2026-10-31', 28))  # spread over four weeks
         chat = {'muy': {'n': 3, 'days': ['2026-10-01', '2026-10-02', '2026-10-03']}}
         swlib.promote(state, '2026-10-03', {})
         swlib.find(state, 'muy')['status'] = 'active'
         swlib.promote(state, '2026-10-03', chat)
         muy = swlib.find(state, 'muy')
         self.assertEqual((muy['status'], muy['box'], muy['due']), ('known', 2, '2026-10-10'))  # graduated: a week later
-        swlib.apply_event(state, 'nunca', 'known', '2026-10-03')
-        self.assertEqual(swlib.find(state, 'nunca')['due'], '2026-10-17')  # marked known by hand: two weeks later
+        later = next(w for w in state['words'] if w['status'] == 'queue')
+        swlib.apply_event(state, later['es'], 'known', '2026-10-03')
+        self.assertEqual(later['due'], '2026-10-17')  # marked known by hand: two weeks later
+        swlib.apply_event(state, later['es'], 'known', '2026-10-05')
+        self.assertEqual(later['due'], '2026-10-17')  # marking it again keeps its schedule
         self.assertIn('muy', [w['es'] for w in swlib.due_reviews(state, '2026-10-10', limit=100)])
         swlib.review(state, 'muy', False, '2026-10-10')
-        self.assertEqual(muy['status'], 'shaky')
+        self.assertEqual(muy['status'], 'shaky')  # not even recognized
+        swlib.review(state, 'muy', True, '2026-10-10')  # same day: replaces the miss
+        swlib.review(state, 'muy', True, '2026-10-13')
+        self.assertEqual((muy['status'], muy['box'], swlib.direction(muy)), ('known', 4, 'produce'))
+        swlib.review(state, 'muy', False, '2026-11-12')  # couldn't say it, but still recognizes it: two boxes down
+        self.assertEqual((muy['status'], muy['box'], muy['due']), ('known', 2, '2026-11-19'))
 
     def test_answer_checking(self):
         word = lambda es, en: {'es': es, 'en': en}
@@ -438,18 +497,28 @@ class Review(Home):
         self.assertTrue(swlib.check(word('ser', 'to be (what something is)'), 'to be', 'recognize'))
         self.assertTrue(swlib.check(word('entonces', 'so / then'), 'then', 'recognize'))
         self.assertIsNone(swlib.check(word('pero', 'but'), 'however', 'recognize'))  # a person judges synonyms
+        self.assertFalse(swlib.check(word('actualmente', 'currently'), 'actually', 'recognize'))  # the false friend
         self.assertFalse(swlib.check(word('pero', 'but'), '  ', 'recognize'))
         self.assertTrue(swlib.check(word('también', 'also / too'), 'Tambien', 'produce'))
         self.assertTrue(swlib.check(word('el problema', 'the problem'), 'la problema', 'produce'))
         self.assertTrue(swlib.check(word('el año', 'the year'), 'ano', 'produce'))
+        self.assertIsNone(swlib.check(word('acordarse', 'to remember'), 'recordar', 'produce'))  # a listed synonym
         self.assertFalse(swlib.check(word('pero', 'but'), 'perro', 'produce'))
         self.assertEqual(sw.tip(word('el problema', 'the problem'), 'la problema'), "  (it's el problema)")
         self.assertEqual(sw.tip(word('también', 'also'), 'tambien'), '  (spelled también)')
         self.assertEqual(sw.tip(word('también', 'also'), 'también'), '')
+        self.assertEqual(sw.tip(word('sí', 'yes'), 'si'), '  (spelled sí; si is another word: if)')
+        self.assertEqual(sw.tip(word('el año', 'the year'), 'ano'), '  (spelled año; ano is a different word)')
+
+    def met_long_ago(self, n):
+        """A saved state whose first n learning words arrived long ago, so they're due."""
+        with swlib.editing() as state:
+            for w in state['words'][:n]:
+                w['added'] = '2026-01-01'
+        return state
 
     def test_quiz_and_review_commands(self):
-        with swlib.editing() as state:
-            pass
+        state = self.met_long_ago(5)
         plan = [(dict(w), swlib.direction(w)) for w in swlib.due_reviews(state, limit=3)]
         answers, said = iter(['and', 'nope', 'y', 'q']), []
         self.assertEqual(sw.run_quiz(plan, ask=lambda prompt: next(answers), say=said.append), (2, 2))  # judged one right
@@ -457,12 +526,31 @@ class Review(Home):
         self.assertEqual([swlib.find(state, es).get('box') for es in ('y', 'pero', 'entonces')], [1, 1, None])  # q stopped it
         self.assertIn('Done: 2 of 2 right', said[-1])
         with mock.patch('sys.stdout', new=io.StringIO()) as out:
-            sw.main(['quiz', '--plan', '2'])
+            sw.main(['quiz', '--plan', '2', 'words'])
             sw.main(['review', 'con', 'wrong'])
         lines = out.getvalue().splitlines()
-        self.assertEqual(lines[0], '1. recognize: What does "entonces" mean? | answer: entonces = so / then, "en-TOHN-ses"')
-        self.assertTrue(lines[2].startswith('con: wrong; next review'))
-        self.assertEqual(swlib.find(swlib.load_state(), 'con')['status'], 'shaky')
+        self.assertEqual(lines[0], '1. recognize: What does "entonces" mean? | answer: entonces = so / then, "en-TOHN-ses" — '
+                                   "'so' before an adjective is tan (tan rápido)")
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[2].startswith('con: wrong; next review') and lines[2].endswith('(learning)'))
+        self.assertEqual(swlib.find(swlib.load_state(), 'con')['status'], 'active')
+
+    def test_missed_words_are_asked_again_but_not_recorded(self):
+        state = self.met_long_ago(2)
+        plan = [(dict(w), 'recognize') for w in swlib.due_reviews(state, limit=2)]
+        answers, said = iter(['and', 'however', 'n', 'but']), []
+        self.assertEqual(sw.run_quiz(plan, ask=lambda prompt: next(answers), say=said.append), (1, 2))
+        self.assertIn('Once more', '\n'.join(said))
+        self.assertTrue(said[-2].strip().startswith('✓ pero'))  # the second try, after seeing the answer
+        self.assertEqual([r[1] for r in swlib.find(swlib.load_state(), 'pero')['reviews']], [0])  # not recorded
+
+    def test_quiz_arguments(self):
+        self.assertEqual([sw.plan_size(a) for a in ([], ['8'], ['ten'], ['3', 'words'], ['0'], ['500'])], [5, 8, 5, 3, 1, 50])
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['quiz', '--plan'])
+        self.assertTrue(out.getvalue().startswith('Nothing to review'))  # words arrived today: due tomorrow
+        with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+            sw.main(['quiz', '-n', '0'])
 
     def test_recall_cue_alternates_with_due_known_words(self):
         state = {'stage': 1, 'stage_pinned': True, 'words': [
@@ -487,8 +575,11 @@ class Placement(Home):
         number = lambda pick: [n for n, (_, band) in enumerate(items, 1) if pick(band)]
         self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1040)  # every real word
         self.assertEqual(placement.estimate(state, number(lambda band: True))[0], 0)  # yes to everything is no signal
-        half_first = number(lambda band: band == 0)[:4] + number(lambda band: band is None)[:3]
-        self.assertEqual(placement.estimate(state, half_first), (30, 4, 3))  # (4/8 - 3/12) / (1 - 3/12) of 100 words
+        half_first = number(lambda band: band == 0)[:4] + number(lambda band: band is None)[:2]
+        self.assertEqual(placement.estimate(state, half_first), (40, 4, 2))  # (4/8 - 3/14) / (1 - 3/14) of 100 words
+        self.assertEqual(placement.estimate(state, half_first + number(lambda band: band is None)[2:3]), (0, 4, 3))
+        cognates = number(lambda band: band == 3)[:3]  # a few rare words that look like English (el repositorio)
+        self.assertEqual(placement.estimate(state, cognates)[0], 0)  # can't mark the most common words known
 
     def test_command_marks_the_estimate_known(self):
         with swlib.editing() as state:
@@ -500,6 +591,16 @@ class Placement(Home):
         state = swlib.load_state()
         self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:250]), 245)  # the 5 learning words stay
         self.assertEqual(swlib.stage_for(state), 3)
+
+    def test_command_refuses_guessing_and_reads_ranges(self):
+        with swlib.editing() as state:
+            pass
+        fakes = [n for n, (_, band) in enumerate(placement.items(state), 1) if band is None][:3]
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['placement', '--answers', ', '.join(map(str, fakes)) + ', 1-40', '--apply'])
+        self.assertIn('nothing was marked', out.getvalue())
+        self.assertEqual(sum(w['status'] == 'known' for w in swlib.load_state()['words']), 0)
+        self.assertEqual(sw.item_numbers('1-3, 7, 40-99', 44), [1, 2, 3, 7, 40, 41, 42, 43, 44])
 
 
 class Notes(Home):
@@ -517,7 +618,8 @@ class Notes(Home):
             self.assertNotEqual(swlib.version(state), before)  # an edited note reaches the extension's cache
         lines = export.anki(state).splitlines()
         self.assertEqual(lines[:5], export.ANKI_HEADERS)
-        self.assertEqual(lines[5], "el éxito\tmeaning — \"hint\" — not 'exit' (that's la salida)\tspanish-weave spanish-weave::active")
+        self.assertEqual(lines[5], "el éxito\tmeaning — \"hint\" — not 'exit' (that's la salida)\tspanish-weave "
+                                   "spanish-weave::active\tSpanish Weave")  # the deck column creates the deck
         self.assertEqual(len(export.anki(state, every=True).splitlines()), 5 + 2)
 
 
@@ -529,7 +631,12 @@ class Output(Home):
         self.assertIn('Output practice is on', weave.brief(state, {}))
         self.assertNotIn('In this reply', weave.brief(state, {}))
         self.assertIn('Your turn: how would you say', weave.brief(state, {}, output=True))
-        sw.main(['output', 'on'])
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['output'])
+            sw.main(['output', 'on'])
+            sw.main(['output'])
+        self.assertEqual([line.split(' (')[0] for line in out.getvalue().splitlines()[::2]],
+                         ['Output practice is off', 'Output practice is on'])
         replies = [Brief.run_hook(self, {'session_id': 'talk'}) for _ in range(5)]
         self.assertEqual(['In this reply' in r for r in replies], [False, False, False, False, True])
 
@@ -599,7 +706,8 @@ class Host(Home):
         self.assertNotIn('geminiKey', state)
         self.assertEqual(state['prefs'], {})
         self.assertEqual(events, {'ok': True, 'applied': 2})
-        self.assertEqual(after['words'][0], {'es': 'pero', 'en': 'but', 'hint': 'PEH-roh', 'status': 'shaky'})
+        self.assertEqual(after['words'][0], {'es': 'pero', 'en': 'but', 'hint': 'PEH-roh', 'status': 'shaky',
+                                             'note': "'not X but Y' is sino"})
         self.assertNotEqual(after['version'], state['version'])
         self.assertFalse(bad['ok'])
 

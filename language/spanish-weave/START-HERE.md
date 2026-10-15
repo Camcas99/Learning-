@@ -18,7 +18,7 @@ It teaches Latin American Spanish, the Spanish of Mexico, Central and South Amer
 - **You start with about 5 words** (y = and, pero = but, entonces = so, con = with, sin = without) and get up to 5
   new ones a day, never more than 20 at once.
 - **A word becomes "known"** once you've seen it on 3 different days without needing to look it up. Words you look
-  up a lot, or miss in a quiz, become "shaky" and show up more until they stick.
+  up a lot, or forget after you knew them, become "shaky" and show up more until they stick.
 - **The Spanish grows with you.** Stage 1 is about 1 word in 16; at 40 known words you reach Stage 2, then 3 (150
   words) and 4 (400 words), where short, easy Spanish sentences start to appear.
 - **It never gets in the way.** No Spanish in code, files or anything you'd share, and none at all on health,
@@ -47,7 +47,8 @@ Weave icon > Allow all websites. It works on X, Instagram's website, articles, a
 
 Already know some Spanish? Pick "Not sure: take a 2-minute placement test" during setup, or run
 `/spanish-weave:placement` later. You'll mark the words you know from a list; a few are made up, so only mark ones
-you could actually translate.
+you could actually translate (pick three made-up ones and it asks you to try again). The words it marks known still
+come up in your quizzes over the next few weeks, so any you don't really know go back to learning.
 
 ## The best way to use it
 
@@ -57,8 +58,8 @@ you could actually translate.
 3. **Answer the "Recall: ...?" question in your head** before you read the answer at the end of the reply. It
    shows up every few replies, and it's the most valuable 3 seconds of the day.
 4. **Quiz for 3 to 5 minutes most days** with `/spanish-weave:quiz`. Words you get right come back after longer and
-   longer gaps (3 days, a week, two weeks...). Missed words come back tomorrow. That spacing is what turns
-   "I've seen it" into "I know it".
+   longer gaps (3 days, a week, two weeks...). Missed words come back soon, and the quiz asks them once more at the
+   end, so you always finish on a right answer. That spacing is what turns "I've seen it" into "I know it".
 5. **Say words out loud.** The hints show the stressed syllable in capitals: `también` = `tahm-BYEN`. In Chrome,
    Alt+click (Option+click on a Mac) a Spanish word to hear it, or turn on "Say words aloud" in the extension's
    popup. Underline colors tell you a noun's gender: teal for masculine (el), rose for feminine (la).
@@ -104,7 +105,7 @@ translation, "quiz" for a three-word quiz, "story" to retell the last answer as 
 ## Instagram and your phone
 
 - **Instagram's website** (instagram.com in Chrome): yes. Captions, comments and bios get the same treatment as
-  everything else.
+  everything else. Your direct messages are never touched.
 - **The Instagram app**: no. Phone apps can't be changed by other software; that's how iPhone and Android keep
   apps safe. On a phone, open instagram.com in a browser that supports extensions instead.
 
@@ -113,7 +114,8 @@ translation, "quiz" for a three-word quiz, "story" to retell the last answer as 
 Your words and progress stay on your computer, in a `.spanish-weave` folder. The Claude Code part reads your local
 chat history only to count which words you've seen, and never sends it anywhere. The Chrome extension sends the
 text of pages it runs on to Google's Gemini with your own key (free keys allow Google to use it for training).
-Email, AI chat sites and local addresses are off by default, and you can turn off any site from the toolbar.
+Email, AI chat sites and local addresses are off by default, Instagram messages are never read, and you can turn
+off any site from the toolbar.
 
 ## If something's off
 

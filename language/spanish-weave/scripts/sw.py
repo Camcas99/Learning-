@@ -20,12 +20,13 @@
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   sw.py check                                        verify the state, extension folder and native host
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
-                                                     the questions instead, for Claude to ask)
+                                                     N questions with answers instead, default 5, for Claude to ask)
   sw.py review WORD right|wrong                      record one quiz answer
   sw.py placement [--items] [--answers NUMS] [--apply]
-                                                     2-minute placement test (Yes/No vocabulary test)
+                                                     2-minute placement test (Yes/No vocabulary test); NUMS like
+                                                     "1, 4, 9-12"
   sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated)
-  sw.py output on|off                                "Your turn" lines that invite you to write some Spanish
+  sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
   sw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
@@ -298,12 +299,16 @@ def status(_args):
             days = len(swlib.exposure_days(w, chat))
             print(f'  {name:6} {w["es"]} = {w["en"]}, "{w["hint"]}"  (seen on {days} day{"s" if days != 1 else ""})'
                   + (f'  {swlib.note(w["es"])}' if swlib.note(w['es']) else ''))
+    uncounted = [w['es'] for w in by.get('shaky', []) + by.get('active', []) if swlib.norm(w['es']) in swlib.UNMEASURABLE]
+    if uncounted:
+        print(f'  {", ".join(uncounted)}: also English spelling{"s" if len(uncounted) > 1 else ""}, so chat can\'t count '
+              f'{"them" if len(uncounted) > 1 else "it"}; the quiz, the extension or `known` can')
     nxt = next((n for n, s in sorted(swlib.STAGES) if swlib.stage_for(state) < s), None)
     if nxt and not state.get('stage_pinned'):
         print(f'  next stage at {nxt} known words')
     due = len(swlib.due_reviews(state, limit=len(state['words'])))
     print(f'  {due} word{"s" if due != 1 else ""} due for review: /spanish-weave:quiz or sw.py quiz' if due else
-          '  nothing due for review today')
+          f'  {nothing_due(state)[0].lower()}{nothing_due(state)[1:]}')
 
 
 def mark(kind):
@@ -379,54 +384,99 @@ def answer_line(word):
     return f'{word["es"]} = {word["en"]}, "{word["hint"]}"' + (f' — {swlib.note(word["es"])}' if swlib.note(word['es']) else '')
 
 
+# Spellings that are other words once an accent or tilde is dropped, beyond the ones in the word list.
+OTHER_WORDS = {'ano', 'el', 'tu', 'mi', 'se', 'te', 'de', 'mas', 'aun', 'papa', 'pena'}
+
+
 def tip(word, given):
-    """For a right Spanish answer: the accents it was missing, or the article it got wrong."""
+    """For a right Spanish answer: the article it got wrong, or the accents it was missing, and whether the spelling
+    without them is a different word (si is "if", sí is "yes"; ano is not año)."""
     article = r'^(el|la|los|las|un|una|unos|unas) '
     mine, theirs = re.match(article, swlib.key(word['es'])), re.match(article, swlib.key(given))
     if mine and theirs and mine.group(1) != theirs.group(1):
         return f"  (it's {word['es']})"
-    if re.sub(article, '', swlib.key(given)) != re.sub(article, '', swlib.key(word['es'])):
-        return f"  (spelled {re.sub(article, '', word['es'])})"
-    return ''
+    typed, spelled = re.sub(article, '', swlib.key(given)), re.sub(article, '', word['es'])
+    if typed == swlib.key(spelled):
+        return ''
+    other = next((w for w in swlib.load_lexicon() if swlib.key(w['es']) == typed), None)
+    if other:
+        return f'  (spelled {spelled}; {typed} is another word: {other["en"]})'
+    return f'  (spelled {spelled}; {typed} is a different word)' if typed in OTHER_WORDS else f'  (spelled {spelled})'
+
+
+def nothing_due(state):
+    """The line for an empty quiz, with when the next words come up."""
+    day = swlib.today()
+    upcoming = sorted(d for d in (swlib.due_date(w) for w in state['words'] if w['status'] != 'queue') if d and d > day)
+    if not upcoming:
+        return 'Nothing to review yet: words come up for review the day after you first meet them.'
+    n = upcoming.count(upcoming[0])
+    return f'Nothing to review today. Next review: {upcoming[0]} ({n} word{"s" if n != 1 else ""}).'
+
+
+def judge(word, way, ask, say, prefix):
+    """Asks one question; returns (verdict, answer), or None to stop. The learner judges answers check() can't."""
+    given = ask(f'{prefix}{question(word, way)}  > ')
+    if given.strip().lower() in ('q', 'quit'):
+        return None
+    verdict = swlib.check(word, given, way)
+    if verdict is None:  # a synonym or a meaning not on the list: the learner decides
+        verdict = ask(f'      {answer_line(word)}. Count yours as right? [y/n] > ').strip().lower().startswith('y')
+    say(f'      {"✓" if verdict else "✗"} {answer_line(word)}' + (tip(word, given) if verdict and way == 'produce' else ''))
+    return verdict, given
 
 
 def run_quiz(plan, ask=input, say=print):
-    """Asks each (word, way) in plan, records every answer as it comes, returns (right, answered)."""
+    """Asks each (word, way) in plan and records every answer as it comes. Missed words are asked once more at the end,
+    after their answers were shown, so the session ends on a successful recall; that second try isn't recorded.
+    Returns (right, answered)."""
     if not plan:
         say('Nothing to review today. New words come in as you read; check back tomorrow.')
         return 0, 0
     say(f'Spanish Weave quiz: {len(plan)} word{"s" if len(plan) != 1 else ""}. Accents optional; q to stop.')
     right = answered = 0
-    for n, (word, way) in enumerate(plan, 1):
-        try:
-            given = ask(f'{n}/{len(plan)}  {question(word, way)}  > ')
-            if given.strip().lower() in ('q', 'quit'):
+    missed = []
+    try:
+        for n, (word, way) in enumerate(plan, 1):
+            result = judge(word, way, ask, say, f'{n}/{len(plan)}  ')
+            if result is None:
                 break
-            verdict = swlib.check(word, given, way)
-            if verdict is None:  # an English answer that isn't a listed meaning: the learner judges
-                verdict = ask(f'      {answer_line(word)}. Count yours as right? [y/n] > ').strip().lower().startswith('y')
-        except EOFError:
-            break
-        with swlib.editing() as state:
-            swlib.review(state, word['es'], verdict)
-        right += verdict
-        answered += 1
-        say(f'      {"✓" if verdict else "✗"} {answer_line(word)}' + (tip(word, given) if verdict and way == 'produce' else ''))
-    say(f'Done: {right} of {answered} right. Missed words come back tomorrow; the others come back later each time.')
+            with swlib.editing() as state:
+                swlib.review(state, word['es'], result[0])
+            right += result[0]
+            answered += 1
+            if not result[0]:
+                missed.append((word, way))
+        else:
+            if missed:
+                say('Once more, the ones you missed (just practice, not recorded):')
+                for word, way in missed:
+                    if judge(word, way, ask, say, '      ') is None:
+                        break
+    except EOFError:
+        pass
+    say(f'Done: {right} of {answered} right. Missed words come back soon; the others come back later each time.')
     return right, answered
+
+
+def plan_size(words):
+    """The number of questions from --plan's words: the first whole number in them ("5", "5 words"), else 5."""
+    number = next((int(n) for n in re.findall(r'\d+', ' '.join(words))), 5)
+    return min(max(number, 1), 50)
 
 
 def quiz(args):
     with swlib.editing() as state:
-        items = swlib.due_reviews(state, limit=args.plan or args.n)
-    plan = [(dict(w), swlib.direction(w)) for w in items]
-    if args.plan is None:
-        run_quiz(plan)
-        return
+        pass  # promotion runs when this saves, so the plan sees today's statuses and new words
+    plan = [(dict(w), swlib.direction(w))
+            for w in swlib.due_reviews(state, limit=args.n if args.plan is None else plan_size(args.plan))]
     if not plan:
-        print('Nothing to review today.')
-    for n, (word, way) in enumerate(plan, 1):
-        print(f'{n}. {way}: {question(word, way)} | answer: {answer_line(word)}')
+        print(nothing_due(state))
+    elif args.plan is None:
+        run_quiz(plan)
+    else:
+        for n, (word, way) in enumerate(plan, 1):
+            print(f'{n}. {way}: {question(word, way)} | answer: {answer_line(word)}')
 
 
 def review_cmd(args):
@@ -434,7 +484,16 @@ def review_cmd(args):
         word = swlib.review(state, args.word, args.result == 'right')
     if word is None:
         sys.exit(f'Not a word you are learning or know: {args.word}')
-    print(f'{word["es"]}: {args.result}; next review {word["due"]}' + ('' if args.result == 'right' else ' (now shaky)'))
+    status = {'active': 'learning', 'shaky': 'shaky', 'known': 'known'}[word['status']]
+    print(f'{word["es"]}: {args.result}; next review {word["due"]} ({status})')
+
+
+def item_numbers(text, last):
+    """Item numbers from text like "1, 4, 9-12": ranges included, anything past the last item ignored."""
+    numbers = []
+    for first, end in re.findall(r'(\d+)(?:\s*[-–]\s*(\d+))?', text):
+        numbers.extend(range(int(first), min(int(end or first), last) + 1))
+    return numbers
 
 
 def placement_cmd(args):
@@ -448,8 +507,9 @@ def placement_cmd(args):
         for n, (word, _) in enumerate(test, 1):
             print(f'{n:2}. {word}')
         return
+    finished = True
     if args.answers is not None:
-        known = [int(n) for n in re.findall(r'\d+', args.answers)]
+        known = item_numbers(args.answers, len(test))
     else:
         print(intro)
         known = []
@@ -457,28 +517,40 @@ def placement_cmd(args):
             try:
                 reply = input(f'{n:2}/{len(test)}  {word}  [y/n] > ').strip().lower()
             except EOFError:
-                break
+                reply = 'q'
             if reply in ('q', 'quit'):
+                finished = False
                 break
             if reply.startswith('y'):
                 known.append(n)
     guess, real, fake = placement.estimate(state, known)
     print(f'You know {real} of {sum(band is not None for _, band in test)} real words and picked {fake} of '
           f'{len(placement.PSEUDOWORDS)} made-up ones.')
+    if fake >= placement.TOO_MANY_FAKES:
+        print('That many made-up words means too many answers were guesses for a fair estimate, so nothing was '
+              'marked. Take it again and pick only words you could translate.')
+        return
     if fake:
         print('Each made-up word you picked lowers the estimate, since it shows some answers were guesses.')
     print(f'Estimate: you know about {guess} of the {len(state["words"])} listed words.')
+    if not finished:
+        print('The test stopped early, so nothing was marked.')
+        return
+    if guess == 0:
+        print('Nothing to mark: you start from the most common words.')
+        return
     apply = args.apply
     if args.answers is None and not args.apply:
         try:
-            apply = input('Mark those words as known? [Y/n] > ').strip().lower() in ('', 'y', 'yes')
+            apply = input('Mark those words as known? [y/N] > ').strip().lower() in ('y', 'yes')
         except EOFError:
             apply = False
     if apply:
         with swlib.editing() as state:
             changed = swlib.seed_known(state, guess)
         print(f'Marked {changed} words known (the top {guess} of the list; words you are learning keep their '
-              f'status). Stage {swlib.stage_for(state)}.')
+              f'status). Stage {swlib.stage_for(state)}. They come up in the quiz for a quick check over the next four '
+              'weeks, and any you miss go back to learning.')
 
 
 def anki_cmd(args):
@@ -494,10 +566,21 @@ def anki_cmd(args):
 
 
 def output_cmd(args):
+    if args.value is None:
+        on = bool((swlib.load_state().get('prefs') or {}).get('output_practice'))
+        print(f'Output practice is {"on" if on else "off"} (output {"off" if on else "on"} to turn it {"off" if on else "on"}).')
+        return
     with swlib.editing() as state:
         state.setdefault('prefs', {})['output_practice'] = args.value == 'on'
     print('Output practice on: about every fifth reply ends with a "Your turn" line inviting you to write a little '
           'Spanish.' if args.value == 'on' else 'Output practice off.')
+
+
+def positive(text):
+    """argparse type: a whole number, 1 or more."""
+    if not text.isdigit() or int(text) < 1:
+        raise argparse.ArgumentTypeError(f'expected a whole number, 1 or more: {text}')
+    return int(text)
 
 
 def main(argv=None):
@@ -536,8 +619,8 @@ def main(argv=None):
     p.set_defaults(run=export_cmd)
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     p = sub.add_parser('quiz')
-    p.add_argument('-n', type=int, default=10, help='most words to ask')
-    p.add_argument('--plan', type=int, nargs='?', const=5, metavar='N', help='print N questions with answers instead')
+    p.add_argument('-n', type=positive, default=10, help='most words to ask')
+    p.add_argument('--plan', nargs='*', metavar='N', help='print N questions with answers instead (default 5)')
     p.set_defaults(run=quiz)
     p = sub.add_parser('review')
     p.add_argument('word')
@@ -545,7 +628,7 @@ def main(argv=None):
     p.set_defaults(run=review_cmd)
     p = sub.add_parser('placement')
     p.add_argument('--items', action='store_true', help='print the numbered test instead of asking')
-    p.add_argument('--answers', metavar='NUMS', help='the item numbers you know, e.g. "1, 4, 9"')
+    p.add_argument('--answers', metavar='NUMS', help='the item numbers you know, e.g. "1, 4, 9-12"')
     p.add_argument('--apply', action='store_true', help='mark the estimated words known without asking')
     p.set_defaults(run=placement_cmd)
     p = sub.add_parser('anki')
@@ -553,7 +636,7 @@ def main(argv=None):
     p.add_argument('--out', metavar='FILE')
     p.set_defaults(run=anki_cmd)
     p = sub.add_parser('output')
-    p.add_argument('value', choices=['on', 'off'])
+    p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
     args = parser.parse_args(argv)
     args.run(args)

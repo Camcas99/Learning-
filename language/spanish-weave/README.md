@@ -63,18 +63,20 @@ All of it shares one word list on your machine, so words you see on the web coun
 
 ### In Chrome
 
-- **Swapped words** have a dotted underline and fade in. Hover for a moment and the meaning appears (the pause is
-  deliberate: a beat to recall it first); click to flip a word back to English.
-- **Noun gender:** masculine nouns get a teal underline and feminine nouns a rose one, and the gloss says "masc." or
-  "fem." (el agua and el alma are feminine despite "el"). Turn it off with "Color noun gender" in the popup.
+- **Swapped words** have a dotted underline and fade in the first time they appear. Hover for a moment and the
+  meaning appears (the pause is deliberate: a beat to recall it first); click to flip a word back to English.
+- **Noun gender:** masculine nouns get a teal underline and feminine nouns a rose one, fainter once you know the
+  word, and the gloss says "masc." or "fem." (el agua and el alma are feminine despite "el"). Turn it off with
+  "Color noun gender" in the popup.
 - **Notes:** false friends show their note after the gloss: `long · "LAHR-goh" · not 'large' (that's grande)`.
 - **Hear it:** Alt+click (Option+click on a Mac) or Alt+Enter says the word aloud, preferring a Latin American
   voice, without flipping it. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome may
   keep a page silent until you've clicked on it once.
 - **Instagram:** instagram.com works out of the box, like X: captions, comments and profile bios. The markup is
   modeled on instagram.com's structure, which changes often, so if Instagram stops getting Spanish, the selectors
-  in `extension/src/page.js` (the `SITES` table) are the place to look. The Instagram app itself can't be changed;
-  on a phone, use instagram.com in a browser that supports extensions.
+  in `extension/src/page.js` (the `SITES` table) are the place to look. Direct messages are never read, like
+  webmail. The Instagram app itself can't be changed; on a phone, use instagram.com in a browser that supports
+  extensions.
 
 ## Commands (Claude Code)
 
@@ -89,7 +91,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/spanish-weave:quiz [N]` | Spaced-repetition quiz on the words that are due |
 | `/spanish-weave:placement` | 2-minute placement test that sets your starting words |
 | `/spanish-weave:anki [--all]` | Your words as an Anki import file |
-| `/spanish-weave:output on\|off` | "Your turn" lines that invite you to write a little Spanish |
+| `/spanish-weave:output [on\|off]` | "Your turn" lines that invite you to write a little Spanish (no argument: is it on?) |
 
 The same commands work from a terminal as `python3 ~/.spanish-weave/app/scripts/sw.py <command>`.
 
@@ -120,39 +122,55 @@ respells each syllable. Try it: `python3 scripts/hints.py "la computadora"`.
 
 `/spanish-weave:quiz` (or `sw.py quiz` in a terminal) asks about the words that are due, one at a time.
 
-- New and missed words ask for the meaning ("What does "pero" mean?"). After two right answers in a row it asks for
-  the Spanish ("How do you say "but" in Spanish?"): producing a word is harder than recognizing it, and builds a
-  stronger memory.
+- A new word is first quizzed the day after it arrives, once you've had a chance to read it.
+- Words ask for the meaning first ("What does "pero" mean?"). After two right answers in a row it asks for the
+  Spanish ("How do you say "but" in Spanish?"): producing a word is harder than recognizing it, and builds a
+  stronger memory. A miss goes back to asking for the meaning.
 - Each right answer moves the word up a box, and each box waits longer before the next review: 1, 3, 7, 14, 30, 60,
-  then 120 days. A wrong answer sends it back to the first box (tomorrow) and makes it shaky, so it also shows up
-  more in chat.
+  then 120 days.
+- A wrong answer on a learning word sends it back to the first box (tomorrow) and starts its three clean days over.
+  A known word you can't say in Spanish drops two boxes; one you don't even recognize turns shaky, so it shows up
+  more in chat until it's known again.
+- At the end, the quiz asks each missed word once more, after you've seen its answer. That second try is practice
+  and isn't recorded, but it means every session ends on a successful recall.
 - A right answer counts as an exposure day, so quizzing moves a learning word toward known faster.
-- Known words come back too, starting a week after they graduate, so they stay known. Every other "Recall:" cue
-  in chat picks a known word that is due.
+- Known words come back too: a week after they graduate, two weeks after you mark them known, and words set by
+  setup or the placement test get a first check spread over four weeks. Every other "Recall:" cue in chat picks a
+  known word that is due.
 - Missing accents, ñ typed as n, capitals and a wrong el/la don't count against you; the answer line shows the
-  right spelling and article.
+  right spelling and article, and says when the accent makes it a different word (si is "if", sí is "yes"). When
+  you answer with another Spanish word for the same meaning (recordar for acordarse), you decide if it counts.
+- Answering the same word again on the same day replaces the earlier answer, so a wrong call can be corrected.
 
 ## Placement test
 
 `/spanish-weave:placement` (or `sw.py placement`) shows 44 items: 32 real words, 8 from each of four frequency bands
 (ranks 1-100, 101-250, 251-500, 501 and up), mixed with 12 made-up Spanish-looking words. You pick the ones you know.
 Picking a made-up word shows some answers are guesses, so each band's score is corrected for guessing: (real words
-picked - made-up words picked) / (1 - made-up words picked), as rates. The estimate marks that many of the most
-common words known, like setup's `--known-top`. Setup offers it as "Not sure: take a 2-minute placement test".
+picked - made-up words picked) / (1 - made-up words picked), as rates, with one extra made-up "yes" and "no" assumed
+so a lucky run can't read as no guessing at all. Bands count in order: once a band is mostly unknown, rarer bands add
+nothing, so a few look-alikes such as el repositorio can't mark the most common words known. Picking 3 or more
+made-up words means too much guessing, and nothing is marked. The estimate marks that many of the most common words
+known, like setup's `--known-top`, and those words come up in the quiz for a first check over the next four weeks;
+any you miss go back to learning. Setup offers it as "Not sure: take a 2-minute placement test".
 
 ## False friends
 
 Words that look like English but mean something else carry a note: `el éxito = success — not 'exit' (that's la
 salida)`. Notes show in chat glosses, `/spanish-weave:status`, the quiz, the Chrome tooltip and the Anki export.
-They live in [`data/notes.csv`](data/notes.csv): 23 of them, including 11 classic false friends added to the list for
-this reason (embarazada, la librería, realizar, asistir, actualmente, recordar, sensible, el pariente, la fábrica,
-el colegio, la lectura).
+They live in [`data/notes.csv`](data/notes.csv): 48 of them. Most are false friends, including 11 classic ones added
+to the list for this reason (embarazada, la librería, realizar, asistir, actualmente, recordar, sensible, el
+pariente, la fábrica, el colegio, la lectura). The rest mark words that are easy to use in the wrong sense: es is
+what something is, while a state or place takes está; "not X but Y" is sino, not pero; question words like dónde
+only ask questions.
 
 ## Anki
 
 `/spanish-weave:anki` writes `~/spanish-weave-anki.txt` (or `sw.py anki --out FILE`; `--all` for the whole list
-instead of the words you've met). In Anki, File > Import reads the deck (Spanish Weave), note type (Basic and
-reversed card) and tags from the file, so Anki quizzes both directions on its own spaced-repetition schedule (FSRS).
+instead of the words you've met). In Anki 2.1.55 or later, File > Import reads the deck (Spanish Weave, created if
+it doesn't exist), note type (Basic and reversed card) and tags from the file, so Anki quizzes both directions on
+its own spaced-repetition schedule (FSRS). If Anki's menus are in another language, pick the "Basic (and reversed
+card)" note type in the import window.
 
 ## Output practice
 
@@ -168,8 +186,9 @@ correction before answering your message.
 | Frequency-ordered vocabulary | The word list starts with the words you meet most | Nation 2013 |
 | Retrieval practice | The quiz and the "Recall:" cue | Roediger & Karpicke 2006 |
 | Spaced repetition | Quiz boxes with growing gaps; known words come back | Leitner 1972; Cepeda et al. 2006 |
+| Successive relearning | Missed quiz words are asked once more at the end | Rawson & Dunlosky 2011 |
 | Productive recall | The quiz asks for the Spanish once you recognize a word | Slamecka & Graf 1978 |
-| Vocabulary-size placement | Yes/No test with made-up words | Meara & Buxton 1987; Izura et al. 2014 |
+| Vocabulary-size placement | Yes/No test with made-up words, corrected for guessing | Meara & Buxton 1987; Izura et al. 2014 |
 | Contrastive notes | False-friend notes | Cross-linguistic influence (Odlin 1989) |
 | Input enhancement | Gender colors and the fade-in make form noticeable | Sharwood Smith 1993; Schmidt 1990 |
 | Hearing the word | Alt+click speech next to the respelled hint | Paivio 1986 (dual coding) |
@@ -197,9 +216,11 @@ coding words at the end), each with a gloss and a sound hint.
 - **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or on a web page.
 - **Learning (active)**: up to 20 at a time; at most 5 new words a day, and none while 5 or more are shaky.
 - **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
-- **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English, or `/spanish-weave:learn`. A **peek**
-  (hovering until the meaning shows) holds back a learning word; a known word peeked on 2 days within a week turns
-  shaky. **Shaky -> known** after 7 days with no flip or peek.
+- **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English, `/spanish-weave:learn`, or a
+  known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
+  word; a known word peeked on 2 days within a week turns shaky. **Shaky -> known** after 7 days with no flip, peek
+  or quiz miss, once you've seen the word again since the last one (solo, mayor and sensible, which chat can't
+  count, need only the week).
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
   `/spanish-weave:stage N` pins it; `/spanish-weave:stage auto` unpins.
 
@@ -211,11 +232,19 @@ coding words at the end), each with a gloss and a sound hint.
 | 4 | about 40%, never over 55% | at most 4 | plus two in five |
 
 Once you know 150 words, the brief and exports stop listing them: they name the band ("about the 400 most common
-Spanish words") plus the exceptions, so a thousand known words still fit in about 3 KB.
+Spanish words") plus the exceptions, so a thousand known words still fit in about 3.5 KB.
+
+**Words in the right sense.** The brief and the pasted blocks carry short guards for the words that are easiest to
+swap in the wrong sense, each added once its word is in use: es and soy only for what something is ("it's ready"
+stays English, since es listo means "is clever"), esto and eso never before a noun, question words only in
+questions, sino for "not X but Y", también and entonces never for "too" or "so" before an adjective, para
+never for a duration, and a listed noun brings its own article (never "the el"). The extension's prompt has the same
+guards.
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
-one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo` and `mayor`
-are never counted from chat, since English uses them with other meanings; and a few words skip their English
+one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor` and
+`sensible` are never counted from chat, since English uses them with other meanings (the quiz, the extension or
+`known` can still move them); and a few words skip their English
 uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`.
 
 **Chats that can't be scanned** (claude.ai, ChatGPT) don't count toward exposure. If you mostly read Spanish there,

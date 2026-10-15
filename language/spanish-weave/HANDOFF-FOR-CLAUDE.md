@@ -49,21 +49,27 @@ pasted block's rules in your own replies.
   adverbs first (y, pero, entonces, con, sin...), then everyday phrases, nouns, adjectives and verbs, then coding
   words. Each has an English gloss and a sound hint with the stressed syllable in capitals.
 - **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 at once, 5 new a day) -> known (seen on 3
-  days with no slips), with "shaky" as the penalty box for words they flip back to English, look up or miss in a
-  quiz. Stage 1-4 follows the count of known words (40, 150, 400) and sets how much Spanish goes in a reply
-  (about 6%, 12%, 25%, 40%).
-- **The hook** (`scripts/weave.py`) builds the brief you'll see each turn: the stage, the words to use, Spanish
-  usage traps (para vs por, muy vs mucho, si vs sí), a "Recall: X?" cue every third reply, and a measurement of how
-  much Spanish your last reply really had. Please honor it: Spanish only in chat prose, never in code, files,
+  days with no slips), with "shaky" as the penalty box for words they flip back to English, keep looking up, or no
+  longer recognize in a quiz (a missed learning word just starts its three days over). A shaky word is known again
+  after a week with no slips and at least one new sighting. Stage 1-4 follows the count of known words (40, 150,
+  400) and sets how much Spanish goes in a reply (about 6%, 12%, 25%, 40%).
+- **The hook** (`scripts/weave.py`) builds the brief you'll see each turn: the stage, the words to use, short
+  guards for the words that are easiest to swap in the wrong sense (es only for what something is, so "it's ready"
+  stays English; esto and eso never before a noun; question words only in questions; sino for "not X but Y"; para,
+  muy, si/sí), a "Recall: X?" cue every third reply, and a measurement of how much Spanish your last reply really
+  had. Please honor it: Spanish only in chat prose, never in code, files,
   commands, commit messages or anything they'll share; zero Spanish on health, legal, money, safety, emergency and
   driving topics.
 - **Learning-science features we added** (see the README's "The learning science behind it" table):
   - `/spanish-weave:quiz`: spaced retrieval practice. Leitner-style boxes (1, 3, 7, 14, 30, 60, 120 days), meaning
-    questions first, then producing the Spanish after two right answers. You run it: ask one question at a time,
-    judge leniently (accents and el/la don't count against them), and record each answer with
-    `sw.py review "<word>" right|wrong`.
+    questions first, then producing the Spanish after two right answers in a row. You run it: ask one question at a
+    time, judge leniently (accents and el/la don't count against them, and another Spanish word with the same
+    meaning does count; the false friend in a note doesn't), and record each answer with
+    `sw.py review "<word>" right|wrong`. Recording a word again the same day replaces the earlier answer, so you can
+    fix a wrong call. At the end, ask each missed word once more without recording it, so they finish on a success.
   - `/spanish-weave:placement`: a Yes/No vocabulary test with made-up words to catch guessing. Never reveal which
-    items are made up.
+    items are made up. If they pick 3 or more made-up words, nothing is marked: offer a retake, kindly. Words it
+    marks known get a first quiz check over the next four weeks.
   - False-friend notes (`data/notes.csv`): `el éxito = success — not 'exit'`. Keep a word's note in your footer
     gloss.
   - `/spanish-weave:output on`: opt-in "Your turn" lines every fifth reply. When they answer one, give a single
@@ -73,7 +79,8 @@ pasted block's rules in your own replies.
   their list, paints them with a dotted underline (masculine and feminine nouns get slightly different colors),
   shows the meaning after a short dwell (the pause is deliberate: a moment to guess first), flips a word back on
   click, and says it aloud on Alt+click. It runs on X and instagram.com out of the box (site adapters live in the
-  `SITES` table in `extension/src/page.js`), and its popup has "Say words aloud" and "Color noun gender" settings. It talks to the plugin through a local native messaging host, so web
+  `SITES` table in `extension/src/page.js`), never in Instagram direct messages, and its popup has "Say words
+  aloud" and "Color noun gender" settings. It talks to the plugin through a local native messaging host, so web
   sightings count toward progress too.
 
 ## Being a good tutor with it
@@ -92,8 +99,8 @@ This is the part I care about most.
 
 ## Working on the code
 
-- Tests: `python3 -m unittest discover -s tests` (48 tests) and `cd extension && bun install && bun test`. Keep
-  them green, and add tests with anything you change.
+- Tests: `python3 -m unittest discover -s tests` (54 tests) and `cd extension && bun install && bun test` (90).
+  Keep them green, and add tests with anything you change.
 - After changing the word list or the rules: `python3 scripts/hints.py --check` (every hint must match the
   pronunciation rules; `--fill` writes hints for new rows) and `python3 scripts/make_blocks.py` (regenerates the
   42 paste-in levels; a ChatGPT field must stay under 1,500 characters, and some are within a few characters).

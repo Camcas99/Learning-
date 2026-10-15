@@ -126,15 +126,28 @@ export function toNode(flat, m, o) {
 const GENDER = new Map([['m', ['masc.', 'masculine']], ['f', ['fem.', 'feminine']]]);
 
 // Gloss, then noun gender (so the color cue is never the only one), sound hint, usage note.
-export function tipFor(swap) {
+export function tipFor(swap, gender = true) {
   const parts = [swap.g];
-  if (GENDER.has(swap.gn)) parts.push(GENDER.get(swap.gn)[0]);
+  if (gender && GENDER.has(swap.gn)) parts.push(GENDER.get(swap.gn)[0]);
   if (swap.h) parts.push(`"${swap.h}"`);
   if (swap.n) parts.push(swap.n);
   return parts.join(' · ');
 }
 
-function wrap(place, swap) {
+const shown = new WeakMap(); // span -> its swap, so a display setting can change in place
+const label = (swap, gender) => {
+  const g = gender && GENDER.get(swap.gn);
+  return `${swap.es}: ${swap.g}${g ? `, ${g[1]}` : ''}. Show English`;
+};
+// The gender cue on a placed span: attribute, gloss and label (a flipped span keeps its English label).
+function setGender(span, swap, gender) {
+  if (gender && GENDER.has(swap.gn)) span.dataset.swGender = swap.gn;
+  else delete span.dataset.swGender;
+  span.setAttribute('data-tip', tipFor(swap, gender));
+  if (!span.classList.contains('sw-en')) span.setAttribute('aria-label', label(swap, gender));
+}
+
+function wrap(place, swap, gender) {
   const { node, offset, length } = place;
   const doc = node.ownerDocument;
   const mid = node.splitText(offset);
@@ -143,14 +156,14 @@ function wrap(place, swap) {
   span.className = SWAP_CLASS;
   span.setAttribute('data-en', mid.data);
   span.setAttribute('data-es', swap.es);
-  span.setAttribute('data-tip', tipFor(swap));
+  span.setAttribute('data-tip', tipFor(swap, gender));
   span.setAttribute('data-sw-split', '1');
   if (swap.status) span.dataset.swStatus = swap.status;
-  const gender = GENDER.get(swap.gn);
-  if (gender) span.dataset.swGender = swap.gn; // content.css tints the underline
+  if (gender && GENDER.has(swap.gn)) span.dataset.swGender = swap.gn; // content.css tints the underline
   span.tabIndex = 0;
   span.setAttribute('role', 'button');
-  span.setAttribute('aria-label', `${swap.es}: ${swap.g}${gender ? `, ${gender[1]}` : ''}. Show English`);
+  span.setAttribute('aria-label', label(swap, gender));
+  shown.set(span, swap);
   span.textContent = swap.es;
   mid.parentNode.replaceChild(span, mid);
   owned.set(span, swap.word || '');
@@ -178,8 +191,17 @@ export function applySwaps(root, swaps, { gender = true } = {}) {
   }
   // Later positions first, so earlier offsets in the same text node stay valid.
   placed.sort((a, b) => b.place.seg - a.place.seg || b.place.offset - a.place.offset);
-  for (const { place, swap } of placed) wrap(place, gender ? swap : { ...swap, gn: '' });
+  for (const { place, swap } of placed) wrap(place, swap, gender);
   return placed.length;
+}
+
+// The popup's Color noun gender, applied to swaps already on the page. In place, so words flipped to English stay
+// flipped and nothing is re-read.
+export function showGender(root, gender) {
+  for (const span of root.querySelectorAll(`span.${SWAP_CLASS}`)) {
+    const swap = shown.get(span);
+    if (swap) setGender(span, swap, gender);
+  }
 }
 
 // Removes every swap under root and merges the split text nodes back, restoring the original node.

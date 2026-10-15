@@ -32,6 +32,21 @@ GRAMMAR = set("yo tú él ella nosotros nosotras ellos ellas usted ustedes una u
               "podría debe nuestro nuestra nuestros nuestras estos estas aquel aquella les nos se lo le que por tu voy "
               "todos donde cual".split())
 EXTRA = re.compile(r'\s*(?:\**recall:|.*\s=\s.*")', re.I)  # recall cue and footer gloss lines
+# Words that are easy to swap in the wrong sense, and the guard for each; a guard is in the brief once any of its
+# words is in use. These are the most frequent mis-weavings: "it's ready" is not es listo (that means "is clever").
+GUARDS = [
+    (('es', 'no es', 'soy'), 'es and soy only for what something is, never a state or place ("it\'s ready" stays English)'),
+    (('esto', 'eso'), 'esto and eso only on their own, never before a noun'),
+    (('qué', 'cómo', 'dónde', 'quién', 'cuál', 'cuánto', 'por qué'), 'question words only in questions'),
+    (('pero',), '"not X but Y" is sino'),
+    (('también', 'entonces'), 'también and entonces never for "too" or "so" before an adjective'),
+    (('porque',), 'porque never for "because of"'),
+    (('para',), 'para never after ask, wait, look or pay, or for a duration'),
+    (('antes de', 'después de', 'durante'), 'antes de, después de and durante never before a clause'),
+    (('más',), 'más means more, never and'),
+    (('muy', 'mucho'), 'muy before an adjective or adverb, "very much" is mucho'),
+    (('si', 'sí'), 'si is if, sí is yes'),
+]
 
 
 def exposure():
@@ -62,6 +77,15 @@ def tier(word, seen):
     return 'some' if days >= SOME[0] and replies >= SOME[1] else 'rare'
 
 
+def guards(state):
+    """The usage guards for the words in use, as a parenthetical (empty when none apply)."""
+    in_use = {swlib.key(w['es']) for w in swlib.introduced(state)}
+    texts = [text for words, text in GUARDS if in_use.intersection(words)]
+    if any(re.match(swlib.ARTICLE, es) for es in in_use):
+        texts.append('a listed noun brings its own article, never "the el"')
+    return f' ({"; ".join(texts)})' if texts else ''
+
+
 def brief(state, seen, recall=None, output=False):
     stage = swlib.stage_for(state)
     target, cap, per_sentence = STAGES[min(stage, 4)]
@@ -81,18 +105,16 @@ def brief(state, seen, recall=None, output=False):
                if stage < 3 else
                f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully Spanish '
                f'({"2" if stage == 3 else "4"} in a ten-sentence reply): short, simple and guessable from the English '
-               'around it, like "La prueba pasa ahora." or "Es la mejor opción." Steps stay English, so put '
-               'the Spanish sentences in the explanation, summary and advice around them. The other sentences stay English '
-               'with Spanish words swapped in. At this stage use any common Spanish word the user would follow, not only '
-               'the lists. ')
+               'around it, like "La prueba pasa ahora." or "Es la mejor opción." Steps stay English; put the Spanish '
+               'sentences in the explanation around them. The other sentences stay English with Spanish words swapped in. '
+               'At this stage use any common Latin American Spanish the user would follow, not only the lists (ustedes, '
+               'never vosotros). ')
     text = (f'Spanish Weave (Stage {stage}): the user is a native English speaker learning Latin American Spanish passively. Write your chat '
             f'reply in English and swap in Spanish words from the lists below: about {target}% of the words in a reply (about '
             f'{round(target * 1.5)} in a 150-word reply{", so most sentences carry one or two" if stage <= 2 else ""}), '
             f'never over {cap}%, at most {per_sentence} in one sentence. Under target is the usual miss, so count as you write. '
-            f'{grammar}Use a word only where it means exactly what the English word would mean there; where one doesn\'t '
-            'fit, use another from the lists instead (para never after ask, wait or thank, or for a duration; antes de, '
-            'después de and durante only before a noun; más means more, never and; muy only before an adjective, '
-            f'"very much" is mucho; si is if, sí is yes). If a reply runs long on Spanish, cut {"known" if banded else "seen-a-lot"} words first. Plain English for code, '
+            f'{grammar}Use a word only where it means exactly what the English would; otherwise use another from the '
+            f'lists{guards(state)}. If a reply runs long on Spanish, cut {"known" if banded else "seen-a-lot"} words first. Plain English for code, '
             'commands, paths, numbers, names, IDs, option letters and steps the user will follow, and no Spanish right before '
             'a path; zero Spanish, and no recall cue, for health, medication, legal, money, safety, emergency, driving or '
             'urgent topics. Spanish goes only in your chat reply: never in files, code, configs, commit or PR text, messages '

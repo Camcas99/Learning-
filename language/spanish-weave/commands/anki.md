@@ -7,5 +7,6 @@ allowed-tools: Bash(python3:*)
 
 Tell the user in two plain-English lines where the file is and how to import it: in Anki, File > Import, then pick
 the file; the deck (Spanish Weave), note type (Basic and reversed card) and tags come from the file, so Anki quizzes
-both directions on its own spaced-repetition schedule. Mention that `--all` exports the whole word list instead of
-only the words they have met. No Spanish.
+both directions on its own spaced-repetition schedule. If their Anki shows menus in another language, they pick
+the "Basic (and reversed card)" note type in the import window themselves. Mention that `--all` exports the whole
+word list instead of only the words they have met. No Spanish.

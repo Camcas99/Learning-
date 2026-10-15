@@ -6,6 +6,7 @@ import { requestSwaps } from './engine.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess, swapSettings } from './settings.js';
 import { resolveLevel, exactEs, isZeroSpanish, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
+import { swapRevision } from './revision.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall } from './quota.js';
 
@@ -15,7 +16,6 @@ const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
 const SYNC_MINUTES = 30; // word statuses change at most a few times a day
 const FLUSH_DELAY_MS = 10000;
-const SWAP_FORMAT = 2; // bump when cached swaps gain fields (2: noun gender gn, usage note n), so old ones are refetched
 const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
 
 const serial = () => {
@@ -45,7 +45,8 @@ async function context() {
   const hasKey = !!(data.apiKey || data.hostKey);
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
-  const revision = hashKey(JSON.stringify([SWAP_FORMAT, data.epoch || '', swapSettings(settings), level, state?.version || '', paused, hasKey, origins]));
+  const revision = swapRevision({ extension: chrome.runtime.getManifest?.()?.version || '', epoch: data.epoch || '',
+    settings: swapSettings(settings), level, words: state?.version || '', paused, hasKey, origins });
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
 }
 

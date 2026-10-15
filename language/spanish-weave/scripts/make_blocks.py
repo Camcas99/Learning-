@@ -15,7 +15,9 @@ import swlib  # noqa: E402
 
 PER_LEVEL = 25  # Spanish entries run longer than French ones, so 25 keep the ChatGPT field under 1,500
 KNOWN_NAMED = 40      # known words named one by one; above this a level block names the rank band
-CLAUDE_AI_MAX = 6000  # claude.ai doesn't document a limit for personal preferences; stay well inside a few pages
+# claude.ai doesn't document a limit for personal preferences; stay well inside a few pages. The longest export is
+# `sw.py export` with about 150 known words, all named, at about 6,700 characters.
+CLAUDE_AI_MAX = 7000
 OUT = swlib.PLUGIN_ROOT / 'blocks'
 
 

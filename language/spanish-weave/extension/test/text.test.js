@@ -182,16 +182,23 @@ describe('content.css', () => {
     expect(keyframes).toMatch(/opacity/);
     expect(keyframes).toMatch(/blur/);
     expect(keyframes).not.toMatch(/content\s*:/);
-    const duration = Number(/\.sw-word\s*\{[^}]*animation:\s*sw-reveal\s+(\d+)ms/.exec(css)?.[1]);
+    // Only a first appearance (.sw-new) animates; a plain .sw-word never does, so repaints stay still.
+    expect(/\.sw-word\s*\{[^}]*animation/.test(css)).toBe(false);
+    const duration = Number(/\.sw-word\.sw-new\s*\{[^}]*animation:\s*sw-reveal\s+(\d+)ms/.exec(css)?.[1]);
     expect(duration).toBeGreaterThanOrEqual(400);
     expect(duration).toBeLessThanOrEqual(600);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.sw-word\s*\{\s*animation:\s*none;?\s*\}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.sw-word\.sw-new\s*\{\s*animation:\s*none;?\s*\}/);
   });
   test('masculine and feminine nouns get different underline colors', () => {
     const color = (g) => new RegExp(`\\.sw-word\\[data-sw-gender="${g}"\\]\\s*\\{\\s*text-decoration-color:\\s*([^;]+);`).exec(css)?.[1];
     expect(color('m')).toBeTruthy();
     expect(color('f')).toBeTruthy();
     expect(color('m')).not.toBe(color('f'));
+    const known = (g) => new RegExp(`\\.sw-word\\[data-sw-status="known"\\]\\[data-sw-gender="${g}"\\]\\s*\\{\\s*text-decoration-color:\\s*([^;]+);`).exec(css)?.[1];
+    for (const g of ['m', 'f']) {
+      expect(known(g)).toBeTruthy();
+      expect(known(g)).not.toBe(color(g)); // known nouns fade, so learning ones stand out
+    }
   });
 });
 

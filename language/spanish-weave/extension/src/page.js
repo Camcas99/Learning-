@@ -7,11 +7,12 @@ export const INSTAGRAM = 'h1[dir="auto"],span[dir="auto"]';
 export const PROSE = 'p,li,blockquote,h1,h2,h3,h4,article,main';
 // Site adapters, first hostname match wins; every other site reads PROSE. sel holds a post's own text, so the
 // "contains other prose" rule is skipped. outer: only the outermost match counts, for markup that nests sel.
-// skip: site-chrome containers, if not the usual ones. Adding a site is one entry here (and one in the manifest's
-// content_scripts if it should work without the site-access step).
+// skip: site-chrome containers, if not the usual ones. off: paths never read, like private messages. Adding a site
+// is one entry here (and one in the manifest's content_scripts if it should work without the site-access step).
 export const SITES = [
   { host: /^(www\.)?(x\.com|twitter\.com)$/, sel: TWEET },
-  { host: /^(www\.)?instagram\.com$/, sel: INSTAGRAM, outer: true, skip: 'nav,footer' }, // profile bios sit in <header>
+  // Profile bios sit in <header>. Direct messages are private, like webmail, so they never leave the page.
+  { host: /^(www\.)?instagram\.com$/, sel: INSTAGRAM, outer: true, skip: 'nav,footer', off: /^\/direct(?:\/|$)/ },
 ];
 const CHROME = 'nav,header,footer';
 const BLOCKED = 'a,button,input,textarea,select,form,code,pre,kbd,samp,script,style,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="button"],[hidden],[aria-hidden="true"],[translate="no"],.notranslate';
@@ -29,7 +30,9 @@ export function readable(el, url) {
   const site = siteFor(url);
   if (!el.isConnected || el.closest(BLOCKED) || el.closest(site?.skip || CHROME)) return false;
   if (el.querySelector('input,textarea,select,form,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[hidden],[aria-hidden="true"],script,style')) return false;
-  if (/\/(?:login|signin|sign-in|checkout|payment|billing|settings|accounts?)(?:\/|$)/i.test(new URL(url).pathname)) return false;
+  const path = new URL(url).pathname; // the live URL, so moving into a private area of a single-page app counts
+  if (site?.off?.test(path)) return false;
+  if (/\/(?:login|signin|sign-in|checkout|payment|billing|settings|accounts?)(?:\/|$)/i.test(path)) return false;
   const lang = el.closest('[lang]')?.getAttribute('lang') || '';
   if (lang && !/^(en(?:-|$)|und$|qme$|zxx$|art$)/i.test(lang)) return false;
   // Elsewhere the innermost prose block is the passage; a site's match is the post itself, unless it sits in another.
