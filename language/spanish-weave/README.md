@@ -7,6 +7,9 @@ them.
 > The build passes ahora, pero the cache is stale, entonces I cleared it.
 > (ahora = now, "ah-OH-rah"; pero = but, "PEH-roh"; entonces = so, "en-TOHN-ses")
 
+New here? Read [START-HERE.md](START-HERE.md). Claude sessions picking this up: read
+[HANDOFF-FOR-CLAUDE.md](HANDOFF-FOR-CLAUDE.md).
+
 Adapted from [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver (MIT license): same
 design and code, with a new Spanish word list, sound hints, grammar rules and prompts.
 

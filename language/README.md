@@ -8,6 +8,11 @@ Learning Latin American Spanish.
   (AI chat replies and web pages), at your level, and tracks which words you know. Adapted from
   [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver.
 
+## Sharing it
+
+- [`spanish-weave/START-HERE.md`](spanish-weave/START-HERE.md): a welcome letter and how-to for a friend.
+- [`spanish-weave/HANDOFF-FOR-CLAUDE.md`](spanish-weave/HANDOFF-FOR-CLAUDE.md): a handoff letter for their Claude.
+
 ## Start here
 
 The quickest start needs no install: open
