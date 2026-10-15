@@ -9,6 +9,7 @@
   h1 { font-size: 14px; margin: 0; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
   .row > span:first-child { flex: 0 0 auto; }
+  .row.check > span:first-child { flex: 1 1 auto; }
   section { border-top: 1px solid #ddd; margin-top: 10px; padding-top: 6px; }
   input[type=password], select { width: 150px; padding: 3px 5px; font: inherit; }
   input[type=checkbox] { width: 18px; height: 18px; }
@@ -53,6 +54,11 @@
     <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
+  </section>
+  <section>
+    <label class="row check"><span>Say words aloud when the meaning shows</span><input type="checkbox" id="speak"></label>
+    <label class="row check"><span>Color noun gender</span><input type="checkbox" id="genderColors"></label>
+    <p class="small">Alt+click or Alt+Enter on a Spanish word to hear it (Option on a Mac). Chrome may keep a page silent until you've clicked on it.</p>
   </section>
   <p class="small">Sites where it's on send readable page text to Gemini with your key. Forms, links, code and editable text are skipped.</p>
   <div id="notice" class="small error" role="alert"></div>

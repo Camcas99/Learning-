@@ -6,6 +6,13 @@ export const HOST = 'com.spanishweave.host';
 export const STATE_KEY = 'wordState';
 export const PENDING_KEY = 'pendingEvents';
 export const SENT_KEY = 'seenSent';
+const NOTE_MAX = 120; // a usage note shares the gloss tooltip, so it stays a line or two
+
+// Optional usage note ("not 'exit' (that's la salida)"): one line, capped; '' when absent or unusable.
+function cleanNote(note) {
+  const s = typeof note === 'string' ? note.replace(/\s+/g, ' ').trim() : '';
+  return s.length > NOTE_MAX ? s.slice(0, NOTE_MAX - 1).trimEnd() + '…' : s;
+}
 
 // Drops unusable rows, keeps the rest. Throws when nothing usable is left, so a bad reply never replaces a good list.
 export function parseState(data) {
@@ -17,7 +24,8 @@ export function parseState(data) {
     const en = w.en.trim();
     if (!es || !en || seen.has(es)) continue;
     seen.add(es);
-    words.push({ es, en, hint: typeof w.hint === 'string' ? w.hint.trim() : '', status: typeof w.status === 'string' ? w.status : 'active' });
+    const note = cleanNote(w.note);
+    words.push({ es, en, hint: typeof w.hint === 'string' ? w.hint.trim() : '', status: typeof w.status === 'string' ? w.status : 'active', ...(note ? { note } : {}) });
   }
   if (!words.length) throw new Error('host sent no usable words');
   const stage = Math.floor(Number(data?.stage));

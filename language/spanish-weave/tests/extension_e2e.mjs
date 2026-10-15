@@ -5,15 +5,17 @@
 // To leave your own setup alone, give both commands a scratch SPANISH_WEAVE_HOME (and setup a scratch HOME, so
 // it writes no host manifest into your real browsers).
 // Loads a temporary copy of ~/.spanish-weave/extension (or $SPANISH_WEAVE_HOME/extension) with website access
-// granted up front, since Chrome's grant dialog can't be clicked from a script. Serves a fake x.com timeline and a
-// fake article on another site (synthetic text), and prints what happened: native host sync, real Gemini swaps
-// (a few requests), delayed hover tip, click flip, health text untouched, links and forms intact, seen/flip events
-// flushed back to the word state, forged page events ignored, no swaps on webmail, and the article reverting
-// when its site is turned off.
+// granted up front, since Chrome's grant dialog can't be clicked from a script. Serves a fake x.com timeline, a
+// fake Instagram feed and profile, and a fake article on another site (synthetic text), and prints what happened:
+// native host sync, real Gemini swaps (a few requests), delayed hover tip, Alt+click speaking instead of flipping,
+// click flip, health text untouched, links and forms intact, Instagram captions, comments and bio swapped once
+// (usernames, hashtags, buttons and nested caption spans untouched), seen/flip events flushed back to the word
+// state, forged page events ignored, no swaps on webmail, and the article reverting when its site is turned off.
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { FEED as IG_FEED, PROFILE as IG_PROFILE } from '../extension/test/instagram-fixture.js';
 
 const INSTALLED = join(process.env.SPANISH_WEAVE_HOME || join(homedir(), '.spanish-weave'), 'extension');
 const EXT = mkdtempSync(join(tmpdir(), 'sw-ext-'));
@@ -31,6 +33,8 @@ const tweets = [
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</title></head><body><main>${tweets
   .map(([id, lang, t]) => `<article data-testid="tweet" id="${id}"><div lang="${lang}" dir="auto" data-testid="tweetText"><span>${t}</span></div></article>`)
   .join('\n')}</main></body></html>`;
+// Instagram pages from the extension's test fixture: modeled on instagram.com's markup, which changes often.
+const instagram = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
 
 const ARTICLE_URL = 'https://reading.example/2026/10/notes';
 const article = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes</title></head><body>
@@ -80,6 +84,8 @@ try {
     await first.hover();
     await page.waitForTimeout(1000); // the gloss shows after a short dwell, which also counts as a peek
     out.hoverAfter = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    await first.click({ modifiers: ['Alt'] }); // speaks the word (if Chromium has a voice) instead of flipping it; no event
+    out.afterAltClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('sw-en') }));
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('sw-en') }));
     await first.click();
@@ -106,6 +112,26 @@ try {
     });
     out.forged.pending = await sw.evaluate(() => chrome.storage.local.get('pendingEvents').then((o) => o.pendingEvents || []));
   }
+  // Instagram is in the manifest too: a feed post (the caption nests another span[dir=auto]) and a profile bio,
+  // which Instagram puts in <header>.
+  await ctx.route('https://www.instagram.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html',
+    body: new URL(route.request().url()).pathname === '/' ? instagram('Instagram', IG_FEED) : instagram('Sofia (@sofia.travels) • Instagram', IG_PROFILE) }));
+  const ig = await ctx.newPage();
+  ig.on('console', (m) => { if (/spanish-weave/.test(m.text())) (out.console ||= []).push(m.text()); });
+  const igState = () => ig.evaluate(() => ({
+    swaps: [...document.querySelectorAll('.sw-word')].map((e) => ({ in: e.closest('[id]')?.id || e.parentElement.tagName, es: e.dataset.es, en: e.dataset.en, gender: e.dataset.swGender || '', tip: e.dataset.tip })),
+    links: [...document.querySelectorAll('a')].map((a) => a.textContent),
+    nestedSwaps: document.querySelectorAll('.sw-word .sw-word').length,
+    wronglySwapped: ['author', 'follow', 'more', 'comment-short', 'comment-health'].filter((id) => document.querySelector(`#${id} .sw-word`)),
+  }));
+  await ig.goto('https://www.instagram.com/');
+  await ig.waitForSelector('.sw-word', { timeout: 60000 }).catch(() => {});
+  await ig.waitForTimeout(3000);
+  out.instagramFeed = await igState();
+  await ig.goto('https://www.instagram.com/sofia.travels/');
+  await ig.waitForSelector('.sw-word', { timeout: 60000 }).catch(() => {});
+  await ig.waitForTimeout(3000);
+  out.instagramProfile = await igState();
   // A plain article on another site: the dynamically registered content script runs there too.
   for (let i = 0; i < 40; i++) {
     const ids = await sw.evaluate(() => chrome.scripting.getRegisteredContentScripts().then((s) => s.map((x) => x.id)));

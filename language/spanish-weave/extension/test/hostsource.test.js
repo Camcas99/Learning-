@@ -37,6 +37,22 @@ describe('parseState', () => {
   it('throws when nothing usable is left', () => {
     expect(() => parseState({ words: [] })).toThrow();
   });
+  it('keeps a usage note when there is one: trimmed, one line, capped; anything else is dropped', () => {
+    const s = parseState({ words: [
+      { es: 'el éxito', en: 'success', hint: 'el EK-see-toh', status: 'active', note: "  not 'exit'\n(that's la salida) " },
+      { es: 'largo', en: 'long', note: 'x'.repeat(300) },
+      { es: 'y', en: 'and', note: '   ' },
+      { es: 'muy', en: 'very', note: 42 },
+    ] });
+    expect(s.words[0]).toEqual({ es: 'el éxito', en: 'success', hint: 'el EK-see-toh', status: 'active', note: "not 'exit' (that's la salida)" });
+    expect(s.words[1].note).toHaveLength(120);
+    expect(s.words[1].note.endsWith('…')).toBe(true);
+    expect('note' in s.words[2]).toBe(false);
+    expect('note' in s.words[3]).toBe(false);
+    // The note reaches the tooltip as the swap's n; it never goes into the model prompt.
+    expect(validateSwaps(1, [{ o: 'success', es: 'éxito' }], s.words)[0].n).toBe("not 'exit' (that's la salida)");
+    expect(buildSystemPrompt(1, s.words)).not.toContain('salida');
+  });
 });
 
 describe('refresh', () => {

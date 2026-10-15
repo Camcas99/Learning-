@@ -12,7 +12,8 @@ export function resolveLevel(settings = {}, stage = 0) {
   return { stage: synced, chosen, effective: Math.min(chosen, MAX_BUILT_LEVEL) };
 }
 
-const W = (es, en, hint) => ({ es, en, hint });
+// note: a usage note shown after the gloss, mostly false friends.
+const W = (es, en, hint, note = '') => ({ es, en, hint, note });
 
 // Level 1: the bundled starter list, used when the Claude Code plugin's word state isn't available.
 export const L1_WORDS = [
@@ -138,7 +139,7 @@ export const L2_EXTRA = [
   W('falso', 'false / fake', 'FAHL-soh'),
   W('fácil', 'easy', 'FAH-seel'),
   W('fuerte', 'strong', 'FWEHR-teh'),
-  W('largo', 'long', 'LAHR-goh'),
+  W('largo', 'long', 'LAHR-goh', "not 'large' (that's grande)"),
   W('caliente', 'hot', 'kah-LYEN-teh'),
   W('frío', 'cold', 'FREE-oh'),
   W('feliz', 'happy', 'feh-LEES'),
@@ -197,6 +198,19 @@ export function normalizeEs(s) {
 const ARTICLE_RE = /^(?:los|las|el|la|unos|unas|una|un)\s+/i;
 export const exactEs = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
+// Feminine nouns that take "el"/"un" for sound (stressed a- or ha-): el agua, un alma.
+const EL_FEMININE = new Set(['agua', 'alma', 'hambre', 'águila', 'aula', 'área', 'arma', 'hacha', 'ave'].map(normalizeEs));
+// Fixed phrases that start with un/una but are not nouns, so they get no gender cue.
+const NOT_NOUNS = new Set(['un poco', 'una vez más'].map(normalizeEs));
+
+// 'm' or 'f' from a list entry's article ("el problema", "las ganas"); '' without one.
+export function genderOf(es) {
+  const s = normalizeEs(es);
+  const m = /^(el|los|un|unos|la|las|una|unas) (\S+)/.exec(s);
+  if (!m || NOT_NOUNS.has(s)) return '';
+  return /^(la|las|una|unas)$/.test(m[1]) || EL_FEMININE.has(m[2]) ? 'f' : 'm';
+}
+
 const indexCache = new Map();
 function indexFor(level, sharedWords) {
   const lvl = level <= 1 ? 1 : 2;
@@ -204,12 +218,14 @@ function indexFor(level, sharedWords) {
   const idx = new Map();
   for (const w of sharedWords || wordsForLevel(lvl)) {
     const full = exactEs(w.es);
-    idx.set(full, { canon: w.es, en: w.en, hint: w.hint, word: w.es, status: w.status });
+    // Gender and note belong to the noun, so the bare form keeps them.
+    const about = { word: w.es, status: w.status, gn: genderOf(w.es), note: w.note || '' };
+    idx.set(full, { ...about, canon: w.es, en: w.en, hint: w.hint });
     const stripped = full.replace(ARTICLE_RE, '');
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("canción" for "song") and keep the accents from the list.
       const canon = w.es.replace(ARTICLE_RE, '');
-      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /, ''), word: w.es, status: w.status });
+      idx.set(stripped, { ...about, canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /, '') });
     }
   }
   const folded = new Map();
@@ -231,6 +247,7 @@ export function matchCase(es, original) {
 
 // Fail closed: keep only swaps whose Spanish is on the list (the plugin's word state, else the level's bundled list).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
+// Adds gn (noun gender) and n (usage note) when the word has them.
 export function validateSwaps(level, swaps, sharedWords) {
   if (!Array.isArray(swaps)) return [];
   const idx = indexFor(level, sharedWords);
@@ -248,6 +265,8 @@ export function validateSwaps(level, swaps, sharedWords) {
       h: hit.hint,
       ctx: typeof s.ctx === 'string' ? s.ctx.trim() : '',
       ...(sharedWords ? { word: hit.word, ...(hit.status ? { status: hit.status } : {}) } : {}),
+      ...(hit.gn ? { gn: hit.gn } : {}),
+      ...(hit.note ? { n: hit.note } : {}),
     });
   }
   return out;

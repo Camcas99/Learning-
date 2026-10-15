@@ -123,8 +123,15 @@ export function toNode(flat, m, o) {
   return null;
 }
 
+const GENDER = new Map([['m', ['masc.', 'masculine']], ['f', ['fem.', 'feminine']]]);
+
+// Gloss, then noun gender (so the color cue is never the only one), sound hint, usage note.
 export function tipFor(swap) {
-  return swap.h ? `${swap.g} · "${swap.h}"` : swap.g;
+  const parts = [swap.g];
+  if (GENDER.has(swap.gn)) parts.push(GENDER.get(swap.gn)[0]);
+  if (swap.h) parts.push(`"${swap.h}"`);
+  if (swap.n) parts.push(swap.n);
+  return parts.join(' · ');
 }
 
 function wrap(place, swap) {
@@ -139,9 +146,11 @@ function wrap(place, swap) {
   span.setAttribute('data-tip', tipFor(swap));
   span.setAttribute('data-sw-split', '1');
   if (swap.status) span.dataset.swStatus = swap.status;
+  const gender = GENDER.get(swap.gn);
+  if (gender) span.dataset.swGender = swap.gn; // content.css tints the underline
   span.tabIndex = 0;
   span.setAttribute('role', 'button');
-  span.setAttribute('aria-label', `${swap.es}: ${swap.g}. Show English`);
+  span.setAttribute('aria-label', `${swap.es}: ${swap.g}${gender ? `, ${gender[1]}` : ''}. Show English`);
   span.textContent = swap.es;
   mid.parentNode.replaceChild(span, mid);
   owned.set(span, swap.word || '');
@@ -152,8 +161,9 @@ function wrap(place, swap) {
   return span;
 }
 
-// Applies validated swaps [{o, f, g, h, ctx}] to root. Returns the number placed.
-export function applySwaps(root, swaps) {
+// Applies validated swaps [{o, es, g, h, ctx, gn?, n?}] to root. Returns the number placed.
+// gender: false leaves out the noun-gender cue (attribute, color and label), per the popup setting.
+export function applySwaps(root, swaps, { gender = true } = {}) {
   const flat = flatten(root);
   const placed = [];
   const used = [];
@@ -168,7 +178,7 @@ export function applySwaps(root, swaps) {
   }
   // Later positions first, so earlier offsets in the same text node stay valid.
   placed.sort((a, b) => b.place.seg - a.place.seg || b.place.offset - a.place.offset);
-  for (const { place, swap } of placed) wrap(place, swap);
+  for (const { place, swap } of placed) wrap(place, gender ? swap : { ...swap, gn: '' });
   return placed.length;
 }
 

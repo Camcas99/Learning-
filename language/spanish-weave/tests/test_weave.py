@@ -512,6 +512,9 @@ class Notes(Home):
         self.assertIn("el éxito = meaning, \"hint\" — not 'exit' (that's la salida)", weave.brief(state, {}))
         self.assertEqual(swlib.public_state(state)['words'][0]['note'], "not 'exit' (that's la salida)")
         self.assertNotIn('note', swlib.public_state(state)['words'][1])
+        before = swlib.version(state)
+        with mock.patch.object(swlib, 'note', lambda es: 'edited' if es == 'y' else ''):
+            self.assertNotEqual(swlib.version(state), before)  # an edited note reaches the extension's cache
         lines = export.anki(state).splitlines()
         self.assertEqual(lines[:5], export.ANKI_HEADERS)
         self.assertEqual(lines[5], "el éxito\tmeaning — \"hint\" — not 'exit' (that's la salida)\tspanish-weave spanish-weave::active")

@@ -1,4 +1,5 @@
 import { test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { hashKey } from '../src/hash.js';
 import { DAILY_MODEL_CALLS } from '../src/quota.js';
@@ -19,6 +20,8 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
   let delayed = null;
   let release;
   const hostEvents = [];
+  const registered = []; // content scripts the worker registers for granted sites
+  const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
   let hostState = { version: 'test.1', stage: 1, paused: false, prefs: { extension_sites: 'ask' }, words: [
     { es: 'y', en: 'and', hint: 'ee', status: 'active' },
     { es: 'muy', en: 'very', hint: 'mwee', status: 'shaky' },
@@ -52,7 +55,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     chrome: {
       storage: { local: storageArea(local) },
       runtime: {
-        id: 'sw-test', getURL: (path) => `chrome-extension://sw-test/${path}`,
+        id: 'sw-test', getURL: (path) => `chrome-extension://sw-test/${path}`, getManifest: () => manifest,
         onMessage: listener(messageListeners), onInstalled: listener([]), onStartup: listener([]),
         sendMessage: (msg) => dispatch(msg, page()).then((r) => { pageReplies.push(JSON.stringify(r ?? null)); return r; }),
         sendNativeMessage: async (_host, msg) => {
@@ -64,7 +67,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
       tabs: { query: async () => [{ id: 1, url: win.location.href }], sendMessage: async (_id, msg) => { toPages.push(JSON.stringify(msg)); for (const fn of contentListeners) fn(msg); } },
       alarms: { create: async () => {}, onAlarm: listener([]) },
       permissions: { getAll: async () => ({ origins }), onAdded: listener(originEvents.added), onRemoved: listener(originEvents.removed) },
-      scripting: { getRegisteredContentScripts: async () => [], updateContentScripts: async () => {}, unregisterContentScripts: async () => {}, registerContentScripts: async () => {} },
+      scripting: { getRegisteredContentScripts: async () => [], updateContentScripts: async () => {}, unregisterContentScripts: async () => {}, registerContentScripts: async (s) => { registered.push(...s); } },
     },
     fetch: async (url, init) => {
       expect(url.startsWith('https://generativelanguage.googleapis.com/')).toBe(true);
@@ -98,6 +101,11 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(config.settings.newSitesEnabled).toBe(false);
     await call({ type: 'save', settings: { newSitesEnabled: true } });
     expect((await dispatch({ type: 'config' }, page())).settings.newSitesEnabled).toBe(true);
+    // Granted sites get a registered content script that skips the manifest's own sites (X, Instagram): never twice.
+    const statics = manifest.content_scripts.flatMap((c) => c.matches);
+    expect(statics).toContain('https://www.instagram.com/*');
+    expect(registered.at(-1).matches).toEqual(['https://*/*', 'http://*/*']);
+    expect(registered.at(-1).excludeMatches).toEqual(statics);
 
     // Route worker broadcasts to the content module without pretending they came from a page.
     const beforeContent = messageListeners.length;
@@ -110,6 +118,16 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(el.querySelector('.sw-word')?.textContent).toBe('y');
     expect(win.document.querySelectorAll('.sw-word').length).toBe(1);
     expect(local.pendingEvents || []).toHaveLength(0); // prefetch is not exposure
+    // Speech and gender colors only change how swaps look or sound: same revision, no model call, still painted.
+    const shown = await dispatch({ type: 'config' }, page());
+    const callsShown = modelCalls;
+    await call({ type: 'save', settings: { speak: true, genderColors: false } });
+    const display = await dispatch({ type: 'config' }, page());
+    expect(display.revision).toBe(shown.revision);
+    expect(display.settings).toMatchObject({ speak: true, genderColors: false });
+    await call({ type: 'save', settings: { speak: false, genderColors: true } }); await wait(20);
+    expect(modelCalls).toBe(callsShown);
+    expect(el.querySelector('.sw-word')?.textContent).toBe('y');
     const visibility = io.findLast((o) => !o.options.rootMargin);
     const span = el.querySelector('.sw-word');
     visibility.cb([{ target: span, isIntersecting: true, intersectionRatio: 1 }]);

@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { flatten, locate, applySwaps, revert, toggle, tipFor } from '../src/text.js';
 
@@ -129,6 +130,68 @@ describe('applySwaps', () => {
   test('tip without hint is just the gloss', () => {
     expect(tipFor({ g: 'and', h: '' })).toBe('and');
     expect(tipFor({ g: 'and', h: 'ee' })).toBe('and · "ee"');
+  });
+  test('tip: gloss, gender, sound hint, then a usage note', () => {
+    expect(tipFor({ g: 'long', h: 'LAHR-goh', n: "not 'large' (that's grande)" })).toBe(`long · "LAHR-goh" · not 'large' (that's grande)`);
+    expect(tipFor({ g: 'success', h: 'EK-see-toh', gn: 'm', n: "not 'exit' (that's la salida)" }))
+      .toBe(`success · masc. · "EK-see-toh" · not 'exit' (that's la salida)`);
+    expect(tipFor({ g: 'house', h: '', gn: 'f' })).toBe('house · fem.');
+    expect(tipFor({ g: 'and', h: 'ee', gn: 'x' })).toBe('and · "ee"');
+  });
+});
+
+describe('noun gender', () => {
+  const nouns = [
+    S({ o: 'house', es: 'casa', g: 'house', h: 'KAH-sah', gn: 'f', ctx: 'the house and' }),
+    S({ o: 'day', es: 'día', g: 'day', h: 'DEE-ah', gn: 'm', ctx: 'the day' }),
+    S({ o: 'and', es: 'y', ctx: 'house and the' }),
+  ];
+  test('a noun swap carries data-sw-gender and says masc. or fem. in the tooltip and its label', () => {
+    const el = tweet('<span>the house and the day</span>');
+    expect(applySwaps(el, nouns)).toBe(3);
+    const [casa, y, dia] = el.querySelectorAll('.sw-word');
+    expect(casa.getAttribute('data-sw-gender')).toBe('f');
+    expect(casa.getAttribute('data-tip')).toBe('house · fem. · "KAH-sah"');
+    expect(casa.getAttribute('aria-label')).toBe('casa: house, feminine. Show English');
+    expect(dia.getAttribute('data-sw-gender')).toBe('m');
+    expect(dia.getAttribute('data-tip')).toBe('day · masc. · "DEE-ah"');
+    expect(y.hasAttribute('data-sw-gender')).toBe(false);
+    expect(y.getAttribute('data-tip')).toBe('and · "ee"');
+  });
+  test('with gender colors off: no attribute, so no color, and no label', () => {
+    const el = tweet('<span>the house and the day</span>');
+    applySwaps(el, nouns, { gender: false });
+    for (const span of el.querySelectorAll('.sw-word')) {
+      expect(span.hasAttribute('data-sw-gender')).toBe(false);
+      expect(span.getAttribute('data-tip')).not.toMatch(/masc|fem/);
+      expect(span.getAttribute('aria-label')).not.toMatch(/masculine|feminine/);
+    }
+    expect(nouns[0].gn).toBe('f'); // the cached swap itself is untouched
+  });
+  test('only m and f become an attribute', () => {
+    const el = tweet('<span>the house and more</span>');
+    applySwaps(el, [S({ o: 'house', es: 'casa', gn: 'constructor', ctx: 'the house' })]);
+    expect(el.querySelector('.sw-word').hasAttribute('data-sw-gender')).toBe(false);
+  });
+});
+
+describe('content.css', () => {
+  const css = readFileSync(new URL('../src/content.css', import.meta.url), 'utf8');
+  test('swaps reveal with a short blur-and-fade keyframe that never changes text, off for reduced motion', () => {
+    const keyframes = /@keyframes sw-reveal\s*\{([\s\S]*?\})\s*\}/.exec(css)?.[1] || '';
+    expect(keyframes).toMatch(/opacity/);
+    expect(keyframes).toMatch(/blur/);
+    expect(keyframes).not.toMatch(/content\s*:/);
+    const duration = Number(/\.sw-word\s*\{[^}]*animation:\s*sw-reveal\s+(\d+)ms/.exec(css)?.[1]);
+    expect(duration).toBeGreaterThanOrEqual(400);
+    expect(duration).toBeLessThanOrEqual(600);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.sw-word\s*\{\s*animation:\s*none;?\s*\}/);
+  });
+  test('masculine and feminine nouns get different underline colors', () => {
+    const color = (g) => new RegExp(`\\.sw-word\\[data-sw-gender="${g}"\\]\\s*\\{\\s*text-decoration-color:\\s*([^;]+);`).exec(css)?.[1];
+    expect(color('m')).toBeTruthy();
+    expect(color('f')).toBeTruthy();
+    expect(color('m')).not.toBe(color('f'));
   });
 });
 

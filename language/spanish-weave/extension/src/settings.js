@@ -6,12 +6,21 @@ export const DEFAULT_SETTINGS = {
   levelOverride: 0, // 0 = follow the Claude Code stage (Level 1 without the plugin)
   newSitesEnabled: null, // null = what setup chose (prefs.extension_sites), else on
   siteOverrides: {}, // hostname -> true/false, set from the popup
+  speak: false, // say a word aloud when its gloss shows (Alt+click speaks either way)
+  genderColors: true, // tint noun underlines by gender, with masc./fem. in the gloss
 };
+
+// These change how swaps look or sound, never which are chosen, so they stay out of the revision: toggling one
+// repaints from memory instead of asking the model again.
+const DISPLAY = ['speak', 'genderColors'];
+export const swapSettings = (s) => Object.fromEntries(Object.entries(s).filter(([k]) => !DISPLAY.includes(k)));
 
 export function cleanSettings(s = {}) {
   const d = { ...DEFAULT_SETTINGS, siteOverrides: {} };
   if (typeof s.enabled === 'boolean') d.enabled = s.enabled;
   if (typeof s.newSitesEnabled === 'boolean') d.newSitesEnabled = s.newSitesEnabled;
+  if (typeof s.speak === 'boolean') d.speak = s.speak;
+  if (typeof s.genderColors === 'boolean') d.genderColors = s.genderColors;
   if (['gemini-3.8-flash', 'gemini-3.5-flash-lite'].includes(s.model)) d.model = s.model;
   if (Number.isInteger(s.levelOverride) && s.levelOverride >= 0 && s.levelOverride <= 4) d.levelOverride = s.levelOverride;
   for (const [host, enabled] of Object.entries(s.siteOverrides || {})) {

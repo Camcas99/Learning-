@@ -10,7 +10,7 @@
   "background": { "service_worker": "src/background.js", "type": "module" },
   "content_scripts": [
     {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "matches": ["https://x.com/*", "https://twitter.com/*", "https://www.instagram.com/*", "https://instagram.com/*"],
       "js": ["src/content-loader.js"],
       "css": ["src/content.css"],
       "run_at": "document_idle"

@@ -41,6 +41,8 @@ async function refresh() {
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
   $('model').value = s.model;
+  $('speak').checked = s.speak;
+  $('genderColors').checked = s.genderColors;
   $('apiKey').value = '';
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
   $('wordInfo').textContent = status.words
@@ -98,6 +100,8 @@ $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enab
 $('newSitesEnabled').addEventListener('change', (e) => run(() => save({ settings: { newSitesEnabled: e.target.value === 'true' } })));
 $('levelOverride').addEventListener('change', (e) => run(() => save({ settings: { levelOverride: Number(e.target.value) || 0 } })));
 $('model').addEventListener('change', (e) => run(() => save({ settings: { model: e.target.value } })));
+$('speak').addEventListener('change', (e) => run(() => save({ settings: { speak: e.target.checked } })));
+$('genderColors').addEventListener('change', (e) => run(() => save({ settings: { genderColors: e.target.checked } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;

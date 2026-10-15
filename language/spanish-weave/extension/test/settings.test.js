@@ -1,5 +1,17 @@
 import { expect, it } from 'bun:test';
-import { cleanSettings, siteEnabled } from '../src/settings.js';
+import { cleanSettings, siteEnabled, swapSettings } from '../src/settings.js';
+
+it('speech starts off and gender colors on; only booleans are kept', () => {
+  expect(cleanSettings()).toMatchObject({ speak: false, genderColors: true });
+  expect(cleanSettings({ speak: true, genderColors: false })).toMatchObject({ speak: true, genderColors: false });
+  expect(cleanSettings({ speak: 'yes', genderColors: 0 })).toMatchObject({ speak: false, genderColors: true });
+});
+
+it('display settings stay out of what picks swaps, so toggling them asks the model nothing', () => {
+  expect(swapSettings(cleanSettings({ speak: true, genderColors: false }))).toEqual(swapSettings(cleanSettings()));
+  expect(swapSettings(cleanSettings({ levelOverride: 2 }))).not.toEqual(swapSettings(cleanSettings()));
+  expect(Object.keys(swapSettings(cleanSettings()))).toEqual(['enabled', 'model', 'levelOverride', 'newSitesEnabled', 'siteOverrides']);
+});
 
 it('webmail, AI chat and local addresses start off; a popup choice wins', () => {
   const every = { ...cleanSettings(), newSitesEnabled: true };

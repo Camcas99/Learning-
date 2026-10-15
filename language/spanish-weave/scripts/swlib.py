@@ -388,7 +388,8 @@ def known_band(state):
 
 
 def version(state):
-    blob = json.dumps([stage_for(state), state.get('paused'), [(w['es'], w['status']) for w in introduced(state)]])
+    # Notes are in it too: the extension caches swaps with their notes, so an edited notes.csv must look like a new list.
+    blob = json.dumps([stage_for(state), state.get('paused'), [(w['es'], w['status'], note(w['es'])) for w in introduced(state)]])
     return hashlib.sha1(blob.encode()).hexdigest()[:10]
 
 

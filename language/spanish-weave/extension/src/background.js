@@ -3,7 +3,7 @@
 // Keys stay here; pages only get a config without them.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
-import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './settings.js';
+import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess, swapSettings } from './settings.js';
 import { resolveLevel, exactEs, isZeroSpanish, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
@@ -15,6 +15,7 @@ const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
 const SYNC_MINUTES = 30; // word statuses change at most a few times a day
 const FLUSH_DELAY_MS = 10000;
+const SWAP_FORMAT = 2; // bump when cached swaps gain fields (2: noun gender gn, usage note n), so old ones are refetched
 const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
 
 const serial = () => {
@@ -32,7 +33,8 @@ const ready = (async () => {
   await store.set({ settings: cleanSettings(settings) });
 })();
 
-// What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped.
+// What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped;
+// display-only settings (speech, gender colors) don't change it, so toggling them costs no model calls.
 async function context() {
   await ready;
   const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
@@ -43,7 +45,7 @@ async function context() {
   const hasKey = !!(data.apiKey || data.hostKey);
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
-  const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
+  const revision = hashKey(JSON.stringify([SWAP_FORMAT, data.epoch || '', swapSettings(settings), level, state?.version || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
 }
 
@@ -168,7 +170,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 });
 
 // Granted origins (all sites, or one at a time from the popup) decide where the content script is injected.
-// X is in the manifest, so it works without a grant.
+// X and Instagram are in the manifest's content_scripts, so they work without a grant; the registered script
+// excludes every manifest match, so no page gets the content script twice.
+const manifestSites = () => chrome.runtime.getManifest().content_scripts.flatMap((c) => c.matches);
 let registrations = Promise.resolve();
 function registerSites() {
   const p = registrations.then(async () => {
@@ -181,7 +185,7 @@ function registerSites() {
       return;
     }
     const script = { id: 'weave-sites', matches, js: ['src/content-loader.js'], css: ['src/content.css'], runAt: 'document_idle',
-      excludeMatches: ['https://x.com/*', 'https://twitter.com/*'] };
+      excludeMatches: manifestSites() };
     if (existing.length) await chrome.scripting.updateContentScripts([script]);
     else await chrome.scripting.registerContentScripts([script]);
   });

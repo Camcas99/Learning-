@@ -1,9 +1,11 @@
-// Content script: watch readable text (tweets on X, prose elsewhere), ask the background for swaps, paint them,
-// handle the delayed gloss, click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
+// Content script: watch readable text (tweets on X, captions, comments and bios on Instagram, prose elsewhere), ask
+// the background for swaps, paint them, handle the delayed gloss, click/Enter flip, Alt+click/Alt+Enter speech and
+// seen/peek/flip events. Every async reply belongs to one config generation.
 import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
-import { selector, readable } from './page.js';
+import { selector, readable, textRoot } from './page.js';
+import { speak } from './speech.js';
 
 let config = null;
 let observer = null;
@@ -30,6 +32,7 @@ const swapFor = (e) => {
   const span = e.isTrusted && e.target?.closest?.(`span.${SWAP_CLASS}`);
   return span && isSwap(span) ? span : null;
 };
+const say = (span) => speak(span.getAttribute('data-es')); // only the visible Spanish word, never the list
 
 function record(span, event) {
   const word = swapWord(span);
@@ -55,6 +58,7 @@ function armTip(e) {
     tipTimer = null;
     if (!span.isConnected || span.classList.contains('sw-en')) return;
     span.classList.add('sw-tip');
+    if (config.settings.speak) say(span);
     if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
   }, TIP_DELAY_MS);
 }
@@ -70,7 +74,7 @@ function paint(el, key) {
   if (!on() || keys.get(el) !== key || !readable(el, location.href)) return;
   const swaps = memo.get(key);
   if (!swaps?.length) return;
-  applySwaps(el, swaps);
+  applySwaps(el, swaps, { gender: config.settings.genderColors });
   for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) if (isSwap(span)) visible.observe(span);
   observer?.takeRecords();
 }
@@ -135,7 +139,7 @@ function mutations(records) {
   for (const r of records) {
     for (const n of r.addedNodes || []) if (n.nodeType === 1) track(n);
     const base = r.target.nodeType === 1 ? r.target : r.target.parentElement;
-    const el = base?.closest(targets());
+    const el = textRoot(base, location.href); // on Instagram, an edit in a nested span belongs to the outer caption
     if (el && tracked.has(el)) changed.add(el);
     else if (el) track(el);
   }
@@ -175,7 +179,13 @@ function stop() {
 }
 function update(next, retry = false) {
   if (!next?.settings || !next.revision) return;
-  if (!retry && next.revision === config?.revision) return;
+  if (!retry && next.revision === config?.revision) {
+    // Display settings keep the revision: take them as they are, and repaint gender cues from memory, no model calls.
+    const repaint = next.settings.genderColors !== config.settings.genderColors;
+    config = next;
+    if (repaint) for (const el of tracked) if (memo.has(keys.get(el))) consider(el);
+    return;
+  }
   stop(); config = next; start();
 }
 function reveal(e) {
@@ -183,6 +193,12 @@ function reveal(e) {
   if (!span || !on()) return;
   if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
   e.preventDefault(); e.stopPropagation();
+  if (e.altKey) {
+    // Alt/Option: hear the word instead of flipping it. Records nothing, and a gloss still waiting won't become a peek.
+    clearTimeout(tipTimer); tipTimer = null;
+    say(span);
+    return;
+  }
   hideTip();
   if (toggle(span)) record(span, 'flip');
   observer?.takeRecords();

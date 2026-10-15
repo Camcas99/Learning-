@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import {
-  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, wordCount, isZeroSpanish, normalizeEs, matchCase,
+  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, wordCount, isZeroSpanish, normalizeEs, matchCase, genderOf,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -67,11 +67,50 @@ describe('validateSwaps', () => {
   test('plugin words replace the bundled list and keep the event spelling and status', () => {
     const words = [{ es: 'la canción', en: 'the song', hint: 'lah kahn-SYOHN', status: 'active' }];
     expect(validateSwaps(1, [{ o: 'song', es: 'cancion' }, { o: 'and', es: 'y' }], words))
-      .toEqual([{ o: 'song', es: 'canción', g: 'song', h: 'kahn-SYOHN', ctx: '', word: 'la canción', status: 'active' }]);
+      .toEqual([{ o: 'song', es: 'canción', g: 'song', h: 'kahn-SYOHN', ctx: '', word: 'la canción', status: 'active', gn: 'f' }]);
+  });
+  test('nouns carry their gender, bare or with the article; other words carry none', () => {
+    const [bare, full, conj] = validateSwaps(2, [{ o: 'problem', es: 'problema' }, { o: 'the house', es: 'la casa' }, { o: 'and', es: 'y' }]);
+    expect([bare.es, bare.gn]).toEqual(['problema', 'm']);
+    expect([full.es, full.gn]).toEqual(['la casa', 'f']);
+    expect('gn' in conj).toBe(false);
+    expect(validateSwaps(2, [{ o: 'day', es: 'dia' }])[0].gn).toBe('m');
+    expect('gn' in validateSwaps(1, [{ o: 'a little', es: 'un poco' }])[0]).toBe(false);
+  });
+  test('usage notes ride along as n, from the bundled list or the synced word', () => {
+    expect(L2_WORDS.find((w) => w.es === 'largo').note).toBe("not 'large' (that's grande)");
+    expect(validateSwaps(2, [{ o: 'long', es: 'largo' }])[0].n).toBe("not 'large' (that's grande)");
+    expect('n' in validateSwaps(2, [{ o: 'big', es: 'grande' }])[0]).toBe(false);
+    const words = [{ es: 'el éxito', en: 'success', hint: 'el EK-see-toh', status: 'active', note: "not 'exit' (that's la salida)" }];
+    expect(validateSwaps(1, [{ o: 'success', es: 'exito' }], words)).toEqual([{ o: 'success', es: 'éxito', g: 'success',
+      h: 'EK-see-toh', ctx: '', word: 'el éxito', status: 'active', gn: 'm', n: "not 'exit' (that's la salida)" }]);
   });
   test('normalizeEs', () => {
     expect(normalizeEs(' También ')).toBe('tambien');
     expect(normalizeEs('Año  Nuevo')).toBe('ano nuevo');
+  });
+});
+
+describe('genderOf', () => {
+  test('the article gives the gender; stressed a- nouns take "el" but stay feminine; no article, no gender', () => {
+    expect(genderOf('el agua')).toBe('f');
+    expect(genderOf('el problema')).toBe('m');
+    expect(genderOf('el día')).toBe('m');
+    expect(genderOf('la mano')).toBe('f');
+    expect(genderOf('los ojos')).toBe('m');
+    expect(genderOf('las ganas')).toBe('f');
+    expect(genderOf('entonces')).toBe('');
+    expect(genderOf('un alma')).toBe('f');
+    expect(genderOf('El Águila')).toBe('f');
+    expect(genderOf('el hambre')).toBe('f');
+    expect(genderOf('una idea')).toBe('f');
+    expect(genderOf('unos días')).toBe('m');
+    expect(genderOf('el fin de semana')).toBe('m');
+    expect(genderOf('elegante')).toBe('');
+  });
+  test('adverbial phrases that open with un/una are not nouns', () => {
+    expect(genderOf('un poco')).toBe('');
+    expect(genderOf('una vez más')).toBe('');
   });
 });
 
