@@ -45,6 +45,20 @@ https://aistudio.google.com/apikey, which you paste into the extension's popup y
 in Chrome: `chrome://extensions` > Developer mode > Load unpacked > the folder Claude names > click the Spanish
 Weave icon > Allow all websites. It works on X, Instagram's website, articles, anything with English text.
 
+**Everywhere, step by step** (about 15 minutes, once):
+1. On your computer, in Claude Code: `/plugin install spanish-weave --marketplace Camcas99/Learning-`, then
+   `/spanish-weave:setup`. Say yes to the Chrome extension.
+2. Get a free Gemini key at https://aistudio.google.com/apikey.
+3. In Chrome: `chrome://extensions` > Developer mode > Load unpacked > the folder setup names. Click the Spanish
+   Weave icon, paste the key, and click Allow all websites.
+4. For claude.ai and ChatGPT, on the web and in their phone apps: run `/spanish-weave:export` and
+   `/spanish-weave:export --chatgpt`, and paste each block where it says. Do it again about once a week; Claude Code
+   reminds you.
+5. For Claude Code on your phone: run `claude remote-control` on your computer, then open that session in the Claude
+   app.
+
+The only places it can't reach are web pages on a phone and the Instagram app (see "On your phone and Instagram" below).
+
 Already know some Spanish? Pick "Not sure: take a 2-minute placement test" during setup, or run
 `/spanish-weave:placement` later. You'll mark the words you know from a list; a few are made up, so only mark ones
 you could actually translate (pick three made-up ones and it asks you to try again). The words it marks known still
@@ -103,12 +117,20 @@ With the pasted block in claude.ai or ChatGPT, you can type a word with a questi
 translation, "quiz" for a three-word quiz, "story" to retell the last answer as a short story at your level, or
 "easier" / "harder". In Claude Code, just ask ("what does pero mean?") or use the commands above.
 
-## Instagram and your phone
+## On your phone and Instagram
 
-- **Instagram's website** (instagram.com in Chrome): yes. Captions, comments and bios get the same treatment as
-  everything else. Your direct messages are never touched.
+- **claude.ai or ChatGPT on your phone: yes.** The pasted block is saved to your account, so it works in the Claude
+  and ChatGPT phone apps too. Paste it once (the website is easiest) and chat as usual.
+- **Claude Code from your phone: yes, through your computer.** Run `claude remote-control` in a terminal on your
+  computer (or use the Claude desktop app), then open that session in the Claude app on your phone. It runs on your
+  computer, so your words and progress are all there. A Claude Code session started in the cloud from your phone
+  begins on a fresh computer every time, so it can't keep your progress.
+- **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
+  Spanish words on a computer.
+- **Instagram's website** (instagram.com in Chrome on a computer): yes. Captions, comments and bios get the same
+  treatment as everything else. Your direct messages are never touched.
 - **The Instagram app**: no. Phone apps can't be changed by other software; that's how iPhone and Android keep
-  apps safe. On a phone, open instagram.com in a browser that supports extensions instead.
+  apps safe.
 
 ## Privacy
 
