@@ -21,7 +21,15 @@ design and code, with a new Spanish word list, sound hints, grammar rules and pr
 Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave folder)
 ```
 
-It first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
+Or install the plugin yourself in Claude Code (2.1.275 or later; on older versions, run
+`/plugin marketplace add Camcas99/Learning-` first, then `/plugin install spanish-weave@learning`), then run
+`/spanish-weave:setup`:
+
+```
+/plugin install spanish-weave --marketplace Camcas99/Learning-
+```
+
+Setup first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
 Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome
 extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on, and
 how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/spanish-weave:setup`)
