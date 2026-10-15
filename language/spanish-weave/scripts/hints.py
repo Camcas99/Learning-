@@ -113,6 +113,8 @@ def consonant(unit, nxt, prev, first):
         return 'h' if nxt in FRONT else 'g'
     if unit == 'r':
         return 'rr' if first or prev in ('n', 'l', 's') else 'r'
+    if unit == 'j' and not nxt:
+        return ''  # a word-final j is barely said: reloj = rreh-LOH
     return {'h': '', 'j': 'h', 'll': 'y', 'ñ': 'ny', 'qu': 'k', 'gu': 'g', 'z': 's', 'rr': 'rr'}.get(unit, unit)
 
 

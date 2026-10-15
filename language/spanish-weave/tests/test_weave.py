@@ -85,6 +85,7 @@ class Hints(unittest.TestCase):
             'gente': 'HEN-teh', 'trabajo': 'trah-BAH-hoh', 'llamar': 'yah-MAHR', 'mañana': 'mah-NYAH-nah',
             'vez': 'bes', 'nuevo': 'NWEH-boh', 'rápido': 'RRAH-pee-doh', 'siempre': 'SYEM-preh',
             'éxito': 'EK-see-toh', 'excelente': 'ek-seh-LEN-teh', 'México': 'MEH-hee-koh', 'bailar': 'bye-LAHR',
+            'reloj': 'rreh-LOH',
             'rápidamente': 'RRAH-pee-dah-MEN-teh', 'el problema': 'el proh-BLEH-mah', 'una idea': 'oo-nah ee-DEH-ah',
         }
         self.assertEqual({word: hints.respell(word) for word in cases}, cases)
