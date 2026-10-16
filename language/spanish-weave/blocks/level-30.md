@@ -4,7 +4,7 @@ Learning: words ranked 726-750 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): agradable
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): agradable = pleasant, "ah-grah-DAH-bleh"; el ejemplo = the example, "el eh-HEM-ploh"; cargar = to load / charge, "kahr-GAHR"; el caso = the case, "el KAH-soh"; grabar = to record, "grah-BAHR"; el hecho = the fact, "el EH-choh"; peligroso = dangerous, "peh-lee-GROH-soh"; la verdad = the truth, "lah behr-DAHD"; borrar = to delete / erase, "boh-RRAHR"; la mentira = the lie, "lah men-TEE-rah"; la prueba = the test / proof, "lah PRWEH-bah"; copiar = to copy, "koh-PYAHR"; el pariente = the relative, "el pah-RYEN-teh"; tranquilo = calm / quiet, "trahn-KEE-loh"; el riesgo = the risk, "el RRYES-goh"; el esfuerzo = the effort, "el es-FWEHR-soh"; pegar = to paste / stick / hit, "peh-GAHR"; el éxito = success, "el EK-see-toh"; ruidoso = noisy, "rrwee-DOH-soh"; compartir = to share, "kohm-pahr-TEER"; el fracaso = the failure, "el frah-KAH-soh"; el progreso = progress, "el proh-GREH-soh"; calcular = to calculate, "kahl-koo-LAHR"; el siguiente paso = the next step, "el see-GYEN-teh PAH-soh"; mayo = May, "MAH-yoh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 750th most frequent | Level 30 of 42 (next: level-31.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): agradable = pleasant, "ah-grah-DAH-bleh"; el ejemplo = the example, "el eh-HEM-ploh"; cargar = to load / charge, "kahr-GAHR"; el caso = the case, "el KAH-soh"; grabar = to record, "grah-BAHR"; el hecho = the fact, "el EH-choh"; peligroso = dangerous, "peh-lee-GROH-soh"; la verdad = the truth, "lah behr-DAHD"; borrar = to delete / erase, "boh-RRAHR"; la mentira = the lie, "lah men-TEE-rah"; la prueba = the test / proof, "lah PRWEH-bah"; copiar = to copy, "koh-PYAHR"; el pariente = the relative, "el pah-RYEN-teh"; tranquilo = calm / quiet, "trahn-KEE-loh"; el riesgo = the risk, "el RRYES-goh"; el esfuerzo = the effort, "el es-FWEHR-soh"; pegar = to paste / stick / hit, "peh-GAHR"; el éxito = success, "el EK-see-toh"; ruidoso = noisy, "rrwee-DOH-soh"; compartir = to share, "kohm-pahr-TEER"; el fracaso = the failure, "el frah-KAH-soh"; el progreso = progress, "el proh-GREH-soh"; calcular = to calculate, "kahl-koo-LAHR"; el siguiente paso = the next step, "el see-GYEN-teh PAH-soh"; mayo = May, "MAH-yoh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 750th most frequent | Level 30 of 42 (next: level-31.md)
 ```

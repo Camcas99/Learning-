@@ -42,12 +42,22 @@ def block(level, levels, lexicon):
     text = (f'# Spanish Weave level {level} of {levels} (Stage {stage})\n\n'
             f'Learning: words ranked {first}-{last} of the [Spanish Weave list](../data/lexicon.csv). Known: {known}. '
             + (f'When these feel easy, paste [level {level + 1}]({nxt}) instead.\n\n' if nxt else 'This is the last level.\n\n')
-            + '## claude.ai\n\nSettings > Profile > "What personal preferences should Claude consider in responses?" '
-              'Paste the whole block, replacing any older Spanish Weave block.\n\n'
+            + '## claude.ai\n\nSettings > "Instructions for Claude" (on a computer, click your initials at the bottom '
+              'left to open Settings; older layouts call the box "What personal preferences should Claude consider in '
+              'responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off '
+              'the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave '
+              'block.\n\n'
             + f'```text\n{claude}\n```\n\n'
-            + '## ChatGPT\n\nSettings > Personalization > Custom instructions. Each box fits the 1,500-character limit.\n\n'
-            + f'"What would you like ChatGPT to know about you?"\n\n```text\n{about}\n```\n\n'
-            + f'"How would you like ChatGPT to respond?"\n\n```text\n{respond}\n```\n')
+            + '## ChatGPT\n\nSettings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on '
+              '"Enable customization" if it is off). Copy each block with its copy button and paste it in place of '
+              'what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses '
+              f'{len(respond):,}, so copy anything you want to keep from that box first. When you move up a level, only '
+              'the "More about you" box changes.\n\n'
+            + 'Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):\n\n'
+            + f'```text\n{respond}\n```\n\n'
+            + 'Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know '
+              'about you?"):\n\n'
+            + f'```text\n{about}\n```\n')
     sizes = (len(claude), len(about), len(respond))
     return text, sizes
 

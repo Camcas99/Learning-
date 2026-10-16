@@ -21,50 +21,66 @@ design and code, with a new Spanish word list, sound hints, grammar rules and pr
 Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave folder)
 ```
 
-Or install the plugin yourself in Claude Code (2.1.275 or later; on older versions, run
-`/plugin marketplace add Camcas99/Learning-` first, then `/plugin install spanish-weave@learning`), then run
-`/spanish-weave:setup`:
+Or install the plugin yourself in Claude Code, one line at a time:
 
 ```
-/plugin install spanish-weave --marketplace Camcas99/Learning-
+/plugin marketplace add Camcas99/Learning-
+/plugin install spanish-weave@learning
+/reload-plugins
+/spanish-weave:setup
 ```
+
+On Claude Code 2.1.292 or later, `/plugin install spanish-weave --marketplace Camcas99/Learning-` does the first
+two lines in one step. The Claude Code and Chrome parts need macOS or Linux for now; on Windows, use the paste-in
+blocks below.
 
 Setup first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
 Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome
 extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on, and
 how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/spanish-weave:setup`)
-asks again and never resets your progress.
+asks again and never resets your progress. Words you're already learning keep their status, so if Spanish Weave
+had already handed you its first 5 learning words (the plugin's prompt hook does this on your first prompt), or
+you rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3
+days of seeing them.
 
 Then you do up to four things (your agent tells you when):
-1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), as a file path or pasted into the extension popup.
-2. Extension: in Chrome, `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, pick the folder it names.
-3. Extension: click the Spanish Weave toolbar icon and **Allow all websites** (Chrome asks once; until then it runs
-   only on X and Instagram). If you chose only sites you turn on, tick the checkbox next to the site's name in the
-   same popup on each site you want.
+1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (Google requires you to be 18 or older), as a file path or pasted into the extension popup.
+2. Extension: in Chrome, `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, and pick the folder it names. It's inside a hidden folder: in the picker press Cmd+Shift+G on a Mac (Ctrl+L on Linux), paste the path, press Return, then click **Select**.
+3. Extension: pin Spanish Weave from the puzzle-piece menu in Chrome's toolbar, click its icon (a gray "S"), and
+   click **Allow all websites** (Chrome asks once; until then it runs only on X and Instagram). If you chose only
+   sites you turn on, tick the checkbox next to the site's name in the same popup on each site you want.
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/spanish-weave:export` (or `/spanish-weave:export --chatgpt`)
-and paste the block it prints:
-- claude.ai: Settings > Profile > "What personal preferences should Claude consider in responses?"
-- ChatGPT: Settings > Personalization > Custom instructions (two boxes, each block fits 1,500 characters).
+and paste what it prints:
+- claude.ai: Settings > "Instructions for Claude" (older layouts call it "What personal preferences should Claude
+  consider in responses?"). Replace any older Spanish Weave block.
+- ChatGPT: Settings > Personalization: one block in the "Custom instructions" box, the other in "More about you"
+  (under About you), each in place of what was there. Each block fits the 1,500-character limit of the Free and Go
+  plans (paid plans allow 5,000).
 
 Re-export about once a week; Claude Code reminds you when the pasted block is more than a week behind.
 
-**claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md), paste its block
-into the same settings box, and chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on
-through level 42.
+**claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
+claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
+block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through level 42.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
-**Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`, then
-rerun `/spanish-weave:setup` if the extension changed (it never resets your progress).
+**Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. Then
+restart Claude Code (the update reaches new sessions only) and rerun `/spanish-weave:setup`, giving the same
+answers as the first time: the extension folder, native host and Codex hook run from copies in `~/.spanish-weave`
+that only setup refreshes, and it never resets your progress. Last, click the reload arrow on Spanish Weave in
+`chrome://extensions`.
 
 ### On a phone
 
 - **claude.ai or ChatGPT:** the pasted block is an account setting, so it works in their phone apps too.
-- **Claude Code:** through Remote Control. Run `claude remote-control` on your computer (or use the Claude desktop
-  app) and open that session in the Claude app. The hook runs on your computer, so progress is kept. A cloud
-  session started from the phone begins on a fresh machine each time, so its word state wouldn't last.
+- **Claude Code:** through Remote Control (Pro, Max, Team or Enterprise login, not an API key; on Team or Enterprise
+  an Owner must enable it). Run `claude remote-control` on your computer and keep it running (or type
+  `/remote-control` in a local Code session in the Claude desktop app), then open the session under Code in the
+  Claude app. The computer has to stay on. The hook runs on your computer, so progress is kept. A cloud session
+  started from the phone begins on a fresh machine each time, so its word state wouldn't last.
 - **Chrome extension:** computers only. Chrome on Android and iPhone doesn't run extensions. Some other Android
   browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one, and without the native host it
   would only use its built-in word lists.
@@ -94,8 +110,9 @@ All of it shares one word list on your machine, so words you see on the web coun
 - **Hear it:** Alt+click (Option+click on a Mac) or Alt+Enter says the word aloud, preferring a Latin American
   voice, without flipping it. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome may
   keep a page silent until you've clicked on it once.
-- **Instagram:** instagram.com works out of the box, like X: captions, comments and profile bios. The markup is
-  modeled on instagram.com's structure, which changes often, so if Instagram stops getting Spanish, the selectors
+- **Instagram:** instagram.com is supported out of the box, like X: captions, comments and profile bios. It hasn't
+  been checked on the live site yet: the markup is modeled on instagram.com's structure, which changes often, so if
+  Instagram gets no Spanish, the selectors
   in `extension/src/page.js` (the `SITES` table) are the place to look. Direct messages are never read, like
   webmail. The Instagram app itself can't be changed, and Chrome on phones doesn't run extensions (see "On a
   phone" above).
@@ -257,7 +274,8 @@ coding words at the end), each with a gloss and a sound hint.
 | 4 | about 40%, never over 55% | at most 4 | plus two in five |
 
 Once you know 150 words, the brief and exports stop listing them: they name the band ("about the 400 most common
-Spanish words") plus the exceptions, so a thousand known words still fit in about 3.5 KB.
+Spanish words") plus the exceptions, so with a thousand known words the brief stays under 4 KB and the claude.ai
+block is about 6 KB (each ChatGPT field still fits its 1,500 characters).
 
 **Words in the right sense.** The brief and the pasted blocks carry short guards for the words that are easiest to
 swap in the wrong sense, each added once its word is in use: es and soy only for what something is ("it's ready"
@@ -266,7 +284,7 @@ questions, sino for "not X but Y", también and entonces never for "too" or "so"
 for the filler "Well,", desde never for "since" meaning because, el tiempo never for "this time" (vez), para never
 for a duration, no Spanish preposition before a clause, and a listed noun brings its own article (never "the el")
 with any Spanish adjective next to it agreeing (la idea nueva). The extension's prompt has the same guards; the
-ChatGPT block, which has a 1,500-character limit, carries the most common ones.
+ChatGPT block, kept under the 1,500-character limit of the Free and Go plans, carries the most common ones.
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
 one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor` and
@@ -291,8 +309,12 @@ The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level
 Everything stays on your machine in `~/.spanish-weave` (override with `SPANISH_WEAVE_HOME`). The hook reads your
 local Claude Code and Codex transcripts to count exposure and never sends them anywhere. By default the extension
 runs on every site you allow, and readable page text from those sites goes to Google's Gemini API with your key
-(free-tier keys allow Google to train on prompts); webmail, AI chat sites and local addresses start off, and
-Instagram direct messages are never read. It talks
+(with a free-tier key, Google may use that text to improve its products, human reviewers may read it, and Google
+asks that no personal or sensitive information be sent; in the EEA, UK and Switzerland the paid-tier data terms
+apply). Gmail, Outlook.com, Yahoo Mail, Proton Mail, claude.ai, ChatGPT, Gemini and local addresses start off;
+other webmail and AI chat sites (iCloud Mail, work Outlook at outlook.cloud.microsoft, Copilot) and banking or
+health sites do not, so turn them off in the popup or run setup with `--sites ask`. Instagram direct messages are
+never read. It talks
 to the plugin through a Chrome native messaging host that only this extension's ID may call. If setup stored
 your Gemini key, it sits in `~/.spanish-weave/gemini_key` (mode 600) and is handed only to the extension's
 background worker, never to the pages it runs on.
@@ -322,7 +344,9 @@ python3 scripts/make_blocks.py                   # regenerate blocks/ after chan
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/sw-eval    # live check via claude -p, isolated from your own config
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/sw-eval   # simulate claude.ai with a block
-node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X and article pages + real Gemini
+npm i playwright && npx playwright install chromium        # once, for the extension end-to-end check below
+python3 scripts/sw.py setup --user-data-dir /tmp/sw-profile [--gemini-key-file KEY]   # registers the host for that profile
+PROFILE=/tmp/sw-profile node tests/extension_e2e.mjs       # Playwright Chromium: fake X, Instagram and article pages + real Gemini
 ```
 
 When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in

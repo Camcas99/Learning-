@@ -4,7 +4,7 @@ Learning: words ranked 826-850 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): la lágri
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): la lágrima = the tear, "lah LAH-gree-mah"; equivocarse = to make a mistake, "eh-kee-boh-KAHR-seh"; el pájaro = the bird, "el PAH-hah-roh"; el caballo = the horse, "el kah-BAH-yoh"; tener razón = to be right, "teh-NEHR rrah-SOHN"; la vaca = the cow, "lah BAH-kah"; habitual = usual, "ah-bee-TWAHL"; tener la culpa = to be at fault, "teh-NEHR lah KOOL-pah"; el conejo = the rabbit, "el koh-NEH-hoh"; el oso = the bear, "el OH-soh"; necesitar = to need, "neh-seh-see-TAHR"; el lobo = the wolf, "el LOH-boh"; diario = daily, "DYAH-ryoh"; el zorro = the fox, "el SOH-rroh"; tener ganas de = to feel like, "teh-NEHR GAH-nahs deh"; la vista = the view / sight, "lah BEES-tah"; tener miedo = to be afraid, "teh-NEHR MYEH-doh"; el pedazo = the piece, "el peh-DAH-soh"; evidente = obvious, "eh-bee-DEN-teh"; la punta = the tip / point, "lah POON-tah"; tener hambre = to be hungry, "teh-NEHR AHM-breh"; la línea = the line, "lah LEE-neh-ah"; el hilo = the thread, "el EE-loh"; tener sed = to be thirsty, "teh-NEHR sed"; el agujero = the hole, "el ah-goo-HEH-roh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 850th most frequent | Level 34 of 42 (next: level-35.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): la lágrima = the tear, "lah LAH-gree-mah"; equivocarse = to make a mistake, "eh-kee-boh-KAHR-seh"; el pájaro = the bird, "el PAH-hah-roh"; el caballo = the horse, "el kah-BAH-yoh"; tener razón = to be right, "teh-NEHR rrah-SOHN"; la vaca = the cow, "lah BAH-kah"; habitual = usual, "ah-bee-TWAHL"; tener la culpa = to be at fault, "teh-NEHR lah KOOL-pah"; el conejo = the rabbit, "el koh-NEH-hoh"; el oso = the bear, "el OH-soh"; necesitar = to need, "neh-seh-see-TAHR"; el lobo = the wolf, "el LOH-boh"; diario = daily, "DYAH-ryoh"; el zorro = the fox, "el SOH-rroh"; tener ganas de = to feel like, "teh-NEHR GAH-nahs deh"; la vista = the view / sight, "lah BEES-tah"; tener miedo = to be afraid, "teh-NEHR MYEH-doh"; el pedazo = the piece, "el peh-DAH-soh"; evidente = obvious, "eh-bee-DEN-teh"; la punta = the tip / point, "lah POON-tah"; tener hambre = to be hungry, "teh-NEHR AHM-breh"; la línea = the line, "lah LEE-neh-ah"; el hilo = the thread, "el EE-loh"; tener sed = to be thirsty, "teh-NEHR sed"; el agujero = the hole, "el ah-goo-HEH-roh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 850th most frequent | Level 34 of 42 (next: level-35.md)
 ```
