@@ -756,13 +756,16 @@ class Codex(Home):
         self.assertFalse(weave.interactive({}, data, exec_check=lambda: True))
         self.assertTrue(weave.interactive({}, data, exec_check=lambda: False))
         self.assertTrue(weave.interactive({'SPANISH_WEAVE_FORCE': '1'}, data, exec_check=lambda: True))
-        code = f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; print(weave.codex_exec(os.getpid()))'
-        exe = sys.executable
-        app = os.path.join(sys.base_prefix, 'Resources', 'Python.app', 'Contents', 'MacOS', 'Python')
-        if sys.platform == 'darwin' and os.path.exists(app):
-            exe = app  # macOS framework builds re-exec through Python.app, which drops the fake argv[0]
-        sh = subprocess.run(['codex', '-c', code, 'exec'], executable=exe, capture_output=True, text=True)
-        self.assertEqual(sh.stdout.strip(), 'True', sh.stderr)
+        # A real process tree: a shell whose argv[0] is codex starts Python, like Codex running the hook. Python can't
+        # be the codex process itself: macOS framework builds re-exec into Python.app, which drops the fake argv[0].
+        code = (f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; '
+                f'print(weave.codex_exec(), weave.codex_exec(os.getpid()))')  # the parent, and a walk up from Python
+        for args, expected in ((['codex', 'exec'], 'True True'), (['codex', 'e'], 'True True'),
+                               (['codex', 'app-server'], 'False False')):
+            (self.home / args[1]).write_text('"$PY" -c "$CODE"\nexit $?\n')  # the exit keeps sh from exec'ing Python
+            sh = subprocess.run(args, executable='/bin/sh', cwd=self.home, capture_output=True, text=True,
+                                env=dict(os.environ, PY=sys.executable, CODE=code))
+            self.assertEqual(sh.stdout.strip(), expected, (args, sh.stderr))
 
     def test_codex_transcript_replies(self):
         lines = [json.dumps({'type': 'response_item', 'timestamp': '2026-10-09T10:00:00Z',
