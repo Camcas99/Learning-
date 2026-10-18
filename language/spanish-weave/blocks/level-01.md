@@ -4,7 +4,7 @@ Learning: words ranked 1-25 of the [Spanish Weave list](../data/lexicon.csv). Kn
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 1 | Active (use most; gloss in footer): y = and, 
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 1 | Active (use most; gloss in footer): y = and, "ee"; pero = but, "PEH-roh"; entonces = so / then, "en-TOHN-ses"; con = with, "kohn"; sin = without, "seen"; muy = very, "mwee"; también = also / too, "tahm-BYEN"; ahora = now, "ah-OH-rah"; para = for / in order to, "PAH-rah"; porque = because, "POR-keh"; siempre = always, "SYEM-preh"; tal vez = maybe, "tahl bes"; mucho = a lot / much, "MOO-choh"; sí = yes, "see"; gracias = thank you, "GRAH-syahs"; claro = of course / sure, "KLAH-roh"; listo = ready / done, "LEES-toh"; importante = important, "eem-por-TAHN-teh"; posible = possible, "poh-SEE-bleh"; difícil = difficult / hard, "dee-FEE-seel"; el problema = the problem, "el proh-BLEH-mah"; la pregunta = the question, "lah preh-GOON-tah"; la idea = the idea, "lah ee-DEH-ah"; la respuesta = the answer, "lah rres-PWES-tah"; o = or, "oh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): none | Level 1 of 42 (next: level-02.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 1 | Active (use most; gloss in footer): y = and, "ee"; pero = but, "PEH-roh"; entonces = so / then, "en-TOHN-ses"; con = with, "kohn"; sin = without, "seen"; muy = very, "mwee"; también = also / too, "tahm-BYEN"; ahora = now, "ah-OH-rah"; para = for / in order to, "PAH-rah"; porque = because, "POR-keh"; siempre = always, "SYEM-preh"; tal vez = maybe, "tahl bes"; mucho = a lot / much, "MOO-choh"; sí = yes, "see"; gracias = thank you, "GRAH-syahs"; claro = of course / sure, "KLAH-roh"; listo = ready / done, "LEES-toh"; importante = important, "eem-por-TAHN-teh"; posible = possible, "poh-SEE-bleh"; difícil = difficult / hard, "dee-FEE-seel"; el problema = the problem, "el proh-BLEH-mah"; la pregunta = the question, "lah preh-GOON-tah"; la idea = the idea, "lah ee-DEH-ah"; la respuesta = the answer, "lah rres-PWES-tah"; o = or, "oh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): none | Level 1 of 42 (next: level-02.md)
 ```

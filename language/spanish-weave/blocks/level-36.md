@@ -4,7 +4,7 @@ Learning: words ranked 876-900 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): prestar =
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): prestar = to lend, "pres-TAHR"; la isla = the island, "lah EES-lah"; cerrado = closed, "seh-RRAH-doh"; la granja = the farm, "lah GRAHN-hah"; devolver = to give back / return, "deh-bohl-BEHR"; el suelo = the floor / ground, "el SWEH-loh"; servir = to serve / be useful, "sehr-BEER"; la azotea = the rooftop, "lah ah-soh-TEH-ah"; pagado = paid, "pah-GAH-doh"; el golpe = the blow / hit, "el GOHL-peh"; valer = to be worth, "bah-LEHR"; el gesto = the gesture, "el HES-toh"; llover = to rain, "yoh-BEHR"; el paso = the step, "el PAH-soh"; divertido = fun, "dee-behr-TEE-doh"; la carrera = the race / career, "lah kah-RREH-rah"; brillar = to shine, "bree-YAHR"; el deporte = sport, "el deh-POR-teh"; el partido = the match / game, "el pahr-TEE-doh"; quemar = to burn, "keh-MAHR"; aburrido = boring / bored, "ah-boo-RREE-doh"; la pelota = the ball, "lah peh-LOH-tah"; el jugador = the player, "el hoo-gah-DOR"; cortar = to cut, "kor-TAHR"; la vuelta = the turn / lap, "lah BWEL-tah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 900th most frequent | Level 36 of 42 (next: level-37.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): prestar = to lend, "pres-TAHR"; la isla = the island, "lah EES-lah"; cerrado = closed, "seh-RRAH-doh"; la granja = the farm, "lah GRAHN-hah"; devolver = to give back / return, "deh-bohl-BEHR"; el suelo = the floor / ground, "el SWEH-loh"; servir = to serve / be useful, "sehr-BEER"; la azotea = the rooftop, "lah ah-soh-TEH-ah"; pagado = paid, "pah-GAH-doh"; el golpe = the blow / hit, "el GOHL-peh"; valer = to be worth, "bah-LEHR"; el gesto = the gesture, "el HES-toh"; llover = to rain, "yoh-BEHR"; el paso = the step, "el PAH-soh"; divertido = fun, "dee-behr-TEE-doh"; la carrera = the race / career, "lah kah-RREH-rah"; brillar = to shine, "bree-YAHR"; el deporte = sport, "el deh-POR-teh"; el partido = the match / game, "el pahr-TEE-doh"; quemar = to burn, "keh-MAHR"; aburrido = boring / bored, "ah-boo-RREE-doh"; la pelota = the ball, "lah peh-LOH-tah"; el jugador = the player, "el hoo-gah-DOR"; cortar = to cut, "kor-TAHR"; la vuelta = the turn / lap, "lah BWEL-tah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 900th most frequent | Level 36 of 42 (next: level-37.md)
 ```

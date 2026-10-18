@@ -4,7 +4,7 @@ Learning: words ranked 201-225 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápidame
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápidamente = quickly, "RRAH-pee-dah-MEN-teh"; despacio = slowly, "des-PAH-syoh"; suavemente = gently, "SWAH-beh-MEN-teh"; en otro lado = somewhere else, "en OH-troh LAH-doh"; en todos lados = everywhere, "en TOH-dohs LAH-dohs"; en ningún lado = nowhere, "en neen-GOON LAH-doh"; en algún lado = somewhere, "en ahl-GOON LAH-doh"; adentro = inside, "ah-DEN-troh"; afuera = outside, "ah-FWEH-rah"; arriba = up / upstairs, "ah-RREE-bah"; abajo = down / downstairs, "ah-BAH-hoh"; temprano = early, "tem-PRAH-noh"; tarde = late, "TAHR-deh"; a tiempo = on time, "ah TYEM-poh"; mucho tiempo = a long time, "MOO-choh TYEM-poh"; al rato = in a little while, "ahl RRAH-toh"; antes = before / earlier, "AHN-tes"; de ahora en adelante = from now on, "deh ah-OH-rah en ah-deh-LAHN-teh"; aproximadamente = approximately / roughly, "ah-prohk-see-MAH-dah-MEN-teh"; exactamente = exactly, "ek-SAHK-tah-MEN-teh"; probablemente = probably, "proh-BAH-bleh-MEN-teh"; por suerte = luckily, "por SWEHR-teh"; lamentablemente = unfortunately, "lah-men-TAH-bleh-MEN-teh"; obviamente = obviously, "OHB-byah-MEN-teh"; sin duda = no doubt / definitely, "seen DOO-dah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 225th most frequent | Level 9 of 42 (next: level-10.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápidamente = quickly, "RRAH-pee-dah-MEN-teh"; despacio = slowly, "des-PAH-syoh"; suavemente = gently, "SWAH-beh-MEN-teh"; en otro lado = somewhere else, "en OH-troh LAH-doh"; en todos lados = everywhere, "en TOH-dohs LAH-dohs"; en ningún lado = nowhere, "en neen-GOON LAH-doh"; en algún lado = somewhere, "en ahl-GOON LAH-doh"; adentro = inside, "ah-DEN-troh"; afuera = outside, "ah-FWEH-rah"; arriba = up / upstairs, "ah-RREE-bah"; abajo = down / downstairs, "ah-BAH-hoh"; temprano = early, "tem-PRAH-noh"; tarde = late, "TAHR-deh"; a tiempo = on time, "ah TYEM-poh"; mucho tiempo = a long time, "MOO-choh TYEM-poh"; al rato = in a little while, "ahl RRAH-toh"; antes = before / earlier, "AHN-tes"; de ahora en adelante = from now on, "deh ah-OH-rah en ah-deh-LAHN-teh"; aproximadamente = approximately / roughly, "ah-prohk-see-MAH-dah-MEN-teh"; exactamente = exactly, "ek-SAHK-tah-MEN-teh"; probablemente = probably, "proh-BAH-bleh-MEN-teh"; por suerte = luckily, "por SWEHR-teh"; lamentablemente = unfortunately, "lah-men-TAH-bleh-MEN-teh"; obviamente = obviously, "OHB-byah-MEN-teh"; sin duda = no doubt / definitely, "seen DOO-dah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 225th most frequent | Level 9 of 42 (next: level-10.md)
 ```

@@ -16,26 +16,37 @@ Learning Latin American Spanish.
 ### Send this to a friend
 
 ```text
-I made a tool that teaches Latin American Spanish by mixing a few Spanish words into what you already read.
-Start here: https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/START-HERE.md
+Hey! I made a little tool that teaches Latin American Spanish by mixing a few Spanish words into what you already read, like your Claude or ChatGPT chats:
+"Here's the recipe, pero it takes an hour, entonces start early." (pero = but, entonces = so)
+Thought you'd like it!
 
-If you use Claude Code, tell it:
-Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave folder). Read language/spanish-weave/HANDOFF-FOR-CLAUDE.md first.
-
-No Claude Code? Paste the block from this page into claude.ai (Settings > Profile) or ChatGPT (Custom instructions). It works on your phone too:
+Quickest way, nothing to install. Open this page (easiest on a computer) and copy each block with its copy button at the top right; selecting by hand cuts off the end:
 https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/blocks/level-01.md
+claude.ai: paste the claude.ai block into Settings > "Instructions for Claude".
+ChatGPT: paste the two ChatGPT blocks into "Custom instructions" and "More about you" under Settings > Personalization (the page says which goes where).
+Once pasted, it works in the Claude and ChatGPT phone apps too.
+
+Use Claude Code on your own Mac or Linux computer? Skip all that and paste this one line into it for the full version, which tracks your words and quizzes you:
+Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave folder). Read https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/HANDOFF-FOR-CLAUDE.md first.
+
+The full guide, if you're curious:
+https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/START-HERE.md
 ```
 
-Their Claude installs it with `claude plugin marketplace add Camcas99/Learning-` and
-`claude plugin install spanish-weave@learning`, and later gets updates with `claude plugin marketplace update
-learning` and `claude plugin update spanish-weave@learning`. To download every file instead:
-`git clone https://github.com/Camcas99/Learning-.git`.
+Their Claude installs it with `claude plugin marketplace add Camcas99/Learning-`,
+`claude plugin install spanish-weave@learning` and then `/spanish-weave:setup`. To update later:
+`claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`, then restart
+Claude Code and run `/spanish-weave:setup` again with the same answers (it refreshes the extension and native host
+copies in `~/.spanish-weave` and keeps their progress), then click the reload arrow on Spanish Weave in
+`chrome://extensions`. To download every file instead: `git clone https://github.com/Camcas99/Learning-.git`.
 
 ## Start here
 
-The quickest start needs no install: open
-[`spanish-weave/blocks/level-01.md`](spanish-weave/blocks/level-01.md), copy the claude.ai block, and paste it into
-claude.ai under Settings > Profile > personal preferences. When those 25 words feel easy, paste level 2.
+The quickest start needs no install (claude.ai or ChatGPT): open
+[`spanish-weave/blocks/level-01.md`](spanish-weave/blocks/level-01.md) and copy the block for your app with the
+copy button at its top right. The claude.ai block goes in claude.ai under Settings > "Instructions for Claude";
+the two ChatGPT blocks go in the "Custom instructions" and "More about you" boxes under Settings > Personalization
+(the page says which goes where). When those 25 words feel easy, paste level 2 instead.
 
 For the full version (Claude Code hook, word tracking, Chrome extension), see
 [`spanish-weave/README.md`](spanish-weave/README.md).
