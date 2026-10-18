@@ -757,7 +757,11 @@ class Codex(Home):
         self.assertTrue(weave.interactive({}, data, exec_check=lambda: False))
         self.assertTrue(weave.interactive({'SPANISH_WEAVE_FORCE': '1'}, data, exec_check=lambda: True))
         code = f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; print(weave.codex_exec(os.getpid()))'
-        sh = subprocess.run(['codex', '-c', code, 'exec'], executable=sys.executable, capture_output=True, text=True)
+        exe = sys.executable
+        app = os.path.join(sys.base_prefix, 'Resources', 'Python.app', 'Contents', 'MacOS', 'Python')
+        if sys.platform == 'darwin' and os.path.exists(app):
+            exe = app  # macOS framework builds re-exec through Python.app, which drops the fake argv[0]
+        sh = subprocess.run(['codex', '-c', code, 'exec'], executable=exe, capture_output=True, text=True)
         self.assertEqual(sh.stdout.strip(), 'True', sh.stderr)
 
     def test_codex_transcript_replies(self):

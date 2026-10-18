@@ -15,12 +15,16 @@ It teaches Latin American Spanish, the Spanish of Mexico, Central and South Amer
 
 ## How it works, in 60 seconds
 
-- **You start with about 5 words** (y = and, pero = but, entonces = so, con = with, sin = without) and get up to 5
-  new ones a day, never more than 20 at once.
-- **A word becomes "known"** once you've seen it on 3 different days without needing to look it up. Words you look
-  up a lot, or forget after you knew them, become "shaky" and show up more until they stick.
-- **The Spanish grows with you.** Stage 1 is about 1 word in 16; at 40 known words you reach Stage 2, then 3 (150
-  words) and 4 (400 words), where short, easy Spanish sentences start to appear.
+- **You start small.** With Claude Code: about 5 words (y = and, pero = but, entonces = so, con = with,
+  sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: 25 words per
+  level, and you paste the next level yourself when they feel easy.
+- **In Claude Code, words move on by themselves.** A word becomes "known" once you've seen it on 3 different days
+  without needing to look it up. Words you look up a lot, or forget after you knew them, become "shaky" and show up
+  more until they stick. (A pasted block can't see what you've read, so nothing moves until you paste the next
+  level.)
+- **The Spanish grows with you.** Stage 1 is about 1 word in 16; at 40 known words you reach Stage 2, at 150 Stage
+  3, where short, easy Spanish sentences start to appear in chat, and at 400 Stage 4. With pasted blocks the stage
+  comes with the level: Stage 2 from level 3, Stage 3 from level 7, Stage 4 from level 17.
 - **It never gets in the way.** No Spanish in code, files or anything you'd share, and none at all on health,
   legal, money, safety, emergency or driving topics.
 
@@ -30,32 +34,50 @@ you have to pull a meaning out of memory (instead of looking it up), it sticks b
 ## Pick how to start
 
 **1. Try it in 2 minutes, no install (claude.ai or ChatGPT).**
-Open [`blocks/level-01.md`](blocks/level-01.md), copy the claude.ai block, and paste it into claude.ai under
-Settings > Profile > personal preferences (or the ChatGPT boxes under Settings > Personalization > Custom
-instructions). Chat as usual. When those 25 words feel easy, paste level 2 instead.
+Open [`blocks/level-01.md`](blocks/level-01.md) and copy the block for your app with the copy button at its top
+right (the lines run off the screen, so don't select them by hand). The claude.ai block goes in claude.ai under
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older
+layouts call the box "What personal preferences should Claude consider in responses?"). ChatGPT gets its own two
+shorter blocks, for the "Custom instructions" and "More about you" boxes under Settings > Personalization; the page
+says which goes where. Chat as usual. When those 25 words feel easy, paste level 2 instead.
 
 **2. The full version, with Claude Code (recommended).**
+This one needs Claude Code on your own Mac or Linux computer (on Windows, use option 1 for now). Claude Code comes
+with a paid Claude plan (Pro or Max, or a work Team or Enterprise account); the free plan doesn't include it, so on
+the free plan use option 1. Don't have it yet? Install it with https://code.claude.com/docs/en/quickstart. Option 3
+and "Everywhere, step by step" below also run through Claude Code.
 Tell Claude Code: *"Set up Spanish Weave from https://github.com/Camcas99/Learning- (the language/spanish-weave
-folder). Read language/spanish-weave/HANDOFF-FOR-CLAUDE.md first."* It asks a few questions and does the rest.
-This version tracks your words for you, quizzes you, and can place you at your level.
+folder). Read https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/HANDOFF-FOR-CLAUDE.md first."*
+It asks a few questions and does the rest. This version tracks your words for you, quizzes you, and can place you
+at your level.
 
 **3. Everywhere you read, with the Chrome extension.**
 During setup, say yes to the Chrome extension. You'll need a free Gemini API key from
-https://aistudio.google.com/apikey, which you paste into the extension's popup yourself (never into a chat). Then
-in Chrome: `chrome://extensions` > Developer mode > Load unpacked > the folder Claude names > click the Spanish
-Weave icon > Allow all websites. It works on X, Instagram's website, articles, anything with English text.
+https://aistudio.google.com/apikey (Google requires you to be 18 or older, and school or supervised Google accounts
+are often blocked), which you paste into the extension's popup yourself (never into a chat). Then in Chrome:
+`chrome://extensions` > Developer mode > Load unpacked > the folder Claude names > pin Spanish Weave from the
+puzzle-piece menu > click its icon > Allow all websites. Step 3 of "Everywhere, step by step" below walks through
+it, including how to reach the folder, which is hidden. It works on X, articles, anything with English text, and
+should work on Instagram's website too (see below).
 
-**Everywhere, step by step** (about 15 minutes, once):
-1. On your computer, in Claude Code: `/plugin install spanish-weave --marketplace Camcas99/Learning-`, then
-   `/spanish-weave:setup`. Say yes to the Chrome extension.
-2. Get a free Gemini key at https://aistudio.google.com/apikey.
-3. In Chrome: `chrome://extensions` > Developer mode > Load unpacked > the folder setup names. Click the Spanish
-   Weave icon, paste the key, and click Allow all websites.
+**Everywhere, step by step** (about 15 minutes, once; Mac or Linux):
+1. On your computer, in Claude Code, type these one at a time: `/plugin marketplace add Camcas99/Learning-`,
+   `/plugin install spanish-weave@learning`, `/reload-plugins`, then `/spanish-weave:setup`. Say yes to the Chrome
+   extension. (On a Mac, if a window asks to install the command line developer tools, click Install, wait for it
+   to finish, then run the command again.)
+2. Get a free Gemini key at https://aistudio.google.com/apikey (you need to be 18+ and signed in with a personal
+   Google account).
+3. In Chrome: `chrome://extensions` > Developer mode (top right) > Load unpacked. The folder setup names is inside a
+   hidden folder (`.spanish-weave`), so you won't see it by browsing: press Cmd+Shift+G on a Mac (Ctrl+L on Linux),
+   paste the full path setup gave you, press Return, then click Select. New extensions start hidden, so click the
+   puzzle-piece icon in Chrome's toolbar and pin Spanish Weave. Then click its icon (a gray "S"), paste the key,
+   and click Allow all websites.
 4. For claude.ai and ChatGPT, on the web and in their phone apps: run `/spanish-weave:export` and
    `/spanish-weave:export --chatgpt`, and paste each block where it says. Do it again about once a week; Claude Code
    reminds you.
-5. For Claude Code on your phone: run `claude remote-control` on your computer, then open that session in the Claude
-   app.
+5. For Claude Code on your phone (paid Claude plan needed): run `claude remote-control` on your computer and leave
+   it running, then in the Claude app on your phone tap Code and open that session. See "On your phone and
+   Instagram" below.
 
 The only places it can't reach are web pages on a phone and the Instagram app (see "On your phone and Instagram" below).
 
@@ -114,21 +136,28 @@ come up in your quizzes over the next few weeks, so any you don't really know go
 | `/spanish-weave:anki` | export your words to Anki, if you use it |
 
 With the pasted block in claude.ai or ChatGPT, you can type a word with a question mark ("pero?") for a quick
-translation, "quiz" for a three-word quiz, "story" to retell the last answer as a short story at your level, or
-"easier" / "harder". In Claude Code, just ask ("what does pero mean?") or use the commands above.
+translation, "quiz" for a three-word quiz, "story" (claude.ai only) to retell the last answer as a short story at
+your level, or "easier" / "harder" for that chat. In Claude Code, just ask ("what does pero mean?") or use the
+commands above.
 
 ## On your phone and Instagram
 
 - **claude.ai or ChatGPT on your phone: yes.** The pasted block is saved to your account, so it works in the Claude
-  and ChatGPT phone apps too. Paste it once (the website is easiest) and chat as usual.
-- **Claude Code from your phone: yes, through your computer.** Run `claude remote-control` in a terminal on your
-  computer (or use the Claude desktop app), then open that session in the Claude app on your phone. It runs on your
-  computer, so your words and progress are all there. A Claude Code session started in the cloud from your phone
-  begins on a fresh computer every time, so it can't keep your progress.
+  and ChatGPT phone apps too. Paste it on the website (easiest on a computer) and chat as usual; there's nothing to
+  paste again on your phone.
+- **Claude Code from your phone: yes, through your computer** (needs a paid Claude plan you sign in to, not an API
+  key; on a work Team or Enterprise plan an admin may have to turn it on). Run `claude remote-control` in a terminal
+  on your computer and leave it running, or in the Claude desktop app type `/remote-control` in a local Code
+  session. Then in the Claude app on your phone, tap Code and open that session (from the terminal you can also
+  press the spacebar and scan the QR code). Your computer has to stay on. It runs on your computer, so your words
+  and progress are all there. A Claude Code session started in the cloud from your phone begins on a fresh computer
+  every time, so it can't keep your progress.
 - **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
   Spanish words on a computer.
-- **Instagram's website** (instagram.com in Chrome on a computer): yes. Captions, comments and bios get the same
-  treatment as everything else. Your direct messages are never touched.
+- **Instagram's website** (instagram.com in Chrome on a computer): should work, but it hasn't been tried on the real
+  site yet, and Instagram changes its pages often. Captions, comments and bios get the same treatment as everything
+  else. Your direct messages are never touched. If Instagram gets no Spanish while other sites do, ask your Claude to
+  fix it (the handoff note says where to look).
 - **The Instagram app**: no. Phone apps can't be changed by other software; that's how iPhone and Android keep
   apps safe.
 
@@ -136,17 +165,28 @@ translation, "quiz" for a three-word quiz, "story" to retell the last answer as 
 
 Your words and progress stay on your computer, in a `.spanish-weave` folder. The Claude Code part reads your local
 chat history only to count which words you've seen, and never sends it anywhere. The Chrome extension sends the
-text of pages it runs on to Google's Gemini with your own key (free keys allow Google to use it for training).
-Email, AI chat sites and local addresses are off by default, Instagram messages are never read, and you can turn
-off any site from the toolbar.
+readable text of pages it runs on to Google's Gemini with your own key. With a free key, Google may use that text
+to improve its products and AI, and human reviewers may read it; Google asks free users not to send personal or
+sensitive information. (In the EEA, the UK and Switzerland, Google treats free keys like paid ones.) Gmail,
+Outlook.com, Yahoo Mail, Proton Mail, claude.ai, ChatGPT, Gemini and local addresses start off, and Instagram
+messages are never read. In the default every-site mode, other sites are on, including other email and AI chat
+sites (iCloud Mail, work Outlook, Copilot) and banking or health sites, so turn those off from the toolbar, or set
+"Other sites" in the extension's popup to "Only sites I turn on" (setup asks you this too).
 
 ## If something's off
 
 - **No Spanish in Claude's replies:** open a new Claude Code session (the plugin loads at start), and check
   `/spanish-weave:status` isn't paused.
 - **No Spanish on websites:** click the Spanish Weave icon. Is it on, is there a Gemini key, and is the site allowed?
-- **Too much or too little:** type "easier" or "harder" in a chat, or `/spanish-weave:stage 1`.
-- **Anything else:** ask your Claude to read `language/spanish-weave/HANDOFF-FOR-CLAUDE.md` and help.
+- **AI Studio won't make a key** (or sends you to an "available regions" page): Google only gives keys to accounts
+  it knows are 18 or older. Verify your age in your Google Account settings, or use a personal account instead of a
+  school or Family Link one.
+- **Too much or too little:** in Claude Code, `/spanish-weave:stage 1` to `4` sets the amount yourself (1 is the
+  lightest), and `/spanish-weave:stage auto` lets it follow your progress again. Still too much at Stage 1?
+  `/spanish-weave:pause` takes a break. The Chrome extension follows that stage unless you pick a level under
+  "Force level" in its popup. In claude.ai or ChatGPT, type "easier" or "harder" (it lasts for that chat).
+- **Anything else:** ask your Claude to read
+  https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/HANDOFF-FOR-CLAUDE.md and help.
 
 Have fun with it. ¡Buena suerte! (good luck, "BWEH-nah SWEHR-teh")
 

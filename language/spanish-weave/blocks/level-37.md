@@ -4,7 +4,7 @@ Learning: words ranked 901-925 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): septiembr
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): septiembre = September, "sep-TYEM-breh"; la vez = the time (occasion), "lah bes"; mezclar = to mix, "mes-KLAHR"; emocionante = exciting, "eh-moh-syoh-NAHN-teh"; la oportunidad = the opportunity, "lah oh-por-too-nee-DAHD"; probar = to taste / try / test, "proh-BAHR"; la noticia = the news (item), "lah noh-TEE-syah"; el periódico = the newspaper, "el peh-RYOH-dee-koh"; llenar = to fill, "yeh-NAHR"; la tele = the TV, "lah TEH-leh"; preocupado = worried, "preh-oh-koo-PAH-doh"; el canal = the channel, "el kah-NAHL"; vaciar = to empty, "bah-SYAHR"; la serie = the series, "lah SEH-ryeh"; esconder = to hide, "es-kohn-DEHR"; la duda = the doubt, "lah DOO-dah"; enojado = angry / annoyed, "eh-noh-HAH-doh"; la pena = sorrow / shame, "lah PEH-nah"; adivinar = to guess, "ah-dee-bee-NAHR"; la preocupación = the worry, "lah preh-oh-koo-pah-SYOHN"; la confianza = trust / confidence, "lah kohn-FYAHN-sah"; enseñar = to teach / show, "en-seh-NYAHR"; sorprendido = surprised, "sor-pren-DEE-doh"; la paz = peace, "lah pahs"; la guerra = war, "lah GEH-rrah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 925th most frequent | Level 37 of 42 (next: level-38.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): septiembre = September, "sep-TYEM-breh"; la vez = the time (occasion), "lah bes"; mezclar = to mix, "mes-KLAHR"; emocionante = exciting, "eh-moh-syoh-NAHN-teh"; la oportunidad = the opportunity, "lah oh-por-too-nee-DAHD"; probar = to taste / try / test, "proh-BAHR"; la noticia = the news (item), "lah noh-TEE-syah"; el periódico = the newspaper, "el peh-RYOH-dee-koh"; llenar = to fill, "yeh-NAHR"; la tele = the TV, "lah TEH-leh"; preocupado = worried, "preh-oh-koo-PAH-doh"; el canal = the channel, "el kah-NAHL"; vaciar = to empty, "bah-SYAHR"; la serie = the series, "lah SEH-ryeh"; esconder = to hide, "es-kohn-DEHR"; la duda = the doubt, "lah DOO-dah"; enojado = angry / annoyed, "eh-noh-HAH-doh"; la pena = sorrow / shame, "lah PEH-nah"; adivinar = to guess, "ah-dee-bee-NAHR"; la preocupación = the worry, "lah preh-oh-koo-pah-SYOHN"; la confianza = trust / confidence, "lah kohn-FYAHN-sah"; enseñar = to teach / show, "en-seh-NYAHR"; sorprendido = surprised, "sor-pren-DEE-doh"; la paz = peace, "lah pahs"; la guerra = war, "lah GEH-rrah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 925th most frequent | Level 37 of 42 (next: level-38.md)
 ```

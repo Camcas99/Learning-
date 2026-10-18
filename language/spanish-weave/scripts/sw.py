@@ -281,7 +281,10 @@ def setup(args):
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
-    print('  3. Pin the Spanish Weave toolbar icon (puzzle piece menu) and click it:')
+    if any(part.startswith('.') for part in home.parts):
+        print('     The picker hides folders whose names start with a dot, so paste the path instead: press Cmd+Shift+G')
+        print('     (Mac) or Ctrl+L (Linux), paste it, press Return, then click Select (or Open).')
+    print('  3. Pin the Spanish Weave toolbar icon (puzzle piece menu; a gray "S") and click it:')
     if sites == 'all':
         print('     click "Allow all websites" (Chrome asks once; until then it runs only on X and Instagram).')
     else:
@@ -502,14 +505,17 @@ def export_cmd(args):
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
         about, respond = export.chatgpt(state)
-        print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
-              'characters on every plan.\n')
-        print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
-        print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
+        print('ChatGPT > Settings > Personalization (phone app: Settings > Customize ChatGPT; turn on "Enable '
+              'customization" if it is off). Paste each block in place of what is in its box. Each fits in '
+              f'{export.CHATGPT_LIMIT:,} characters, the Free and Go limit (paid plans allow 5,000).\n')
+        print(f'--- "Custom instructions" box (older layout: "How would you like ChatGPT to respond?") '
+              f'({len(respond)} characters) ---\n{respond}\n')
+        print(f'--- "More about you" box, under About you (older layout: "What would you like ChatGPT to know about '
+              f'you?") ({len(about)} characters) ---\n{about}')
     else:
         block = export.claude_ai(state)
-        print(f'claude.ai > Settings > Profile > personal preferences. Replace the old Spanish Weave block '
-              f'({len(block)} characters):\n\n{block}')
+        print(f'claude.ai > Settings > "Instructions for Claude" (older layouts: personal preferences). Replace the old '
+              f'Spanish Weave block ({len(block)} characters):\n\n{block}')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
 

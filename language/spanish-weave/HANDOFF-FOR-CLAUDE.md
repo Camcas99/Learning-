@@ -28,23 +28,39 @@ granted:
 - **The code lives at** https://github.com/Camcas99/Learning- in the folder `language/spanish-weave`. The plugin
   marketplace (named `learning`) is at the repo root, so add the repo itself, not the subfolder:
   `claude plugin marketplace add Camcas99/Learning-`, then `claude plugin install spanish-weave@learning`. If your
-  human gave you a zip or a local folder instead, add that folder (the one holding `.claude-plugin/`).
+  human gave you a zip or a local folder instead, unzip it if needed and add the repo's top folder (the one whose
+  `.claude-plugin/` holds `marketplace.json`), not `language/spanish-weave`. If they only have the `spanish-weave`
+  folder, use the GitHub form above or ask them for the whole repo.
 - **Pick the path that fits them**, and don't push the full install on someone who just wants to try it:
-  1. *Just curious:* no install at all. Show them `blocks/level-01.md` and have them paste its block into claude.ai
-     (Settings > Profile) or ChatGPT (Custom instructions). Level 2 when those 25 words feel easy, and so on.
+  1. *Just curious:* no install at all. Send them the link to `blocks/level-01.md`
+     (https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/blocks/level-01.md). The claude.ai
+     block goes in claude.ai (Settings > "Instructions for Claude"; older layouts call it personal preferences).
+     ChatGPT gets its own two shorter blocks, for the "Custom instructions" and "More about you" boxes under
+     Settings > Personalization, as the page labels them (the claude.ai block is too long for ChatGPT's boxes). The
+     copy button at the top right of each block grabs it whole. Level 2 when those 25 words feel easy, and so on.
   2. *Uses Claude Code:* the plugin. A hook adds a short brief to every prompt so your replies weave in their
      words, and their progress is tracked automatically.
   3. *Wants it everywhere:* also the Chrome extension, on any site including X and instagram.com. It needs a free
      Gemini API key, which they paste into the extension popup themselves. Never ask for the key in chat.
 - **On a phone:** the paste-in block (1) works in the Claude and ChatGPT phone apps, since it's an account setting.
   The full version (2) works from a phone through Remote Control: Claude Code runs on their computer
-  (`claude remote-control`, or the Claude desktop app) and they drive it from the Claude app. A cloud session started
-  from the phone starts on a fresh machine each time, so it can't keep their progress, and the extension (3) needs
-  Chrome on a computer.
+  (`claude remote-control` left running, or `/remote-control` in a local Code session of the Claude desktop app)
+  and they open it under Code in the Claude app. It needs a claude.ai subscription login (Pro, Max, Team or
+  Enterprise; not an API key; Team and Enterprise need the Owner to enable it), and the computer has to stay on. A
+  cloud session started from the phone starts on a fresh machine each time, so it can't keep their progress, and
+  the extension (3) needs Chrome on a computer.
 - **If they already know some Spanish**, offer the 2-minute placement test (`/spanish-weave:placement`) so they
   don't start with words they know.
-- **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`.
-- Needs: Python 3.9+, Claude Code for the plugin, Chrome (or Chromium) for the extension. No pip installs.
+- **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. The
+  Chrome extension, its native host and the Codex hook run from copies in `~/.spanish-weave` that only setup
+  refreshes, so then rerun setup as in "Update" in INSTALL-FOR-AGENTS.md (`python3 "$SW" setup` with no flags keeps
+  their progress, site choice and stored key, and asks nothing), have them click the reload arrow on Spanish Weave
+  in `chrome://extensions`, and restart Claude Code (the update reaches new sessions only). If you'd rather use
+  `/spanish-weave:setup`, restart Claude Code first and give the same answers as the first time.
+- Needs: macOS or Linux (not Windows yet), Python 3.9+ and git (on a Mac, both come with Apple's command line
+  developer tools, which macOS offers to install the first time either is run), Claude Code for the plugin, Chrome
+  (or Chromium) for the extension. No pip installs. On Windows, offer only option 1 and say the full version is
+  Mac/Linux for now.
 
 If you're a Claude without tools (a plain chat), you can still help: walk them through option 1, and follow the
 pasted block's rules in your own replies.

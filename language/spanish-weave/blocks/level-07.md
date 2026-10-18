@@ -4,7 +4,7 @@ Learning: words ranked 151-175 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápido =
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápido = fast / quick, "RRAH-pee-doh"; último = last, "OOL-tee-moh"; próximo = next, "PROHK-see-moh"; siguiente = following / next, "see-GYEN-teh"; gratis = free (no cost), "GRAH-tees"; serio = serious, "SEH-ryoh"; gracioso = funny, "grah-SYOH-soh"; loco = crazy, "LOH-koh"; genial = great / cool, "heh-NYAHL"; imposible = impossible, "eem-poh-SEE-bleh"; me gusta = I like, "meh GOOS-tah"; sé = I know, "seh"; no sé = I don't know, "noh SEH"; por favor = please, "por fah-BOR"; hola = hello, "OH-lah"; lo siento = sorry, "loh SYEN-toh"; qué tal = how's it going, "KEH tahl"; oye = hey / listen, "OH-yeh"; mira = look, "MEE-rah"; pues = well / so, "pwes"; ojalá = hopefully / I hope so, "oh-hah-LAH"; ahorita = right now / in a moment, "ah-oh-REE-tah"; debajo de = under, "deh-BAH-hoh deh"; detrás de = behind, "deh-TRAHS deh"; delante de = in front of, "deh-LAHN-teh deh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): y, pero, entonces, con, sin, muy, también, ahora, para, porque, siempre, tal vez, mucho, sí, gracias, claro, listo, importante, posible, difícil, el problema, la pregunta, la idea, la respuesta, o, bien, un poco, aquí, es, hay, más, menos, ya, todavía, otra vez, nunca, a menudo, de verdad, solo, casi, demasiado, bastante, como, si, cuando, durante, antes de, después de, entre, contra and 100 more of the most common Spanish words | Level 7 of 42 (next: level-08.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 3 | Active (use most; gloss in footer): rápido = fast / quick, "RRAH-pee-doh"; último = last, "OOL-tee-moh"; próximo = next, "PROHK-see-moh"; siguiente = following / next, "see-GYEN-teh"; gratis = free (no cost), "GRAH-tees"; serio = serious, "SEH-ryoh"; gracioso = funny, "grah-SYOH-soh"; loco = crazy, "LOH-koh"; genial = great / cool, "heh-NYAHL"; imposible = impossible, "eem-poh-SEE-bleh"; me gusta = I like, "meh GOOS-tah"; sé = I know, "seh"; no sé = I don't know, "noh SEH"; por favor = please, "por fah-BOR"; hola = hello, "OH-lah"; lo siento = sorry, "loh SYEN-toh"; qué tal = how's it going, "KEH tahl"; oye = hey / listen, "OH-yeh"; mira = look, "MEE-rah"; pues = well / so, "pwes"; ojalá = hopefully / I hope so, "oh-hah-LAH"; ahorita = right now / in a moment, "ah-oh-REE-tah"; debajo de = under, "deh-BAH-hoh deh"; detrás de = behind, "deh-TRAHS deh"; delante de = in front of, "deh-LAHN-teh deh" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): y, pero, entonces, con, sin, muy, también, ahora, para, porque, siempre, tal vez, mucho, sí, gracias, claro, listo, importante, posible, difícil, el problema, la pregunta, la idea, la respuesta, o, bien, un poco, aquí, es, hay, más, menos, ya, todavía, otra vez, nunca, a menudo, de verdad, solo, casi, demasiado, bastante, como, si, cuando, durante, antes de, después de, entre, contra and 100 more of the most common Spanish words | Level 7 of 42 (next: level-08.md)
 ```
