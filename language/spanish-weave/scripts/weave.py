@@ -21,6 +21,7 @@ STAGES = {1: (6, 10, 2), 2: (12, 20, 4), 3: (25, 35, 4), 4: (40, 55, 4)}
 LOT, SOME = (6, 30), (3, 10)  # chat exposure (distinct days, replies) for the "seen a lot" and "sometimes" tiers
 TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
 SHORT = 40  # replies with fewer prose words are too short to measure
+SCORED = 10_000  # characters of prose at the end of a reply that are scored: enough for the share, fast at any stage
 RECALL_EVERY = 3
 OUTPUT_EVERY = 5  # with output practice on, every fifth reply invites the user to write a little Spanish
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
@@ -31,7 +32,7 @@ GRAMMAR = set("yo tú él ella nosotros nosotras ellos ellas usted ustedes una u
               "estaban estuvo fue fueron sido estoy está tiene tienen tenemos hemos han hizo hace hacen puede pueden "
               "podría debe nuestro nuestra nuestros nuestras estos estas aquel aquella les nos se lo le que por tu voy "
               "todos donde cual".split())
-EXTRA = re.compile(r'\s*(?:\**recall:|.*\s=\s.*")', re.I)  # recall cue and footer gloss lines
+RECALL, GLOSS = re.compile(r'\s*\**recall:', re.I), re.compile(r'\s=\s')  # recall cue and footer gloss lines (see extra)
 # Words that are easy to swap in the wrong sense, and the guard for each; a guard is in the brief once any of its
 # words is in use. These are the most frequent mis-weavings: "it's ready" is not es listo (that means "is clever").
 GUARDS = [
@@ -170,12 +171,21 @@ def last_reply(path):
     return texts[-1] if texts else None
 
 
+def extra(line):
+    """True for the recall cue and footer gloss lines (an " = " with a quote after it), in time linear in the line."""
+    gloss = GLOSS.search(line)
+    return bool(RECALL.match(line) or gloss and '"' in line[gloss.end():])
+
+
 def share(text, words):
     """(Spanish words, prose words, learning words used, Spanish grammar words off the lists) in a reply.
 
-    Code, links, glosses and the recall cue are skipped."""
+    Code, links, glosses and the recall cue are skipped. Only the last SCORED characters of prose are scored, so a
+    huge reply costs no more than a long one (every listed word is a regex pass over the text)."""
     prose = swlib.norm(swlib.CODE.sub(' ', text))
-    prose = '\n'.join(line for line in prose.split('\n') if not EXTRA.match(line))
+    if len(prose) > SCORED:
+        prose = prose[-SCORED:].split(maxsplit=1)[-1]  # without the word the cut may have split
+    prose = '\n'.join(line for line in prose.split('\n') if not extra(line))
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     spanish = learning = 0
     rest = prose
@@ -348,8 +358,9 @@ def main(argv):
             return 0  # scripted run: no brief at all
     try:
         state = swlib.load_state()
-    except Exception as error:  # never block a prompt because of Spanish
-        print(f'Spanish Weave: state unreadable ({error.__class__.__name__}); run /spanish-weave:status', file=sys.stderr)
+    except Exception as error:  # never block a prompt because of Spanish; Claude Code shows no stderr on exit 0
+        reason = error if isinstance(error, swlib.StateError) else error.__class__.__name__
+        print(f'Spanish Weave: skipped, {reason}; /spanish-weave:status says how to fix it', file=sys.stderr)
         return 0
     if state.get('paused'):
         return 0
@@ -376,4 +387,10 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as error:  # in a hook, any other failure also leaves the prompt alone: one line, exit 0
+        if '--hook' not in sys.argv[1:]:
+            raise
+        print(f'Spanish Weave: skipped ({error.__class__.__name__}); run sw.py check', file=sys.stderr)
+        sys.exit(0)
