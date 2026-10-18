@@ -318,6 +318,23 @@ class Brief(Home):
         with mock.patch.object(weave, 'TAIL', len(log.read_bytes()) // 2):
             self.assertEqual(weave.last_reply(log), 'latest reply, entonces done')
 
+    def test_huge_reply_is_scored_fast(self):
+        swlib.save_state(grown(400))  # Stage 4: hundreds of words in use, each one a regex pass over the scored text
+        words = swlib.introduced(swlib.load_state())
+        sentence = 'The build passes, y the cache is warm, entonces nothing else needs doing, pero the tests wait. '
+        spanish, total, _, _ = weave.share(sentence * 6000, words)  # about 580 KB
+        self.assertLess(total, weave.SCORED // 4)  # only the end is scored...
+        small, small_total, _, _ = weave.share(sentence * 20, words)
+        self.assertAlmostEqual(100 * spanish / total, 100 * small / small_total, delta=1)  # ...and it gives the same share
+        self.assertTrue(weave.extra('(sin = without, "seen"; con = with, "kohn")') and weave.extra('**Recall: y?**'))
+        self.assertFalse(weave.extra('x = y ' * 50000))
+        log = self.home / 'chat.jsonl'  # about 880 KB of reply, ending in one huge line that used to take most of a minute
+        log.write_text(line(sentence * 6000 + '\n' + 'x = y ' * 50000) + '\n')
+        start = time.time()
+        out = json.loads(self.run_hook({'session_id': 'x', 'transcript_path': str(log)}))
+        self.assertLess(time.time() - start, 5)  # the hook's timeout is 15s; this takes well under 1s
+        self.assertIn('Your last reply in this chat was', out['hookSpecificOutput']['additionalContext'])
+
     def run_hook(self, payload, **env):
         result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], input=json.dumps(payload),
                                 capture_output=True, text=True, timeout=30, env=dict(os.environ, **env))
@@ -358,6 +375,41 @@ class Brief(Home):
         self.assertTrue(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-cli'}, args_check=lambda: remote))
         self.assertTrue(weave.interactive({'SPANISH_WEAVE_FORCE': '1'}, args_check=lambda: one_shot))
         self.assertFalse(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts'}, args_check=lambda: []))
+
+
+class BrokenState(Home):
+    def hook(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], capture_output=True,
+                                text=True, timeout=30, input=json.dumps({'session_id': 'x'}))
+        self.assertEqual((result.returncode, result.stdout), (0, ''))
+        self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)  # one quiet line, no traceback
+        return result.stderr
+
+    def test_hook_stays_quiet_and_check_says_how_to_fix(self):
+        path = self.home / 'sw' / 'state.json'
+        path.parent.mkdir()
+        for text, problem in (('', 'is empty'), ('{"words": [', 'is not valid JSON'), ('[]', 'has no word list'),
+                              ('{"stage": 1}', 'has no word list')):
+            path.write_text(text)
+            self.assertIn(problem, self.hook())
+            self.assertEqual(path.read_text(), text)  # never replaced: it may hold months of progress
+            self.assertRaises(swlib.StateError, swlib.load_state)
+            with mock.patch.object(Path, 'home', return_value=self.home), \
+                    mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), \
+                    mock.patch('sys.stdout', new=io.StringIO()) as out, self.assertRaises(SystemExit):
+                sw.main(['check'])
+            self.assertIn(f'FAIL word state: {path} {problem}', out.getvalue())
+            self.assertIn(f'mv "{path}" "{path}.broken"', out.getvalue())
+        with self.assertRaises(SystemExit) as caught:
+            sw.main(['status'])  # every command says the same instead of a traceback
+        self.assertIn('has no word list', caught.exception.code)
+        self.assertRaises(swlib.StateError, sw_host.handle, {'type': 'state'})  # the host replies with the error
+        path.write_text('{"words": [{"es": "y"}]}')  # anything else that breaks the hook is just as quiet
+        self.hook()
+        path.rename(path.with_name('state.json.broken'))  # the fix check gives
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['status'])
+        self.assertIn('Spanish Weave: Stage 1', out.getvalue())
 
 
 def grown(known, seed=1):
@@ -694,6 +746,10 @@ class Codex(Home):
                          'model = "x"\n[features]\nhooks = true\nother = 1\n[tui]\n')
         self.assertEqual(sw.enable_codex_hooks('[features]\nmemories = true\n'), '[features]\nhooks = true\nmemories = true\n')
         self.assertIn('[features]\nhooks = true', sw.enable_codex_hooks('model = "x"\n[tui]\na = 1\n'))
+        for before in ('', 'model = "x"\n', '[features]\nmemories = true\n', 'model = "x"\n[tui]\na = 1\n', '[features]\n\n[tui]\n'):
+            self.assertEqual(sw.disable_codex_hooks(sw.enable_codex_hooks(before)), before.replace('[features]\n\n', ''))
+        self.assertEqual(sw.disable_codex_hooks('[features]\nhooks = false\n'), '[features]\nhooks = false\n')
+        self.assertEqual(sw.enable_codex_hooks('[features]\nhooks = true\n', 'hooks = false'), '[features]\nhooks = false\n')
 
     def test_codex_exec_is_scripted_tui_is_not(self):
         data = {'turn_id': 't', 'session_id': 's'}
@@ -808,6 +864,62 @@ class Setup(Home):
                 'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), mock.patch('sys.stdout', new=io.StringIO()):
             sw.main(['setup', *flags])
         return swlib.load_state(create=False)
+
+    def uninstall(self, *flags):
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['uninstall', *flags])
+        return out.getvalue()
+
+    def test_uninstall_takes_out_everything_setup_added(self):
+        codex = self.home / 'codex'
+        codex.mkdir()
+        (codex / 'config.toml').write_text('model = "o3"\n')
+        self.run_setup('--codex', '--user-data-dir', str(self.home / 'profile'))
+        self.run_setup('--codex')  # a rerun keeps the first backup and the recorded --user-data-dir manifest
+        manifests = [Path(m) for m in sw.install_record()['host_manifests']]
+        self.assertEqual(len(manifests), 3)
+        self.assertIn(self.home.resolve() / 'profile' / 'NativeMessagingHosts' / f'{sw.HOST_NAME}.json', manifests)
+        self.assertEqual((codex / 'config.toml.before-spanish-weave').read_text(), 'model = "o3"\n')
+        self.assertIn('would remove', self.uninstall('--codex', '--dry-run'))
+        self.assertTrue(all(m.exists() for m in manifests) and (codex / 'hooks.json').exists())
+        out = self.uninstall('--codex')
+        self.assertFalse(any(m.exists() for m in manifests))
+        self.assertFalse((codex / 'hooks.json').exists())  # setup made it, and nothing else is in it
+        self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')
+        left = out.split('Left in place:')[1]
+        for item in ('claude plugin uninstall spanish-weave@learning', 'chrome://extensions',
+                     f'rm "{codex / "config.toml.before-spanish-weave"}"', f'rm -rf "{self.home / "sw"}"'):
+            self.assertIn(item, left)
+        self.assertNotIn('NativeMessagingHosts', left)
+        self.assertTrue((self.home / 'sw' / 'state.json').exists())  # the word progress stays until they delete it
+
+    def test_uninstall_keeps_what_was_there(self):
+        codex = self.home / 'codex'
+        codex.mkdir()
+        theirs = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'x.sh'}]}]}}
+        (codex / 'hooks.json').write_text(json.dumps(theirs))
+        (codex / 'config.toml').write_text('[features]\nhooks = false\n')
+        self.run_setup('--codex')
+        out = self.uninstall()  # without --codex the hook stays, and the list says how to remove it
+        self.assertIn('uninstall --codex', out.split('Left in place:')[1])
+        out = self.uninstall('--codex')
+        self.assertEqual(json.loads((codex / 'hooks.json').read_text())['hooks'], dict(theirs['hooks'], UserPromptSubmit=[]))
+        self.assertIn('(other Codex hooks use it; before setup it was `hooks = false`); kept', out)
+        (codex / 'hooks.json').write_text('{}')  # no other hooks left: what was there before comes back
+        self.run_setup('--codex')
+        self.assertIn('restored `hooks = false`', self.uninstall('--codex'))
+        self.assertEqual((codex / 'config.toml').read_text(), '[features]\nhooks = false\n')
+
+    def test_uninstall_after_an_older_setup(self):
+        codex = self.home / 'codex'
+        codex.mkdir()
+        (codex / 'config.toml').write_text('model = "o3"\n')
+        self.run_setup('--codex', '--user-data-dir', str(self.home / 'profile'))
+        (self.home / 'sw' / sw.INSTALL).unlink()  # setup before 0.2.1 kept no record
+        out = self.uninstall('--codex', '--user-data-dir', str(self.home / 'profile'))
+        self.assertIn(f'removed {self.home.resolve() / "profile"}', out)  # an unrecorded --user-data-dir manifest, named again
+        self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')  # the backup shows the flag was setup's
 
     def test_known_top_seeds_before_first_learning_words(self):
         state = self.run_setup('--known-top', '40')

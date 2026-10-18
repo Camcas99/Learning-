@@ -196,18 +196,44 @@ def merge_lexicon(state, lexicon=None):
     return state
 
 
+class StateError(ValueError):
+    """state.json is there but holds no word state. It is never replaced on its own, since it may hold months of
+    progress; `sw.py check` says how to fix it."""
+
+
+def state_problem(path):
+    """Why the state.json at path holds no word state, or None when it does or is not there."""
+    try:
+        text = path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        return f"can't be read ({error.__class__.__name__})"
+    if not text.strip():
+        return 'is empty'
+    try:
+        data = json.loads(text)
+    except ValueError as error:
+        return f'is not valid JSON ({getattr(error, "msg", error)}, line {getattr(error, "lineno", "?")})'
+    return None if isinstance(data, dict) and isinstance(data.get('words'), list) else 'has no word list in it'
+
+
 def load_state(create=True, lock=True):
-    """The saved state; creates it on first use. lock=False when the caller already holds state.lock."""
+    """The saved state; creates it on first use (create=False: None until then). lock=False when the caller already
+    holds state.lock. Raises StateError when state.json is there but unreadable."""
     path = home() / 'state.json'
     state = read_json(path)
     if isinstance(state, dict) and isinstance(state.get('words'), list):
         return state
+    problem = state_problem(path)
+    if problem:
+        raise StateError(f'{path} {problem}')
     if not create:
         return None
     with locked() if lock else contextlib.nullcontext():
         if not path.exists():
             write_json(path, new_state())
-    return read_json(path)
+    return load_state(create=False, lock=False)
 
 
 def save_state(state):

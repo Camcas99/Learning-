@@ -156,9 +156,26 @@ these instructions, delete that clone (setup keeps its own copy in `~/.spanish-w
 
 ## Uninstall
 
+Run these in this order (the plugin's copy of `sw.py` goes away with the plugin):
+
 ```sh
-python3 "$SW" uninstall --codex  # removes the native host manifests and the Codex hook; keeps ~/.spanish-weave
+python3 "$SW" uninstall --codex  # --dry-run first to see what it would do
 claude plugin uninstall spanish-weave@learning
+claude plugin marketplace remove learning  # only if nothing else from that marketplace is installed
 ```
 
-Then remove the extension in `chrome://extensions`, and delete `~/.spanish-weave` to drop the word progress.
+`uninstall` removes every native host manifest setup wrote, including the `--user-data-dir` ones it recorded (setup
+before 0.2.1 recorded none: pass the same `--user-data-dir <dir>` flags to `uninstall`). With `--codex` it also
+removes the Codex hook and, when no other Codex hooks remain, the `hooks = true` line setup added to
+`~/.codex/config.toml` (a `hooks = ...` line that was there before setup goes back to what it was). A
+`hooks.json` or `config.toml` that setup created is deleted once nothing else is in it.
+
+It ends with "Left in place:", each piece with the command that removes it. Relay that list to the person:
+
+- the Claude Code plugin: the two `claude plugin` commands above. Remove it before `~/.spanish-weave`, or its hook
+  starts a new word list there on the next prompt.
+- the Chrome extension (HUMAN): `chrome://extensions` -> Remove on Spanish Weave.
+- `~/.codex/hooks.json.before-spanish-weave` and `config.toml.before-spanish-weave`, if listed: the Codex files from
+  before setup first changed them; `rm` them once they're not needed.
+- `~/.spanish-weave` (or `$SPANISH_WEAVE_HOME`): the word progress, the extension folder, the native host and any
+  stored Gemini key. `rm -rf` it only if the person wants their progress gone; it can't be recovered.
