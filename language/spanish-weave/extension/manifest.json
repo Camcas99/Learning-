@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Spanish Weave",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Swaps a few English words for Latin American Spanish on any website in Chrome, at your Spanish Weave level.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv39DuVJRU+dsN3/rs8XiFEz+6rppSGwYDeTohU5WChs4nwA1an9uO3mbrqCQb/8FRlFYDHGk1L9tdPOAM24eSSZpQhVawEnIf0so0E5ItQ5yB/Ny4d7iEL9KgpUQoGANNWsBp4G1YlU/64Ugfr/MY/SR39bInP4O4n9rpubwdh59G5SaSOVZQ1QnTeX5YjHuRseayqPKYNhIo9wRliNQZaRyxhF6XtTKe7BMECsfD733SBM/35IyzUgG5KlOgWWHE3aIXzKrFXbvvlKXmg4j5YWDDC959VEnUzDQ7hZMOGvJCvEbIoJ8GsNNJsoRZ31uCy5daGj0465NfrP5Jpq0xQIDAQAB",
   "permissions": ["storage", "alarms", "nativeMessaging", "scripting", "activeTab"],
