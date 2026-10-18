@@ -4,7 +4,7 @@ Learning: words ranked 626-650 of the [Spanish Weave list](../data/lexicon.csv).
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): anterior 
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): anterior = previous, "ahn-teh-RYOR"; el vino = the wine, "el BEE-noh"; ordenar = to tidy up / order, "or-deh-NAHR"; la cerveza = the beer, "lah sehr-BEH-sah"; la leche = the milk, "lah LEH-cheh"; limpiar = to clean, "leem-PYAHR"; la mantequilla = the butter, "lah mahn-teh-KEE-yah"; entero = whole, "en-TEH-roh"; lavar = to wash, "lah-BAHR"; el huevo = the egg, "el WEH-boh"; la carne = the meat, "lah KAHR-neh"; la librería = the bookstore, "lah lee-breh-REE-ah"; febrero = February, "feh-BREH-roh"; vivir = to live, "bee-BEER"; el pollo = the chicken, "el POH-yoh"; el pescado = the fish (food), "el pes-KAH-doh"; completo = complete / full, "kohm-PLEH-toh"; sentir = to feel / be sorry, "sen-TEER"; las verduras = vegetables, "lahs behr-DOO-rahs"; la fruta = the fruit, "lah FROO-tah"; oler = to smell, "oh-LEHR"; la manzana = the apple, "lah mahn-SAH-nah"; parecido = similar / alike, "pah-reh-SEE-doh"; tocar = to touch / play (music), "toh-KAHR"; la fresa = the strawberry, "lah FREH-sah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 650th most frequent | Level 26 of 42 (next: level-27.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): anterior = previous, "ahn-teh-RYOR"; el vino = the wine, "el BEE-noh"; ordenar = to tidy up / order, "or-deh-NAHR"; la cerveza = the beer, "lah sehr-BEH-sah"; la leche = the milk, "lah LEH-cheh"; limpiar = to clean, "leem-PYAHR"; la mantequilla = the butter, "lah mahn-teh-KEE-yah"; entero = whole, "en-TEH-roh"; lavar = to wash, "lah-BAHR"; el huevo = the egg, "el WEH-boh"; la carne = the meat, "lah KAHR-neh"; la librería = the bookstore, "lah lee-breh-REE-ah"; febrero = February, "feh-BREH-roh"; vivir = to live, "bee-BEER"; el pollo = the chicken, "el POH-yoh"; el pescado = the fish (food), "el pes-KAH-doh"; completo = complete / full, "kohm-PLEH-toh"; sentir = to feel / be sorry, "sen-TEER"; las verduras = vegetables, "lahs behr-DOO-rahs"; la fruta = the fruit, "lah FROO-tah"; oler = to smell, "oh-LEHR"; la manzana = the apple, "lah mahn-SAH-nah"; parecido = similar / alike, "pah-reh-SEE-doh"; tocar = to touch / play (music), "toh-KAHR"; la fresa = the strawberry, "lah FREH-sah" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 650th most frequent | Level 26 of 42 (next: level-27.md)
 ```

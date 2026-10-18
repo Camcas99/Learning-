@@ -4,7 +4,7 @@ Learning: words ranked 1001-1025 of the [Spanish Weave list](../data/lexicon.csv
 
 ## claude.ai
 
-Settings > Profile > "What personal preferences should Claude consider in responses?" Paste the whole block, replacing any older Spanish Weave block.
+Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older layouts call the box "What personal preferences should Claude consider in responses?"). Copy the whole block with the copy button at its top right (on a phone the lines run off the screen, so selecting by hand cuts them off), then paste it in place of any older Spanish Weave block.
 
 ```text
 SPANISH WEAVE
@@ -40,15 +40,9 @@ Spanish weave state — Stage: 4 | Active (use most; gloss in footer): preocupar
 
 ## ChatGPT
 
-Settings > Personalization > Custom instructions. Each box fits the 1,500-character limit.
+Settings > Personalization (in the phone app: Settings > Customize ChatGPT; turn on "Enable customization" if it is off). Copy each block with its copy button and paste it in place of what is in its box. Each block fits in 1,500 characters, the Free and Go limit; the first one alone uses 1,491, so copy anything you want to keep from that box first. When you move up a level, only the "More about you" box changes.
 
-"What would you like ChatGPT to know about you?"
-
-```text
-Spanish weave state — Stage: 4 | Active (use most; gloss in footer): preocuparse = to worry, "preh-oh-koo-PAHR-seh"; el bucle = the loop, "el BOO-kleh"; el paquete = the package, "el pah-KEH-teh"; acostumbrarse = to get used to, "ah-kohs-toom-BRAHR-seh"; el comando = the command, "el koh-MAHN-doh"; extranjero = foreign / foreigner, "eks-trahn-HEH-roh"; la basura = the trash, "lah bah-SOO-rah"; divertirse = to have fun, "dee-behr-TEER-seh"; el bote de basura = the trash can, "el BOH-teh deh bah-SOO-rah"; diciembre = December, "dee-SYEM-breh"; el cuaderno = the notebook, "el kwah-DEHR-noh"; aburrirse = to get bored, "ah-boo-RREER-seh"; el bolígrafo = the pen, "el boh-LEE-grah-foh"; español = Spanish, "es-pah-NYOHL"; sentirse = to feel, "sen-TEER-seh"; el lápiz = the pencil, "el LAH-pees"; el papel = the paper / role, "el pah-PEL"; suceder = to happen, "soo-seh-DEHR"; la hoja = the leaf / sheet, "lah OH-hah"; inglés = English, "een-GLES"; la clase = the class, "lah KLAH-seh"; preguntarse = to wonder, "preh-goon-TAHR-seh"; la lección = the lesson, "lah lek-SYOHN"; perderse = to get lost, "pehr-DEHR-seh"; el examen = the exam, "el ek-SAH-men" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1025th most frequent | Level 41 of 42 (next: level-42.md)
-```
-
-"How would you like ChatGPT to respond?"
+Paste into the "Custom instructions" box (older layout: "How would you like ChatGPT to respond?"):
 
 ```text
 SPANISH WEAVE. I'm learning Latin American Spanish passively: weave Spanish words into normal answers; never make Spanish the topic.
@@ -63,4 +57,10 @@ No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (
 First reply and every third: open "Recall: X?" (Shaky, then Active word); answer at the end.
 Zero Spanish for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps.
 "word?" = translate. "quiz" = ask me 3 recent words. "easier"/"harder" = one stage. Never comment on the method.
+```
+
+Paste into the "More about you" box, under About you (older layout: "What would you like ChatGPT to know about you?"):
+
+```text
+Spanish weave state — Stage: 4 | Active (use most; gloss in footer): preocuparse = to worry, "preh-oh-koo-PAHR-seh"; el bucle = the loop, "el BOO-kleh"; el paquete = the package, "el pah-KEH-teh"; acostumbrarse = to get used to, "ah-kohs-toom-BRAHR-seh"; el comando = the command, "el koh-MAHN-doh"; extranjero = foreign / foreigner, "eks-trahn-HEH-roh"; la basura = the trash, "lah bah-SOO-rah"; divertirse = to have fun, "dee-behr-TEER-seh"; el bote de basura = the trash can, "el BOH-teh deh bah-SOO-rah"; diciembre = December, "dee-SYEM-breh"; el cuaderno = the notebook, "el kwah-DEHR-noh"; aburrirse = to get bored, "ah-boo-RREER-seh"; el bolígrafo = the pen, "el boh-LEE-grah-foh"; español = Spanish, "es-pah-NYOHL"; sentirse = to feel, "sen-TEER-seh"; el lápiz = the pencil, "el LAH-pees"; el papel = the paper / role, "el pah-PEL"; suceder = to happen, "soo-seh-DEHR"; la hoja = the leaf / sheet, "lah OH-hah"; inglés = English, "een-GLES"; la clase = the class, "lah KLAH-seh"; preguntarse = to wonder, "preh-goon-TAHR-seh"; la lección = the lesson, "lah lek-SYOHN"; perderse = to get lost, "pehr-DEHR-seh"; el examen = the exam, "el ek-SAH-men" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common Spanish words up to about the 1025th most frequent | Level 41 of 42 (next: level-42.md)
 ```

@@ -29,7 +29,9 @@
                                                      "1, 4, 9-12"
   sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated)
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
-  sw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
+  sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
+                                                     remove the native host manifests (and the Codex hook and the
+                                                     `hooks = true` setup added), then list what is left
 """
 import argparse
 import json
@@ -102,26 +104,89 @@ def merge_codex_hooks(data, command):
     return data
 
 
-def enable_codex_hooks(text):
-    """config.toml text with `hooks = true` in its [features] table (added if missing)."""
-    lines = text.splitlines()
+def features_table(lines):
+    """(header, end) line indexes of the [features] table in config.toml lines, or None."""
     start = next((i for i, line in enumerate(lines) if line.strip() == '[features]'), None)
     if start is None:
-        return text.rstrip('\n') + ('\n\n' if text.strip() else '') + '[features]\nhooks = true\n'
-    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
+        return None
+    return start, next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
+
+
+def hooks_line(text):
+    """The `hooks = ...` line in config.toml's [features] table, or None."""
+    lines = text.splitlines()
+    start, end = features_table(lines) or (0, 0)
+    return next((lines[i] for i in range(start + 1, end) if re.match(r'\s*hooks\s*=', lines[i])), None)
+
+
+def enable_codex_hooks(text, setting='hooks = true'):
+    """config.toml text with `hooks = true` (or another hooks setting) in its [features] table (added if missing)."""
+    lines = text.splitlines()
+    if features_table(lines) is None:
+        return text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[features]\n{setting}\n'
+    start, end = features_table(lines)
     for i in range(start + 1, end):
         if re.match(r'\s*hooks\s*=', lines[i]):
-            lines[i] = 'hooks = true'
+            lines[i] = setting
             break
     else:
-        lines.insert(start + 1, 'hooks = true')
+        lines.insert(start + 1, setting)
     return '\n'.join(lines) + '\n'
+
+
+def disable_codex_hooks(text):
+    """config.toml text without a `hooks = true` line in [features], and without [features] if nothing else is in it:
+    what enable_codex_hooks added, taken out again."""
+    lines = text.splitlines()
+    table = features_table(lines)
+    if table is None:
+        return text
+    start, end = table
+    rest = [line for line in lines[start + 1:end] if not re.match(r'\s*hooks\s*=\s*true\s*(#.*)?$', line)]
+    if len(rest) == end - start - 1:
+        return text  # no `hooks = true` there
+    if any(line.strip() for line in rest):
+        lines[start + 1:end] = rest
+    else:
+        del lines[start:end]  # the table is empty without it
+    out = '\n'.join(lines).rstrip('\n')
+    return out + '\n' if out else ''
+
+
+INSTALL = 'install.json'  # what setup put outside the state dir (host manifests, the Codex flag), for uninstall
+
+
+def install_record():
+    data = swlib.read_json(swlib.home() / INSTALL, {})
+    return data if isinstance(data, dict) else {}
+
+
+def remember(**changes):
+    swlib.write_json(swlib.home() / INSTALL, dict(install_record(), **changes))
+
+
+def has_our_hook(data):
+    groups = ((data if isinstance(data, dict) else {}).get('hooks') or {}).get('UserPromptSubmit') or []
+    return any(is_ours(h) for g in groups for h in g.get('hooks', []))
+
+
+def backup_of(path):
+    return path.with_name(path.name + '.before-spanish-weave')
+
+
+def codex_flag_added(config_path, first):
+    """Whether `hooks = true` in config.toml is setup's: setup backs config.toml up before it first changes it, so
+    the backup (else, before a first setup, the file itself) shows what was there before."""
+    before = backup_of(config_path) if backup_of(config_path).exists() else config_path if first else None
+    return hooks_line(before.read_text() if before and before.exists() else '') is None
 
 
 def setup_codex(dry_run):
     codex = swlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
-    data = merge_codex_hooks(swlib.read_json(hooks_path, {}) if hooks_path.exists() else {}, codex_command())
+    existing = swlib.read_json(hooks_path, {}) if hooks_path.exists() else {}
+    first = not has_our_hook(existing)  # a rerun keeps the first run's backups: they show what was there before
+    data = merge_codex_hooks(existing, codex_command())
     config = enable_codex_hooks(config_path.read_text() if config_path.exists() else '')
     if dry_run:
         print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command()},
@@ -130,10 +195,11 @@ def setup_codex(dry_run):
     if hooks_path.exists() and swlib.read_json(hooks_path) is None:
         sys.exit(f'{hooks_path} is not valid JSON; fix it, then rerun setup --codex.')
     codex.mkdir(parents=True, exist_ok=True)
+    if 'codex_hooks_added' not in install_record():  # so uninstall takes out only a `hooks = true` that setup added
+        remember(codex_hooks_added=codex_flag_added(config_path, first))
     for path in (hooks_path, config_path):
-        backup = path.with_name(path.name + '.before-spanish-weave')
-        if path.exists() and not backup.exists():
-            shutil.copy2(path, backup)
+        if first and path.exists() and not backup_of(path).exists():
+            shutil.copy2(path, backup_of(path))
     swlib.write_json(hooks_path, data)
     config_path.write_text(config)
     print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
@@ -190,6 +256,7 @@ def setup(args):
     for directory in host_dirs(args.user_data_dir):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
+    remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])))
     if key:
         path = home / 'gemini_key'
         path.write_text(key + '\n')
@@ -214,7 +281,10 @@ def setup(args):
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
-    print('  3. Pin the Spanish Weave toolbar icon (puzzle piece menu) and click it:')
+    if any(part.startswith('.') for part in home.parts):
+        print('     The picker hides folders whose names start with a dot, so paste the path instead: press Cmd+Shift+G')
+        print('     (Mac) or Ctrl+L (Linux), paste it, press Return, then click Select (or Open).')
+    print('  3. Pin the Spanish Weave toolbar icon (puzzle piece menu; a gray "S") and click it:')
     if sites == 'all':
         print('     click "Allow all websites" (Chrome asks once; until then it runs only on X and Instagram).')
     else:
@@ -222,6 +292,16 @@ def setup(args):
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
     print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
+
+
+def state_fix(error):
+    """An unreadable state.json (swlib.StateError) and how to fix it, as lines."""
+    path = swlib.home() / 'state.json'
+    return (f'{error}. Chat weaving is off until it is fixed: repair the file by hand if you can, or move it aside\n'
+            'and start a fresh word list (the progress in it is lost):\n'
+            f'  mv "{path}" "{path}.broken"\n'
+            f'  python3 "{Path(__file__).resolve()}" status\n'
+            'Then take /spanish-weave:placement (or rerun setup with --known-top 40 or 150) if you knew some Spanish.')
 
 
 def check(_args):
@@ -235,8 +315,12 @@ def check(_args):
         ok = ok and passed
         print(f'{"ok  " if passed else "FAIL"} {what}')
 
-    state = swlib.load_state(create=False)
-    report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {swlib.stage_for(state)})' if state else ''))
+    try:
+        state = swlib.load_state(create=False)
+        report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {swlib.stage_for(state)})' if state
+                                                                            else ': not there yet; run setup'))
+    except swlib.StateError as error:
+        report(False, 'word state: ' + state_fix(error).replace('\n', '\n     '))
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
@@ -264,24 +348,89 @@ def check(_args):
         sys.exit(1)
 
 
+def other_codex_hooks(data, config):
+    """True when Codex has hooks besides ours (in hooks.json, or as hooks tables in config.toml)."""
+    groups = [g for gs in (data.get('hooks') or {}).values() if isinstance(gs, list) for g in gs if isinstance(g, dict)]
+    return (any(not is_ours(h) for g in groups for h in g.get('hooks') or [])
+            or bool(re.search(r'^\s*\[\[?hooks\b', config, re.M)))
+
+
 def uninstall(args):
-    if args.codex:
-        path = swlib.codex_home() / 'hooks.json'
-        data = swlib.read_json(path, {}) or {}
-        groups = (data.get('hooks') or {}).get('UserPromptSubmit') or []
-        kept = [g for g in ({**g, 'hooks': [h for h in g.get('hooks', []) if not is_ours(h)]} for g in groups) if g['hooks']]
-        if len(kept) != len(groups) or sum(len(g['hooks']) for g in kept) != sum(len(g.get('hooks', [])) for g in groups):
-            print(('would remove' if args.dry_run else 'removed') + f' the Spanish Weave hook from {path}')
+    """Removes what setup put outside the state dir, then prints what is left and how to remove each piece."""
+    verb = 'would remove' if args.dry_run else 'removed'
+    home, codex, record, left = swlib.home(), swlib.codex_home(), install_record(), []
+    me = f'python3 "{Path(__file__).resolve()}"'
+    hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
+    data = swlib.read_json(hooks_path, {})
+    data = data if isinstance(data, dict) else {}
+    config = config_path.read_text() if config_path.exists() else ''
+    if has_our_hook(data) and not args.codex:
+        left.append(f'the Codex chat hook in {hooks_path}:\n      {me} uninstall --codex')
+    elif has_our_hook(data):
+        groups = data['hooks']['UserPromptSubmit']
+        kept = [{**g, 'hooks': [h for h in g.get('hooks', []) if not is_ours(h)]} for g in groups]
+        data['hooks']['UserPromptSubmit'] = [g for g in kept if g['hooks']]
+        if not backup_of(hooks_path).exists() and set(data) == {'hooks'} and not other_codex_hooks(data, ''):
+            print(f'{verb} {hooks_path} (setup made it; nothing else is in it)')
             if not args.dry_run:
-                data['hooks']['UserPromptSubmit'] = kept
-                swlib.write_json(path, data)
-    for directory in host_dirs():
-        path = directory / f'{HOST_NAME}.json'
+                hooks_path.unlink()
+        else:
+            print(f'{verb} the Spanish Weave hook from {hooks_path}')
+            if not args.dry_run:
+                swlib.write_json(hooks_path, data)
+    line = hooks_line(config)
+    if args.codex and line is not None:
+        added = record.get('codex_hooks_added')
+        if added is None:  # set up before 0.2.1, which kept no install.json
+            added = codex_flag_added(config_path, first=False)
+        others = other_codex_hooks(data, config)
+        backup = backup_of(config_path)
+        before = None if added or not backup.exists() else hooks_line(backup.read_text())  # setup may have flipped it on
+        if not others and added and disable_codex_hooks(config) != config:
+            rest = disable_codex_hooks(config)
+            print(f'{verb} `{line.strip()}` from [features] in {config_path}' + ('' if rest else ' (and the file, now empty)'))
+            if not args.dry_run and rest:
+                config_path.write_text(rest)
+            elif not args.dry_run:
+                config_path.unlink()
+            record.pop('codex_hooks_added', None)
+        elif not others and before and before.strip() != line.strip():
+            print(f'{"would restore" if args.dry_run else "restored"} `{before.strip()}` (from before setup) in [features] '
+                  f'in {config_path}')
+            if not args.dry_run:
+                config_path.write_text(enable_codex_hooks(config, before.strip()))
+            record.pop('codex_hooks_added', None)
+        else:
+            why = 'other Codex hooks use it' if others else 'it was there before setup' if not added else 'changed since setup'
+            was = f'; before setup it was `{before.strip()}`' if before and before.strip() != line.strip() else ''
+            left.append(f'`{line.strip()}` under [features] in {config_path} ({why}{was}); kept')
+    manifests = [Path(m) for m in dict.fromkeys([str(d / f'{HOST_NAME}.json') for d in host_dirs(args.user_data_dir)]
+                                                + (record.get('host_manifests') or []))]
+    for path in manifests:
         if path.exists():
-            print(('would remove ' if args.dry_run else 'removed ') + str(path))
+            print(f'{verb} {path}')
             if not args.dry_run:
-                path.unlink()
-    print(f'Your word state stays in {swlib.home()}; delete that folder to start over.')
+                try:
+                    path.unlink()
+                except OSError as error:
+                    left.append(f'{path} (could not remove it: {error.strerror})')
+    if not args.dry_run and (home / INSTALL).exists():
+        swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests if m.exists()]))
+    backups = [p for p in (hooks_path, config_path) if backup_of(p).exists()]
+    print('Left in place:')
+    print('  - the Claude Code plugin, if installed; its hook keeps weaving until it is gone. Remove it before the state '
+          'folder, or the hook starts a new word list there on the next prompt:\n'
+          '      claude plugin uninstall spanish-weave@learning\n'
+          '      claude plugin marketplace remove learning   # only if nothing else from that marketplace is installed')
+    print('  - the Chrome extension, if you loaded it: open chrome://extensions and click Remove on Spanish Weave')
+    for item in left:
+        print(f'  - {item}')
+    for path in backups:
+        print(f'  - {backup_of(path)}: your {path.name} from before setup first changed it; once you no longer need it:\n'
+              f'      rm "{backup_of(path)}"')
+    if home.exists():
+        print(f'  - {home}: your word progress, the extension folder, the native host and any stored Gemini key:\n'
+              f'      rm -rf "{home}"')
 
 
 def status(_args):
@@ -356,14 +505,17 @@ def export_cmd(args):
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
         about, respond = export.chatgpt(state)
-        print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
-              'characters on every plan.\n')
-        print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
-        print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
+        print('ChatGPT > Settings > Personalization (phone app: Settings > Customize ChatGPT; turn on "Enable '
+              'customization" if it is off). Paste each block in place of what is in its box. Each fits in '
+              f'{export.CHATGPT_LIMIT:,} characters, the Free and Go limit (paid plans allow 5,000).\n')
+        print(f'--- "Custom instructions" box (older layout: "How would you like ChatGPT to respond?") '
+              f'({len(respond)} characters) ---\n{respond}\n')
+        print(f'--- "More about you" box, under About you (older layout: "What would you like ChatGPT to know about '
+              f'you?") ({len(about)} characters) ---\n{about}')
     else:
         block = export.claude_ai(state)
-        print(f'claude.ai > Settings > Profile > personal preferences. Replace the old Spanish Weave block '
-              f'({len(block)} characters):\n\n{block}')
+        print(f'claude.ai > Settings > "Instructions for Claude" (older layouts: personal preferences). Replace the old '
+              f'Spanish Weave block ({len(block)} characters):\n\n{block}')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
 
@@ -605,6 +757,7 @@ def main(argv=None):
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')
     p.add_argument('--codex', action='store_true')
+    p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=uninstall)
     sub.add_parser('status').set_defaults(run=status)
@@ -648,7 +801,10 @@ def main(argv=None):
     p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
     args = parser.parse_args(argv)
-    args.run(args)
+    try:
+        args.run(args)
+    except swlib.StateError as error:
+        sys.exit(f'Spanish Weave: {state_fix(error)}')
 
 
 if __name__ == '__main__':

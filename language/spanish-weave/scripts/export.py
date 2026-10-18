@@ -156,7 +156,7 @@ def parse_state_line(line):
 
 
 def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX):
-    """Personal preferences for claude.ai (Settings > Profile): the rules, then the state line."""
+    """Instructions for claude.ai (Settings > "Instructions for Claude"): the rules, then the state line."""
     return rules() + '\n\n' + state_line(state, now, tail=tail, known_max=known_max)
 
 

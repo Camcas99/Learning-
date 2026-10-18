@@ -7,6 +7,10 @@ command yourself; the person only does the steps marked HUMAN. Write no Spanish 
 Spanish Weave lives in that repo's `language/spanish-weave` folder; the plugin marketplace (named `learning`) is at
 the repo root, so always add the repo itself, not the subfolder.
 
+macOS or Linux only. On Windows, install nothing: offer the paste-in block (`blocks/level-01.md`) instead. Chrome
+on Windows finds native hosts only through the registry, setup's host launcher is a `#!/bin/sh` script, and the
+hook calls `python3`, so the full version doesn't work there yet.
+
 ## 0. Ask a few questions and list the human steps, in one batch, before you start
 
 Run `codex --version` first: if it fails, leave Codex CLI out of question 2. Then, in Claude Code, send the
@@ -18,11 +22,12 @@ Human steps (send as written):
 
 > Setting up Spanish Weave. A few quick questions below; I'll do the rest, except these steps for you:
 > 1. If you pick the Chrome extension: at the end, open `chrome://extensions`, switch on **Developer mode**, click
->    **Load unpacked**, and pick the folder I give you, then click the Spanish Weave toolbar icon and **Allow all
+>    **Load unpacked**, and pick the folder I give you (it's hidden: press Cmd+Shift+G on a Mac or Ctrl+L on Linux
+>    and paste the path), then pin the Spanish Weave toolbar icon (puzzle-piece menu), click it and **Allow all
 >    websites** (or tick the checkbox next to each site's name, on each site you want). Chrome doesn't let scripts do
 >    this part.
-> 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
->    path now or pasted into the extension's popup at the end.
+> 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey for anyone 18
+>    or older), as a file path now or pasted into the extension's popup at the end.
 > 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
 >    **Trust all and continue**.
 
@@ -62,18 +67,27 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
 | 4. A file path | `--gemini-key-file <path>` |
 
-`--known-top N` marks the N most common words in `data/lexicon.csv` as known, so the stage follows on its own
-(Stage 2 at 40 known words, Stage 3 at 150). It only touches words not introduced yet, so a rerun never resets or
-lowers anyone's progress.
+`--known-top N` marks as known those of the N most common words in `data/lexicon.csv` that aren't introduced yet;
+words already learning or known keep their status, so a rerun never resets or lowers anyone's progress. On a new
+word state that gives exactly N known (Stage 2 at 40, Stage 3 at 150). But the plugin's prompt hook creates the
+state, with 5 learning words, on the first prompt after the plugin loads, so when the state already exists the
+count can come out up to 5 short (35 is still Stage 1, 145 is Stage 2) until those words graduate. Report the stage
+setup prints.
 
 ## 1. Check prerequisites
 
 ```sh
 python3 -c 'import sys; assert sys.version_info >= (3, 9), sys.version; print(sys.version)'
+git --version
 claude --version
 ```
 
-Python 3.9+ (macOS system `python3` is fine) and Claude Code. Nothing else is needed: no pip installs, no Node.
+Python 3.9+, git (Claude Code uses it to download the plugin from GitHub) and Claude Code. Nothing else is needed:
+no pip installs, no Node. On a Mac, `python3` and `git` come with Apple's command line developer tools. If either
+command prints `xcode-select: note: No developer tools were found, requesting install`, macOS has just opened a
+window on the person's screen (HUMAN): tell them to click Install in it, wait for it to finish (a few minutes) and
+tell you, then rerun step 1. Elsewhere, if `git` is missing, it comes from the system package manager (for example
+`sudo apt install git`; the person may need to run it, since it asks for their password); then rerun step 1.
 
 ## 2. Install the Claude Code plugin
 
@@ -130,8 +144,10 @@ If one says `FAIL`, fix it before going on; rerunning setup fixes most.
 Tell the person, in plain English (leave out the items for things they didn't pick):
 
 1. Chrome extension: the HUMAN Chrome step with the exact folder from `check` (`~/.spanish-weave/extension` expanded
-   to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder. Then the Spanish
-   Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click **Allow all websites** (Chrome asks
+   to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder. Tell them the folder
+   is hidden, so in the picker they press Cmd+Shift+G (Mac) or Ctrl+L (Linux), paste the full path, press Return
+   and click Select. Then the Spanish Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click
+   **Allow all websites** (Chrome asks
    once; until then it runs only on X and Instagram); only-sites-I-turn-on mode, tick the checkbox next to the
    site's name in the popup, on each site they want.
 2. Chrome extension, no key file given: click the Spanish Weave toolbar icon (puzzle piece menu -> pin it) and paste
@@ -139,13 +155,13 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
    in one-shot `claude -p` or `codex exec` runs (`SPANISH_WEAVE_OFF=1` turns it off anywhere else).
-5. Preferences block: run `python3 "$SW" export` (claude.ai) and `python3 "$SW" export --chatgpt` (ChatGPT) and
-   show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
-   about once a week.
-6. Placement test, if they chose it: run `python3 "$SW" placement --items`, show the intro and numbered list as
+5. Placement test, if they chose it: run `python3 "$SW" placement --items`, show the intro and numbered list as
    printed in one code block, ask for the numbers of the words they know (never say which are made up), then
    run `python3 "$SW" placement --answers "<their numbers>" --apply` and relay the estimate and stage. Do this
-   before exporting a preferences block, so the block includes those words.
+   before the preferences block (next item), so the block includes those words.
+6. Preferences block: run `python3 "$SW" export` (claude.ai) and `python3 "$SW" export --chatgpt` (ChatGPT) and
+   show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
+   about once a week.
 7. Commands: `/spanish-weave:status`, `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`,
    `/spanish-weave:stage 1-4|auto`, `/spanish-weave:pause`, `/spanish-weave:resume`, `/spanish-weave:quiz`,
    `/spanish-weave:placement`, `/spanish-weave:anki`, `/spanish-weave:output on|off`, and `/spanish-weave:export`
@@ -154,11 +170,42 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 You are done when `check` is all `ok` and only the HUMAN steps above remain. If you cloned the repo only to read
 these instructions, delete that clone (setup keeps its own copy in `~/.spanish-weave`).
 
-## Uninstall
+## Update
 
 ```sh
-python3 "$SW" uninstall --codex  # removes the native host manifests and the Codex hook; keeps ~/.spanish-weave
-claude plugin uninstall spanish-weave@learning
+claude plugin marketplace update learning
+claude plugin update spanish-weave@learning
+SW="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins" -path '*spanish-weave*' -path '*/scripts/sw.py' 2>/dev/null | sort | tail -1)"
+python3 "$SW" setup
 ```
 
-Then remove the extension in `chrome://extensions`, and delete `~/.spanish-weave` to drop the word progress.
+The extension folder, native host and Codex hook script run from copies in `~/.spanish-weave` that a plugin update
+doesn't touch; setup refreshes them. With no flags it keeps word progress, the site choice and a stored key, and
+asks nothing. Then the person clicks the reload arrow on Spanish Weave in `chrome://extensions` (HUMAN), and the
+updated chat hook loads in the next Claude Code session.
+
+## Uninstall
+
+Run these in this order (the plugin's copy of `sw.py` goes away with the plugin):
+
+```sh
+python3 "$SW" uninstall --codex  # --dry-run first to see what it would do
+claude plugin uninstall spanish-weave@learning
+claude plugin marketplace remove learning  # only if nothing else from that marketplace is installed
+```
+
+`uninstall` removes every native host manifest setup wrote, including the `--user-data-dir` ones it recorded (setup
+before 0.2.1 recorded none: pass the same `--user-data-dir <dir>` flags to `uninstall`). With `--codex` it also
+removes the Codex hook and, when no other Codex hooks remain, the `hooks = true` line setup added to
+`~/.codex/config.toml` (a `hooks = ...` line that was there before setup goes back to what it was). A
+`hooks.json` or `config.toml` that setup created is deleted once nothing else is in it.
+
+It ends with "Left in place:", each piece with the command that removes it. Relay that list to the person:
+
+- the Claude Code plugin: the two `claude plugin` commands above. Remove it before `~/.spanish-weave`, or its hook
+  starts a new word list there on the next prompt.
+- the Chrome extension (HUMAN): `chrome://extensions` -> Remove on Spanish Weave.
+- `~/.codex/hooks.json.before-spanish-weave` and `config.toml.before-spanish-weave`, if listed: the Codex files from
+  before setup first changed them; `rm` them once they're not needed.
+- `~/.spanish-weave` (or `$SPANISH_WEAVE_HOME`): the word progress, the extension folder, the native host and any
+  stored Gemini key. `rm -rf` it only if the person wants their progress gone; it can't be recovered.
