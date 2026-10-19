@@ -47,6 +47,22 @@ describe('engine', () => {
     expect(r.model).toBe('gemini-3.5-flash-lite');
     expect(r.results.a.map((s) => s.es)).toEqual(['y']);
   });
+  test('a reply missing some passages keeps the rest; one missing them all falls back', async () => {
+    const batch = [{ id: 'a', text: 'cats and dogs' }, { id: 'b', text: 'tea and cake' }];
+    const swaps = [{ o: 'and', es: 'y', ctx: '' }];
+    const partial = await requestSwaps({ apiKey: 'K', model: 'gemini-3.8-flash', level: 1, batch,
+      fetchImpl: async () => geminiReply([{ id: 'b', swaps }]) });
+    expect(Object.keys(partial.results)).toEqual(['b']);
+    expect(partial.model).toBe('gemini-3.8-flash');
+    const models = [];
+    const empty = await requestSwaps({ apiKey: 'K', model: 'gemini-3.8-flash', level: 1, batch, fetchImpl: async (url) => {
+      models.push(url);
+      return geminiReply(models.length === 1 ? [] : [{ id: 'a', swaps }, { id: 'b', swaps: [] }]);
+    } });
+    expect(models).toHaveLength(2);
+    expect(empty.errors[0]).toContain('Incomplete model response');
+    expect(empty.results).toEqual({ a: [expect.objectContaining({ es: 'y' })], b: [] });
+  });
   test('throws when both models fail; Lite has no fallback', async () => {
     let n = 0;
     const fetchImpl = async () => { n++; return { ok: false, status: 429 }; };

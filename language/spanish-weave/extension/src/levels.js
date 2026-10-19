@@ -246,7 +246,22 @@ export function matchCase(es, original) {
   return es;
 }
 
-// Fail closed: keep only swaps whose Spanish is on the list (the plugin's word state, else the level's bundled list).
+// The model is told which English a word replaces, but page text in the same batch can steer it (and it slips on its
+// own): con over "without", siempre over "never". A swap must keep the English's polarity: negative English (no, not,
+// never, without, hardly...) only for a word with a negative meaning, and the reverse. Any one meaning of a gloss
+// will do ("no doubt / definitely"), and notes in parentheses don't count ("free (no cost)"). Synonyms and
+// inflections keep their polarity, so this costs no correct swaps. Numbers and symbols alone are never swapped.
+const NEGATIVE = /\b(?:no|not|never|without|none|nothing|nobody|nowhere|neither|nor|cannot|hardly|barely|scarcely|seldom|rarely)\b|n['’]t\b/i;
+
+export function keepsMeaning(original, gloss) {
+  if (/^[\p{N}\p{P}\p{S}\s]+$/u.test(original)) return false;
+  const negative = NEGATIVE.test(original);
+  return String(gloss).replace(/\([^)]*\)/g, ' ').split(/\s*[/;,]\s*/)
+    .some((meaning) => meaning.trim() && NEGATIVE.test(meaning) === negative);
+}
+
+// Fail closed: keep only swaps whose Spanish is on the list (the plugin's word state, else the level's bundled list)
+// and that keep the English's meaning (keepsMeaning).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // Adds gn (noun gender) and n (usage note) when the word has them.
 export function validateSwaps(level, swaps, sharedWords) {
@@ -258,7 +273,7 @@ export function validateSwaps(level, swaps, sharedWords) {
     const o = s.o.trim();
     if (!o || !s.es.trim()) continue;
     const hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
-    if (!hit) continue;
+    if (!hit || !keepsMeaning(o, hit.en)) continue;
     out.push({
       o,
       es: matchCase(hit.canon, o),

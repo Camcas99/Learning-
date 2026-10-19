@@ -21,11 +21,13 @@ export async function requestSwaps({ apiKey, model, level, batch, words, shownTo
   for (const m of models) {
     try {
       const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs });
+      // Passages the reply leaves out are no results (the page retries them); one passage telling the model to skip
+      // the others can't sink the whole batch. A reply with none of them counts as a failure.
       const results = {};
       for (const { id, text } of batch) {
-        if (!byId.has(id)) throw new Error('Incomplete model response');
-        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words), text, words);
+        if (byId.has(id)) results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words), text, words);
       }
+      if (batch.length && !Object.keys(results).length) throw new Error('Incomplete model response');
       return { results, model: m, errors };
     } catch (e) {
       const timeout = e?.name === 'TimeoutError';

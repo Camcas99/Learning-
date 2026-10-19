@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { hashKey } from '../src/hash.js';
-import { DAILY_MODEL_CALLS } from '../src/quota.js';
+import { DAILY_MODEL_CALLS, SITE_SHARE } from '../src/quota.js';
 
 // The real worker and content modules together on a plain article page, with a fake native host and Gemini.
 test('runtime: key privacy, native host sync and events, site controls, setup default, stale replies, retries', async () => {
@@ -17,6 +17,8 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
   let origins = ['https://*/*', 'http://*/*'];
   let modelCalls = 0;
   let modelThrows = 0;
+  let skipPassage = ''; // the fake model leaves out passages containing this (a page can ask it to)
+  const asked = []; // every passage sent to the fake model
   let delayed = null;
   let release;
   const hostEvents = [];
@@ -77,7 +79,9 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
       if (delayed) { release = () => { delayed = null; }; await new Promise((done) => { const free = release; release = () => { free(); done(); }; }); }
       const body = JSON.parse(init.body);
       const items = JSON.parse(body.contents[0].parts[0].text.replace(/^Passages:\n/, ''));
-      const passages = items.map(({ id, text }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', es: 'y', ctx: '' }] : [] }));
+      asked.push(...items.map((i) => i.text));
+      const passages = items.filter(({ text }) => !skipPassage || !text.includes(skipPassage))
+        .map(({ id, text }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', es: 'y', ctx: '' }] : [] }));
       return reply({ candidates: [{ content: { parts: [{ text: JSON.stringify({ passages }) }] } }] });
     },
   });
@@ -250,6 +254,41 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(capped.querySelector('.sw-word')).toBeNull();
     expect(local.modelStatus.error).toContain('Daily limit');
     local.modelCalls = counted;
+
+    // One site can use only its share of the daily cap, so a busy or hostile page can't stop Spanish everywhere.
+    local.modelCalls = { ...counted, sites: { ...counted.sites, 'example.com': DAILY_MODEL_CALLS * SITE_SHARE } };
+    const shared = win.document.createElement('p');
+    shared.textContent = 'He cooks rice and beans on most weeknights.';
+    win.document.querySelector('main').append(shared); await wait();
+    expect(modelCalls).toBe(callsBefore);
+    expect(local.modelStatus.error).toContain("This site used its share of today's");
+    local.modelCalls = counted;
+    expect(counted.sites['example.com']).toBe(counted.count); // every call so far was this site's
+
+    // A reply that leaves a passage out still paints the others; the missing one is retried.
+    skipPassage = 'skipped';
+    const kept = win.document.createElement('p');
+    kept.textContent = 'Kids play outside and laugh until the sun sets.';
+    const skipped = win.document.createElement('p');
+    skipped.textContent = 'This skipped passage and its words come back later.';
+    win.document.querySelector('main').append(kept, skipped); await wait();
+    expect(kept.querySelector('.sw-word')?.textContent).toBe('y');
+    expect(skipped.querySelector('.sw-word')).toBeNull();
+    skipPassage = '';
+
+    // Text that keeps changing is asked about once it holds still, not once per version.
+    const ticker = win.document.createElement('p');
+    ticker.textContent = 'Version zero of a line that keeps changing and changing.';
+    win.document.querySelector('main').append(ticker); await wait();
+    const versions = () => asked.filter((t) => t.includes('a line that keeps changing')).map((t) => t.split(' ')[1]);
+    expect(versions()).toEqual(['zero']);
+    for (let i = 1; i <= 8; i++) { ticker.textContent = `Version ${i} of a line that keeps changing and changing.`; await wait(20); }
+    await wait(400);
+    expect(versions()).toEqual(['zero']); // each version replaced the one before it in the queue, then it went quiet
+    await wait(5200);
+    expect(versions()).toEqual(['zero', '8']);
+    expect(ticker.querySelector('.sw-word')?.textContent).toBe('y');
+    expect(skipped.querySelector('.sw-word')?.textContent).toBe('y');
 
     // Removing website access reverts the page.
     origins = [];

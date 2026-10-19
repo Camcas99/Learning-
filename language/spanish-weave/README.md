@@ -103,7 +103,8 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
 - **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
   Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
   messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
-  on. Swaps are chosen by Gemini on your own key.
+  on. Swaps are chosen by Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more
+  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -351,8 +352,8 @@ What Spanish Weave keeps, and what it sends:
   data terms apply.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
-- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key and a cache of
-  chosen swaps with a few words of page text around each. Removing the extension deletes them; deleting
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key, a cache of
+  chosen swaps with a few words of page text around each, and today's count of model calls for each site. Removing the extension deletes them; deleting
   `~/.spanish-weave` doesn't.
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites

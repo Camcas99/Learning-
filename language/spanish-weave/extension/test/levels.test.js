@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import {
   resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, wordCount, isZeroSpanish, normalizeEs, matchCase, genderOf,
+  keepsMeaning,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -84,6 +86,31 @@ describe('validateSwaps', () => {
     const words = [{ es: 'el éxito', en: 'success', hint: 'el EK-see-toh', status: 'active', note: "not 'exit' (that's la salida)" }];
     expect(validateSwaps(1, [{ o: 'success', es: 'exito' }], words)).toEqual([{ o: 'success', es: 'éxito', g: 'success',
       h: 'EK-see-toh', ctx: '', word: 'el éxito', status: 'active', gn: 'm', n: "not 'exit' (that's la salida)" }]);
+  });
+  test('a swap keeps the polarity of the English it replaces, so page text can\'t steer it into the opposite', () => {
+    // Steered or slipped: con (with) over "without", siempre (always) over "never", sí over "no", nunca over "always".
+    expect(validateSwaps(1, [{ o: 'without', es: 'con' }, { o: 'never', es: 'siempre' }, { o: 'no', es: 'sí' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'always', es: 'nunca' }, { o: "isn't", es: 'es' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'is', es: 'es' }])[0].es).toBe('es');
+    expect(validateSwaps(1, [{ o: 'without', es: 'sin' }, { o: 'with', es: 'con' }]).map((s) => s.es)).toEqual(['sin', 'con']);
+    expect(validateSwaps(2, [{ o: 'never', es: 'nunca' }, { o: 'Nothing', es: 'nada' }]).map((s) => s.es)).toEqual(['nunca', 'Nada']);
+    expect(validateSwaps(1, [{ o: '2', es: 'y' }, { o: '50%', es: 'mucho' }])).toEqual([]); // numbers and symbols stay
+    expect(keepsMeaning('definitely', 'no doubt / definitely')).toBe(true); // any one meaning will do
+    expect(keepsMeaning('no doubt', 'no doubt / definitely')).toBe(true);
+    expect(keepsMeaning('free', 'free (no cost)')).toBe(true); // notes don't count
+    expect(keepsMeaning('almost never', 'hardly ever')).toBe(true);
+    expect(keepsMeaning('nevertheless', 'however')).toBe(true); // whole words only
+    expect(keepsMeaning('don’t know', "I don't know")).toBe(true);
+  });
+  test('every list word passes with each of its own meanings', () => {
+    const rows = readFileSync(new URL('../../data/lexicon.csv', import.meta.url), 'utf8').trim().split('\n').slice(1)
+      .map((row) => row.match(/^("[^"]*"|[^,]*),("[^"]*"|[^,]*),/).slice(1).map((f) => f.replace(/^"|"$/g, '')));
+    expect(rows.length).toBeGreaterThan(1000);
+    for (const [es, en] of [...rows, ...L2_WORDS.map((w) => [w.es, w.en])]) {
+      for (const meaning of en.replace(/\([^)]*\)/g, ' ').split(/\s*[/;,]\s*/).filter((m) => m.trim())) {
+        expect([es, meaning, keepsMeaning(meaning.trim(), en)]).toEqual([es, meaning, true]);
+      }
+    }
   });
   test('normalizeEs', () => {
     expect(normalizeEs(' También ')).toBe('tambien');
