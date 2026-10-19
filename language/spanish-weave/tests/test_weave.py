@@ -1,4 +1,5 @@
 """Offline tests for the hook, word state, native host and setup. Run: python3 -m unittest discover -s tests"""
+import datetime as dt
 import io
 import json
 import os
@@ -194,6 +195,15 @@ class Rules(Home):
         swlib.merge_lexicon(state)
         self.assertEqual((swlib.find(state, 'pero')['en'], swlib.find(state, 'pero')['hint']), ('but', 'PEH-roh'))
         self.assertNotEqual(swlib.version(state), before)  # the extension refetches swaps with the new gloss
+
+    def test_pause_keeps_the_version_so_cached_swaps_survive(self):
+        """The extension clears its swap cache when the version changes. A pause reaches it as its own field, which
+        stops and starts pages, so pausing and resuming must not cost a model call per passage afterwards."""
+        state = swlib.new_state('2026-10-01')
+        before = swlib.version(state)
+        state['paused'] = True
+        self.assertEqual(swlib.version(state), before)
+        self.assertTrue(swlib.public_state(state)['paused'])
 
     def test_known_word_peeked_twice_in_a_week_becomes_shaky(self):
         state = swlib.new_state('2026-10-01')
@@ -439,11 +449,28 @@ class Brief(Home):
             sw.main(['pause'])
         self.assertEqual(self.run_hook({'session_id': 'x'}), '')
         # The extension has no push from the plugin: say when Chrome follows.
-        self.assertIn('within 2 minutes, or as soon as you open the Spanish Weave popup', out.getvalue())
+        self.assertIn('stops sending new page text to Gemini within 2 minutes', out.getvalue())
         with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['resume'])
         self.assertIn('Spanish Weave', self.run_hook({}))
         self.assertIn('as soon as you open the Spanish Weave popup', out.getvalue())
+
+    def test_chrome_timing_promises_match_the_extension(self):
+        """The native host can't push a pause. A page's swap request syncs word state over STALE_MS old, so new text
+        stops going to Gemini within that; a page that asks for nothing hears only from the SYNC_MINUTES alarm or the
+        popup. So no promise says 2 minutes without the 10 minutes an open page can take."""
+        code = (ROOT / 'extension' / 'src' / 'background.js').read_text(encoding='utf-8')
+        stale = int(re.search(r'const STALE_MS = (\d+);', code).group(1)) // 60000
+        alarm = int(re.search(r'const SYNC_MINUTES = (\d+);', code).group(1))
+        self.assertIn(f'new page text to Gemini within {stale} minutes', sw.CHROME_PAUSED)
+        self.assertIn(f'within {alarm} minutes', sw.CHROME_PAUSED)
+        self.assertIn(f'within {alarm} minutes', sw.CHROME_PICKS_UP)
+        self.assertNotIn(f'{stale} minutes', sw.CHROME_PICKS_UP)  # resume and setup reach idle pages only by the alarm
+        for path in DOCS + [ROOT / 'scripts' / 'sw.py']:
+            text = ' '.join(path.read_text(encoding='utf-8').split())
+            for sentence in re.findall(r'[^.]*(?:within \d+ minutes|reach(?:es)? Chrome)[^.]*\.', text):
+                if 'Chrome' in sentence or 'Gemini' in sentence or 'popup' in sentence:
+                    self.assertIn(f'{alarm} minutes', sentence, path.name)
 
     def test_no_spanish_in_scripted_runs(self):
         self.assertIn('Spanish Weave', self.run_hook({}))  # no claude parent here: weave by default
@@ -697,6 +724,27 @@ class Review(Home):
         con.update(status='shaky', box=0, last_bad='2026-10-02', reviews=[['2026-10-02', 0, 0, 'active', '2026-10-01', '']])
         swlib.review(state, 'con', True, '2026-10-02')
         self.assertEqual((con['status'], con['box'], con['last_bad'], len(con['reviews'])), ('active', 1, '', 1))
+
+    def test_same_day_correction_undoes_a_graduation(self):
+        """A right answer that brings the third exposure day graduates the word when it is saved. Correcting it to wrong
+        the same day must put the word back to learning with its streak restarted and take the quiz's seen day out
+        again; a sighting the extension sent before the quiz stays."""
+        day = swlib.today()
+        ago = lambda n: (dt.date.fromisoformat(day) - dt.timedelta(days=n)).isoformat()
+        with swlib.editing() as state:
+            swlib.find(state, 'pero').update(added=ago(5), changed=ago(5), days=[ago(3), ago(2)])
+            swlib.find(state, 'con').update(added=ago(5), changed=ago(5), days=[ago(2), day])  # seen on a page today
+        record = lambda *items: Commands.sw(self, 'record', *items)
+        self.assertTrue(record('pero:right', 'con:right').startswith('pero: right; next review'))
+        self.assertEqual(swlib.find(swlib.load_state(), 'pero')['status'], 'known')  # graduated on save
+        out = record('pero:wrong', 'con:wrong').splitlines()
+        self.assertTrue(out[0].endswith('(learning)') and out[1].endswith('(learning)'), out)
+        state = swlib.load_state()
+        pero, con = swlib.find(state, 'pero'), swlib.find(state, 'con')
+        self.assertEqual((pero['status'], pero['box'], pero['last_bad'], pero['days'], len(pero['reviews'])),
+                         ('active', 0, day, [ago(3), ago(2)], 1))
+        self.assertEqual(sum(w['status'] == 'shaky' for w in state['words']), 0)  # nothing toward SHAKY_BLOCK
+        self.assertEqual((con['status'], con['days']), ('active', [ago(2), day]))
 
     def test_known_words_get_spaced_reviews(self):
         state = swlib.new_state('2026-10-01', known_top=40)
@@ -1205,6 +1253,25 @@ class Setup(Home):
         with self.assertRaises(SystemExit), mock.patch('sys.stderr', new=io.StringIO()):
             sw.main(['setup', '--dry-run', '--sites', 'some'])
 
+    def test_rerun_offers_to_keep_the_site_choice(self):
+        """Updates rerun setup. --sites is timed and wins over an earlier popup choice, so passing it again would undo a
+        later "Only sites I turn on"; the dry run shows that a choice exists and setup.md keeps it by default."""
+        def dry_run():
+            with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                    'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+                sw.main(['setup', '--dry-run'])
+            return json.loads(out.getvalue())['current_sites']
+        self.assertIsNone(dry_run())  # first run: nothing to keep
+        self.assertFalse((self.home / 'sw').exists())
+        self.run_setup()
+        self.assertIsNone(dry_run())  # the extension wasn't picked
+        self.run_setup('--sites', 'ask')
+        self.assertEqual(dry_run(), 'ask')
+        _, body = command_file(ROOT / 'commands' / 'setup.md')
+        self.assertIn('Keep the current site choice (default)', body)
+        self.assertIn('`current_sites`', body)
+        self.assertIn('Keep the current site choice: no `--sites`', body)
+
     def test_extension_id_matches_manifest_key(self):
         import base64
         import hashlib
@@ -1284,6 +1351,54 @@ class SetupSafety(Home):
             self.sw('setup')
         self.assertEqual((self.home / 'new').stat().st_mode & 0o777, 0o700)
 
+    def test_the_hook_and_commands_leave_a_foreign_folder_alone(self):
+        """The prompt hook usually runs before setup. If it put state.json into someone's folder, setup would take that
+        folder for its own, replace its extension/ and make it 0700. So nothing creates state files in a folder that
+        holds other things and none of Spanish Weave's: the hook skips quietly, commands say why."""
+        home = self.home / 'sw'
+        (home / 'extension').mkdir(parents=True)
+        (home / 'extension' / 'keep.txt').write_text('mine')
+        home.chmod(0o755)
+        self.assertIn(f'{home} is not a Spanish Weave folder', BrokenState.hook(self))  # exit 0, one stderr line
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('status'))
+        self.assertRaises(swlib.UnsafeHome, swlib.load_state)
+        self.assertIn(f'FAIL word state: {home} is not a Spanish Weave folder', self.check())
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'))
+        self.assertEqual(sorted(p.name for p in home.rglob('*')), ['extension', 'keep.txt'])  # no state or lock files
+        self.assertEqual(((home / 'extension' / 'keep.txt').read_text(), home.stat().st_mode & 0o777), ('mine', 0o755))
+        junk = self.home / 'junk'  # a folder with only what Finder or Windows leave behind counts as empty
+        junk.mkdir()
+        (junk / '.DS_Store').write_text('')
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(junk)}):
+            self.assertIn('Spanish Weave: Stage 1', self.sw('status'))
+
+    def test_setup_replaces_only_its_own_copies_and_chmods_only_its_own_folder(self):
+        """Folders where an older hook already left state.json: setup replaces extension/ and app/ only when they are
+        Spanish Weave's copies, and makes the state folder private only when it is new or setup ran there before."""
+        planted = {'extension/keep.txt': 'mine', 'extension/manifest.json': '{"name": "Another extension"}',
+                   'app/scripts/tool.py': 'print("mine")', 'app/data/notes.txt': 'mine'}
+        for n, (name, text) in enumerate(planted.items()):
+            home = self.home / f'theirs{n}'
+            (home / name).parent.mkdir(parents=True)
+            (home / name).write_text(text)
+            home.chmod(0o755)
+            with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(home)}):
+                swlib.save_state(swlib.new_state())  # what the hook of 0.3.0 and earlier wrote there
+                self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'), name)
+            self.assertEqual(((home / name).read_text(), home.stat().st_mode & 0o777), (text, 0o755), name)
+        empty = self.home / 'empty'  # the person's own empty folder, where the hook started a word list
+        empty.mkdir()
+        empty.chmod(0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(empty)}):
+            subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], input='{}',
+                           capture_output=True, text=True, timeout=30, check=True)
+            self.assertTrue((empty / 'state.json').exists())
+            self.sw('setup')
+            self.assertEqual(empty.stat().st_mode & 0o777, 0o755)  # not new, and setup never ran there
+            self.sw('setup')  # its own folder now (install.json), so a rerun replaces the copies and keeps it private
+        self.assertEqual(empty.stat().st_mode & 0o777, 0o700)
+        self.assertTrue((empty / 'extension' / 'manifest.json').exists())
+
     def test_setup_refuses_a_symlinked_app_folder(self):
         with swlib.editing():
             pass  # a Spanish Weave folder
@@ -1357,6 +1472,23 @@ class SetupSafety(Home):
         self.assertNotIn(f'rm -rf "{home}"', out)  # the folder holds mine.txt too
         self.assertIn(f'rm -rf "{home / "state.json"}"', out)
         self.assertNotIn('mine.txt', out)
+
+    def test_os_junk_never_counts_as_someone_elses_files(self):
+        """Finder drops .DS_Store into folders browsed in the Load unpacked picker; Windows and macOS on shared drives
+        leave Thumbs.db, desktop.ini and ._ files. Neither uninstall nor setup takes them for the person's own files."""
+        self.sw('setup')
+        home = self.home / 'sw'
+        for name in ('.DS_Store', 'Thumbs.db', 'desktop.ini', '._state.json'):
+            (home / name).write_text('')
+        out = self.sw('uninstall', '--dry-run')
+        self.assertIn(f'rm -rf "{home}"', out)
+        self.assertNotIn('holds other things too', out)
+        fresh = self.home / 'fresh'
+        fresh.mkdir()
+        for name in ('Thumbs.db', 'desktop.ini', '._x'):
+            (fresh / name).write_text('')
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(fresh)}):
+            self.assertIn('is set up', self.sw('setup'))
 
     def test_codex_files_linked_from_dotfiles_stay_links(self):
         dotfiles, codex = self.home / 'dotfiles', self.home / 'codex'
@@ -1527,6 +1659,18 @@ class Commands(Home):
             for command in bangs:
                 self.assertIsNone(re.search(r'[;&|#`]|\$\(', command), f'{path.name}: {command}')
 
+    def test_quiz_plan_stays_out_of_the_transcript(self):
+        """Claude Code shows Bash tool output in the transcript, and every plan line carries its answer, so the plan
+        comes from a `!` line (part of the hidden command prompt) with no typed text in it. The model asks only the
+        first N questions and can't run the plan itself."""
+        fields, body = command_file(ROOT / 'commands' / 'quiz.md')
+        self.assertEqual(re.findall(r'!`([^`]+)`', body), ['python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" quiz --plan 50'])
+        templates = re.findall(r'`([^`]+)`', re.sub(r'!`[^`]+`', '', body))
+        self.assertEqual([t for t in templates if ' quiz' in t], [])
+        self.assertFalse(allowed('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" quiz --plan 5', bash_rules(fields)))
+        self.assertIn('only the first', body)
+        self.assertEqual(sw.plan_size(['50']), 50)  # the line asks for the most a quiz can have
+
     def test_stage_without_value(self):
         with swlib.editing():
             pass
@@ -1654,6 +1798,19 @@ class Docs(unittest.TestCase):
         """`find | sort | tail -1` picked the marketplace clone, and 0.2.9 over 0.2.10."""
         for path in DOCS:
             self.assertFalse('| sort | tail -1' in path.read_text(encoding='utf-8'), path.name)
+
+    def test_update_steps_keep_the_site_choice(self):
+        """Rerunning setup "with the same answers as the first time" passed --sites again, which turned every site back
+        on for someone who had since picked "Only sites I turn on" in the popup."""
+        for path in DOCS:
+            text = ' '.join(path.read_text(encoding='utf-8').split())
+            self.assertFalse('same answers' in text, path.name)
+        update = section(ROOT / 'INSTALL-FOR-AGENTS.md', 'Update')
+        self.assertIn('python3 "$SW" setup\n', update)
+        self.assertNotIn('setup --sites', update)
+        for name in ('README.md', 'START-HERE.md', 'HANDOFF-FOR-CLAUDE.md'):
+            text = ' '.join((ROOT / name).read_text(encoding='utf-8').split())
+            self.assertTrue('Keep the current site choice' in text, name)
 
     def test_docs_dont_say_everything_stays_local(self):
         """The word lists go to Claude, Codex and Gemini, so the Privacy sections can't say everything stays local."""

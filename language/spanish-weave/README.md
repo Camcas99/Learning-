@@ -38,11 +38,12 @@ below.
 Setup first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
 Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome
 extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the
-question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/spanish-weave:setup`)
-asks again and never resets your progress. Words you're already learning keep their status, so if Spanish Weave
-had already handed you its first 5 learning words (the plugin's prompt hook does this on your first prompt), or
-you rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3
-days of seeing them.
+question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the
+default. Rerunning setup (`/spanish-weave:setup`) asks again, with "Keep the current site choice" as the default for
+the websites question, and never resets your progress. Words you're already learning keep their status, so if
+Spanish Weave had already handed you its first 5 learning words (the plugin's prompt hook does this on your first
+prompt), or you rerun setup with a higher answer, you can start one stage lower until those words graduate, after
+about 3 days of seeing them.
 
 Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (Google requires you to be 18 or older), as a file path or pasted into the extension popup.
@@ -71,11 +72,12 @@ Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
 **Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning` (or
 `/plugin marketplace update learning` and `/plugin update spanish-weave@learning` in chat). Then restart Claude Code
-(the update reaches new sessions only) and rerun `/spanish-weave:setup`, giving the same answers as the first time:
-the extension folder, native host and Codex hook run from copies in `~/.spanish-weave` that only setup refreshes,
-and it never resets your progress. Last, click the reload arrow on Spanish Weave in `chrome://extensions`.
-`/spanish-weave:status` and `sw.py check` say when those copies are behind the installed plugin, and `check` also
-flags a local folder the marketplace was added from that has gone missing.
+(the update reaches new sessions only) and rerun `/spanish-weave:setup`, picking the same places as the first time
+and keeping the default "Keep the current site choice" for the websites question (a site answer would override a
+later "Other sites" choice in the popup): the extension folder, native host and Codex hook run from copies in
+`~/.spanish-weave` that only setup refreshes, and it never resets your progress. Last, click the reload arrow on
+Spanish Weave in `chrome://extensions`. `/spanish-weave:status` and `sw.py check` say when those copies are behind
+the installed plugin, and `check` also flags a local folder the marketplace was added from that has gone missing.
 
 ### On a phone
 
@@ -328,11 +330,12 @@ The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level
 What Spanish Weave keeps, and what it sends:
 
 - **Stored only on your machine**, in `~/.spanish-weave` (or `SPANISH_WEAVE_HOME`, which must be a new or empty
-  folder, or an earlier Spanish Weave one, that you own; setup refuses any other): `state.json` (each word's status
-  and dates, quiz answers and settings), `exposure.json` (how often and on which days each word showed up in chat,
-  the transcript paths it has read and short hashes of recent replies), `sessions.json` (chat ids, turn counts and
-  recall words used) and, if setup stored it, `gemini_key` (mode 600). The hook reads your local Claude Code and
-  Codex transcripts to count exposure and never sends them anywhere.
+  folder, or an earlier Spanish Weave one, that you own; setup refuses any other, and the chat hook and commands
+  write nothing into it): `state.json` (each word's status and dates, quiz answers and settings), `exposure.json`
+  (how often and on which days each word showed up in chat, the transcript paths it has read and short hashes of
+  recent replies), `sessions.json` (chat ids, turn counts and recall words used) and, if setup stored it,
+  `gemini_key` (mode 600). The hook reads your local Claude Code and Codex transcripts to count exposure and never
+  sends them anywhere.
 - **Sent with each prompt** to Anthropic through Claude Code, and to OpenAI through Codex: your word lists and stage
   (the brief the hook adds), and the Spanish share of the last reply.
 - **Sent to Google's Gemini API with each page**, with your key: the readable text of the page, and your word lists
@@ -353,8 +356,10 @@ without a dot, and .local, .lan, .corp, .internal and similar), which start off.
 /chat, /account or /settings are skipped. Banking and health sites stay on unless you turn them off: passages about
 balances, cards, insurance or appointments are skipped, but other text on those pages isn't, so turn them off in the
 popup, or choose "Only sites I turn on". Setup's site choice and the popup's "Other sites" choice are the same
-setting: whichever you made last wins. Pausing and setup reruns reach Chrome within 2 minutes, or as soon as you open
-the popup. If the extension has never reached the native host, sites stay off until you turn them on.
+setting: whichever you made last wins. A pause stops new page text going to Gemini within 2 minutes; Spanish already
+on an open page goes when you reload it after that, when you open the popup, or within 10 minutes. Resuming and setup
+reruns reach Chrome within 10 minutes, or as soon as you open the popup. If the extension has never reached the
+native host, sites stay off until you turn them on.
 
 The extension talks to the plugin through a Chrome native messaging host that only this extension's ID may call. If
 setup stored your Gemini key, the host hands it only to the extension's background worker, never to the pages it runs
@@ -395,7 +400,7 @@ PROFILE=/tmp/sw-profile node tests/extension_e2e.mjs       # Playwright Chromium
 When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in
 `.claude-plugin/plugin.json`, `extension/manifest.json` and `extension/package.json`, all three the same: installed
 copies only update when the version changes. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
-or empty folder you own (setup refuses one that holds other things).
+or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
 
 To add a word, append a row `es,en,` to `data/lexicon.csv` (in the rank where it belongs), run
 `python3 scripts/hints.py --fill` to generate its hint, then `python3 scripts/make_blocks.py`.

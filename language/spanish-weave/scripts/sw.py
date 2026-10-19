@@ -65,8 +65,12 @@ import placement  # noqa: E402
 HOST_NAME = 'com.spanishweave.host'
 EXTENSION_ID = 'papkhjkhjagpimlholdmecddkhhhcfje'  # fixed by the "key" in extension/manifest.json
 ORIGIN = f'chrome-extension://{EXTENSION_ID}/'
-# The native host can't push changes; the extension syncs when its word state is 2 minutes old or the popup opens.
-CHROME_PICKS_UP = 'Chrome picks this up within 2 minutes, or as soon as you open the Spanish Weave popup.'
+# The native host can't push changes. The extension syncs the word state when a page asks for swaps and its copy is
+# over 2 minutes old, when the popup opens, and every 10 minutes (STALE_MS and SYNC_MINUTES in background.js). A page
+# that asks for nothing (all painted, or stopped by a pause) hears only from the last two.
+CHROME_PICKS_UP = 'Chrome picks this up within 10 minutes, or as soon as you open the Spanish Weave popup.'
+CHROME_PAUSED = ('Chrome stops sending new page text to Gemini within 2 minutes; Spanish already on an open page goes '
+                 'when you reload it after that, when you open the Spanish Weave popup, or within 10 minutes.')
 PLUGIN_KEY = 'spanish-weave@learning'  # the plugin's name in Claude Code: plugin@marketplace
 REPO = 'Camcas99/Learning-'  # the GitHub repo the marketplace comes from
 
@@ -280,28 +284,46 @@ def copies_behind(home):
     return (have, plugin) if plugin and (home / 'app').exists() and have != plugin else None
 
 
-# Everything Spanish Weave keeps in its state dir: uninstall offers `rm -rf` on the dir only when nothing else is in it.
-SW_NAMES = {'state.json', INSTALL, 'exposure.json', 'sessions.json', 'state.lock', 'exposure.lock', 'sessions.lock',
-            'gemini_key', 'app', 'extension'}
+# Everything Spanish Weave keeps in its state dir: uninstall offers `rm -rf` on the dir only when nothing else is in it
+# (OS junk like .DS_Store aside).
+SW_NAMES = swlib.OWN_FILES | {'app', 'extension'}
+
+
+def own_copy(home, name):
+    """True when home/name (extension or app), which setup replaces whole, is missing, empty or Spanish Weave's own
+    copy: the extension's manifest names it, or app holds sw.py (or, after an interrupted setup, only the word list)."""
+    path = home / name
+    if not path.exists():
+        return True
+    if not path.is_dir():
+        return False
+    if not [p for p in path.iterdir() if not swlib.os_junk(p.name)]:
+        return True
+    if name == 'extension':
+        return swlib.own_extension(home)
+    return swlib.own_app(home) or (path / 'data' / 'lexicon.csv').is_file()
 
 
 def check_home(home):
     """Exits (one line naming the folder, never the key) when setup could damage the state dir: it is not a folder or
-    not the user's own, it holds other things and no Spanish Weave files, or a folder setup replaces (app, extension
-    and those in app) is a symlink or leads outside it."""
+    not the user's own, it holds other things and no Spanish Weave files, a folder setup replaces (app, extension
+    and those in app) is a symlink or leads outside it, or app or extension is there and isn't Spanish Weave's copy
+    (state.json alone proves nothing: the prompt hook of 0.3.0 and earlier wrote it into any folder)."""
     if not home.exists() and not home.is_symlink():
         return
     if not home.is_dir():
         sys.exit(f'{home} is not a folder; set SPANISH_WEAVE_HOME to a new or empty folder.')
     swlib.check_owner(home)
-    names = {p.name for p in home.iterdir()} - {'.DS_Store'}
-    if names and not names & {'state.json', INSTALL, 'state.lock'}:
-        sys.exit(f'{home} is not a Spanish Weave folder; pick a new or empty one (SPANISH_WEAVE_HOME).')
+    not_ours = f'{home} is not a Spanish Weave folder; pick a new or empty one (SPANISH_WEAVE_HOME).'
+    if swlib.foreign(home):
+        sys.exit(not_ours)
     inside = home.resolve()
     for name in ('app', 'extension', 'app/scripts', 'app/data', 'app/sw-host'):
         path = home / name
         if path.is_symlink() or path.exists() and inside not in path.resolve().parents:
             sys.exit(f'{path} is a symbolic link or leads outside {home}; remove it, then rerun setup.')
+    if not (own_copy(home, 'extension') and own_copy(home, 'app')):
+        sys.exit(not_ours)
 
 
 def write_key(path, key):
@@ -336,16 +358,22 @@ def setup(args):
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
     key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
     if args.dry_run:
+        # current_sites: the site choice an earlier setup saved, so a rerun can offer to keep it (no --sites).
+        state = swlib.read_json(home / 'state.json', {})
+        prefs = state.get('prefs') if isinstance(state, dict) else None
+        current = prefs.get('extension_sites') if isinstance(prefs, dict) else None
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
-                              known_top=args.known_top, sites=args.sites), indent=1))
+                              known_top=args.known_top, sites=args.sites,
+                              current_sites=current if current in ('all', 'ask') else None), indent=1))
         if args.codex:
             setup_codex(True)
         return
     check_home(home)
     existed = home.exists()
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if not existed or (home / 'state.json').exists() or (home / INSTALL).exists():
-        os.chmod(home, 0o700)  # never a folder of someone's that setup was only pointed at
+    # Never a folder of someone's that setup was only pointed at; state.json proves nothing, the hook may have made it.
+    if not existed or (home / INSTALL).exists():
+        os.chmod(home, 0o700)
     if key:
         write_key(home / 'gemini_key', key)
     # Stable copies: the plugin cache path changes on every update, Chrome needs fixed paths.
@@ -354,7 +382,7 @@ def setup(args):
         source = root / ('extension' if name == 'extension' else name.split('/')[1])
         target = home / name
         if target.exists():
-            shutil.rmtree(target)
+            shutil.rmtree(target)  # check_home made sure it is Spanish Weave's own copy
         shutil.copytree(source, target, ignore=ignore)
     launcher = home / 'app' / 'sw-host'
     swlib.write_text(launcher, launcher_text(sys.executable, home / 'app' / 'scripts' / 'sw_host.py', home))
@@ -429,6 +457,8 @@ def check(_args):
 
     try:
         state = swlib.load_state(create=False)
+        if state is None:
+            swlib.check_ours(home)  # someone else's folder says so, not "run setup" (setup would refuse it)
         report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {swlib.stage_for(state)})' if state
                                                                             else ': not there yet; run setup'))
     except swlib.StateError as error:
@@ -569,7 +599,7 @@ def uninstall(args):
     for path in backups:
         print(f'  - {backup_of(path)}: your {path.name} from before setup first changed it; once you no longer need it:\n'
               f'      rm "{backup_of(path)}"')
-    names = sorted(p.name for p in home.iterdir()) if home.is_dir() else None
+    names = sorted(p.name for p in home.iterdir() if not swlib.os_junk(p.name)) if home.is_dir() else None
     ours = [name for name in names or [] if name in SW_NAMES]
     if names is not None and len(ours) == len(names):
         print(f'  - {home}: your word progress, the extension folder, the native host and any stored Gemini key:\n'
@@ -677,7 +707,7 @@ def pause(value):
         with swlib.editing() as state:
             state['paused'] = value
         print('Spanish Weave paused: no Spanish in chat or on websites until you resume.' if value else 'Spanish Weave resumed.')
-        print(CHROME_PICKS_UP)
+        print(CHROME_PAUSED if value else CHROME_PICKS_UP)
     return run
 
 

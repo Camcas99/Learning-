@@ -112,8 +112,47 @@ def load_lexicon(path=LEXICON):
 # ---- files ----
 
 class UnsafeHome(Exception):
-    """The state dir can't be trusted: another user owns it or can write to it, or a lock file in it is a symlink.
-    Nothing is read from it or written to it until that is fixed; the message says how."""
+    """The state dir can't be trusted: another user owns it or can write to it, a lock file in it is a symlink, or it is
+    someone else's folder. Nothing is read from it or written to it until that is fixed; the message says how."""
+
+
+# What setup, the hook, the commands and the native host keep in the state dir, besides the extension and app copies.
+OWN_FILES = {'state.json', 'install.json', 'exposure.json', 'sessions.json', 'state.lock', 'exposure.lock',
+             'sessions.lock', 'gemini_key'}
+
+
+def os_junk(name):
+    """Files Finder, Windows or macOS on shared drives leave in any folder they show: never the person's own."""
+    return name in ('.DS_Store', 'Thumbs.db', 'desktop.ini') or name.startswith('._')
+
+
+def own_extension(directory):
+    """True when directory/extension is a copy of Spanish Weave's extension (its manifest names it)."""
+    manifest = read_json(Path(directory) / 'extension' / 'manifest.json')
+    return isinstance(manifest, dict) and manifest.get('name') == 'Spanish Weave'
+
+
+def own_app(directory):
+    """True when directory/app is setup's copy of the scripts."""
+    return (Path(directory) / 'app' / 'scripts' / 'sw.py').is_file()
+
+
+def foreign(directory):
+    """True when directory is a folder that holds other things (OS junk aside) and nothing of Spanish Weave's: someone
+    else's, so no state file is created in it and setup never takes it over."""
+    try:
+        names = {p.name for p in Path(directory).iterdir() if not os_junk(p.name)}
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return bool(names) and not names & OWN_FILES and not own_extension(directory) and not own_app(directory)
+
+
+def check_ours(directory):
+    """Raises UnsafeHome when directory is foreign: the prompt hook runs before setup, and a state.json it left in
+    someone's folder would make setup take that folder for its own."""
+    if foreign(directory):
+        raise UnsafeHome(f'{directory} is not a Spanish Weave folder: it holds other files and none of Spanish Weave\'s, '
+                         'so nothing was written there; set SPANISH_WEAVE_HOME to a new or empty folder')
 
 
 def check_owner(directory):
@@ -165,11 +204,12 @@ def read_json(path, default=None):
 def locked(name='state.lock', blocking=True, timeout=None):
     """Exclusive lock in the state dir; yields False when non-blocking and someone else holds it. With a timeout
     (seconds), waits at most that long and then raises TimeoutError. A new state dir is made 0700, and one that fails
-    check_owner raises UnsafeHome, as does a lock file that is a symlink (opening it never follows the link or
-    truncates anything)."""
+    check_owner or check_ours raises UnsafeHome, as does a lock file that is a symlink (opening it never follows the
+    link or truncates anything)."""
     directory = home()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     check_owner(directory)
+    check_ours(directory)
     path = directory / name
     try:
         fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0), 0o600)
@@ -275,7 +315,8 @@ def state_problem(path):
 def load_state(create=True, lock=True):
     """The saved state; creates it on first use (create=False: None until then). lock=False when the caller already
     holds state.lock. Raises StateError when state.json is there but unreadable, and UnsafeHome when the state dir
-    fails check_owner (someone else could have written the words that go into Claude's context)."""
+    fails check_owner (someone else could have written the words that go into Claude's context) or, when it would
+    create the state, check_ours (it is someone else's folder)."""
     directory = home()
     if directory.exists():
         check_owner(directory)
@@ -290,6 +331,7 @@ def load_state(create=True, lock=True):
         return None
     with locked() if lock else contextlib.nullcontext():
         if not path.exists():
+            check_ours(directory)
             write_json(path, new_state())
     return load_state(create=False, lock=False)
 
@@ -404,18 +446,28 @@ def recovers(word, day, chat=None):
                                                    for d, kind in exposure_days(word, chat).items())
 
 
+def chat_exposure():
+    """Chat exposure by word, from the transcript scan (exposure.json)."""
+    return (read_json(home() / 'exposure.json', {}) or {}).get('words', {})
+
+
+def promote_word(w, day, chat):
+    """active -> known (graduates) or shaky -> known (recovers) for one word, if it is ready."""
+    if w['status'] == 'active' and graduates(w, chat):
+        set_status(w, 'known', day)
+        schedule(w, day, max(w.get('box', 0), KNOWN_BOX['graduated']))
+    elif w['status'] == 'shaky' and recovers(w, day, chat):
+        set_status(w, 'known', day)
+        schedule(w, day, max(w.get('box', 0), KNOWN_BOX['recovered']))
+
+
 def promote(state, day=None, chat=None):
     """Applies the promotion rules for today. Idempotent: safe to call as often as you like."""
     day = day or today()
     if chat is None:
-        chat = (read_json(home() / 'exposure.json', {}) or {}).get('words', {})
+        chat = chat_exposure()
     for w in state['words']:
-        if w['status'] == 'active' and graduates(w, chat):
-            set_status(w, 'known', day)
-            schedule(w, day, max(w.get('box', 0), KNOWN_BOX['graduated']))
-        elif w['status'] == 'shaky' and recovers(w, day, chat):
-            set_status(w, 'known', day)
-            schedule(w, day, max(w.get('box', 0), KNOWN_BOX['recovered']))
+        promote_word(w, day, chat)
     refill(state, day)
     state['stage'] = stage_for(state)
     return state
@@ -500,8 +552,9 @@ def known_band(state):
 
 def version(state):
     # Glosses, hints and notes are in it too: the extension caches swaps with them, so an edited lexicon.csv or
-    # notes.csv must look like a new list.
-    blob = json.dumps([stage_for(state), state.get('paused'),
+    # notes.csv must look like a new list. The pause flag isn't: the extension clears its swap cache when this changes,
+    # and it gets paused as a field of its own that stops and starts pages, so a pause keeps the cached swaps.
+    blob = json.dumps([stage_for(state),
                        [(w['es'], w['status'], w['en'], w['hint'], note(w['es'])) for w in introduced(state)]])
     return hashlib.sha1(blob.encode()).hexdigest()[:10]
 
@@ -635,20 +688,23 @@ def check(word, answer, way):
     return None
 
 
-# What an answer can change, saved with it before and after ([day, ok, *before, *after]) so a same-day redo can undo it.
+# What an answer can change, saved with it before and after ([day, ok, *before, *after, added]) so a same-day redo can
+# undo it; added is 1 when the answer added the day as a seen day (a sighting from before the answer stays).
 UNDO = ('box', 'status', 'changed', 'last_bad')
 
 
 def review(state, es, right, day=None, hold=False):
     """Records a quiz answer. A second answer the same day replaces the first (a retried command or a corrected
-    verdict), so answers can't stack boxes and a wrong verdict can be taken back. The first answer is undone only if
-    nothing else changed the word since (a known, learn or flip in between stays); otherwise the new answer goes on
-    top.
+    verdict), so answers can't stack boxes and a wrong verdict can be taken back: the word gets back the box, status
+    and dates it had, and loses the seen day the first answer added. The first answer is undone only if nothing else
+    changed the word since (a known, learn or flip in between stays); otherwise the new answer goes on top.
 
     Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day. With hold
     (right, but with a gender_slip), it stays in its box and comes back at the same gap.
     Wrong: a learning word starts its three clean days over and comes back tomorrow. A known word drops two boxes;
-    if it wasn't even recognized, it turns shaky, so it shows up more in chat until it's known again."""
+    if it wasn't even recognized, it turns shaky, so it shows up more in chat until it's known again.
+    The answer's promotion (a third seen day graduates a learning word) happens here, as the save would do it, so the
+    after-snapshot shows it and a same-day correction still finds the word as the answer left it."""
     day = day or today()
     w = find(state, es)
     if w is None or w['status'] == 'queue':
@@ -656,12 +712,14 @@ def review(state, es, right, day=None, hold=False):
     fields = lambda: [w.get(k, 0 if k == 'box' else '') for k in UNDO]
     reviews = list(w.get('reviews') or [])
     if reviews and reviews[-1][0] == day:  # an earlier answer from today: this one replaces it
-        saved = reviews.pop()[2:]
-        before, after = saved[:len(UNDO)], saved[len(UNDO):]
+        saved, n = reviews.pop()[2:], len(UNDO)
+        before, after, added = saved[:n], saved[n:2 * n], saved[2 * n:]
         if not after or after == fields():  # (0.2.2 records have no after-snapshot)
             w.update(zip(UNDO, before))
+            if added and added[0]:
+                w['days'] = [d for d in w.get('days') or [] if d != day]
     way, box = direction(dict(w, reviews=reviews)), w.get('box', 0)
-    before = fields()
+    before, seen = fields(), day in (w.get('days') or [])
     if right:
         apply_event(state, w['es'], 'seen', day)
         schedule(w, day, box if hold else box + 1)
@@ -672,7 +730,9 @@ def review(state, es, right, day=None, hold=False):
     else:
         w['last_bad'] = day
         schedule(w, day, 0)
-    w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields()])[-10:]
+    promote_word(w, day, chat_exposure())
+    added = int(not seen and day in (w.get('days') or []))
+    w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields() + [added]])[-10:]
     return w
 
 

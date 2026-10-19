@@ -14,8 +14,12 @@ const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
 const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
-const SYNC_MINUTES = 10; // a backstop: pages and the popup sync sooner when the word state is stale
-const STALE_MS = 120000; // a pause or setup rerun in Claude Code reaches pages within about this long
+// Word state syncs every SYNC_MINUTES, when the popup opens, and before a page's swap request once it is STALE_MS old.
+// So after a pause in Claude Code no new page text goes to Gemini within STALE_MS, but a page that asks for nothing
+// (all painted) keeps its Spanish until the alarm, the popup, or a request from any page brings the pause
+// (sw.py's CHROME_PAUSED and CHROME_PICKS_UP say so).
+const SYNC_MINUTES = 10;
+const STALE_MS = 120000;
 const FLUSH_DELAY_MS = 10000;
 const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
 
@@ -130,7 +134,9 @@ async function record(msg, sender) {
   return { ok: true };
 }
 
-// A new word-state version clears the decision cache, because cached swaps were chosen against the old list.
+// A new word-state version clears the decision cache, because cached swaps were chosen against the old list. The
+// plugin leaves the pause flag out of that version (swlib.version), so a pause and resume keep the cache; the flag
+// itself reaches pages through broadcast(), which stops or starts them.
 async function syncWords() {
   await flush();
   const res = await refresh({ storage: chromeStorage, send });

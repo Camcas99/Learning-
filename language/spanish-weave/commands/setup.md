@@ -24,6 +24,9 @@ default option first with "(default)" in its label. Leave Codex CLI out of quest
    Google's Gemini with your key; with a free key Google may use it to improve its AI and people may review it, so
    banking, health, work and private messaging sites are better left off." Every site: common webmail, chat apps
    and local addresses start off; turn others off from the toolbar (default) / Only sites I turn on (most private).
+   If `current_sites` in the plan is not null, setup ran before and the person may have changed the choice in the
+   extension popup since, so offer Keep the current site choice (default) first, then the other two without
+   "(default)".
 4. "If you picked the Chrome extension, your Gemini API key (free at https://aistudio.google.com/apikey, 18+)?" Paste it
    into the extension's popup at the end (default) / A file that contains it: type its path under Other. Never
    paste the key itself here.
@@ -36,7 +39,8 @@ it, and tell them to paste it into the extension popup instead. Then run
   The prompt hook has usually created the word state already, so the count can come out up to 5 short and the
   stage one lower until those words graduate; report the stage setup prints.
 - Codex CLI picked: `--codex`
-- Chrome extension picked: `--sites all` or `--sites ask`, and `--gemini-key-file '<path>'` if they gave a file
+- Chrome extension picked: `--sites all` or `--sites ask` (Keep the current site choice: no `--sites`, since a new
+  one would override a later popup choice), and `--gemini-key-file '<path>'` if they gave a file
 - From what the user typed after the command, pass on only `--gemini-key-file '<path>'` and
   `--user-data-dir '<dir>'` (that one can repeat), and ignore everything else there.
 If a path or folder contains a single quote, don't use it: ask for another path.

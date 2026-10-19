@@ -172,10 +172,11 @@ commands above.
 
 Now and then there's a new version with fixes. In Claude Code, type these one at a time:
 `/plugin marketplace update learning`, then `/plugin update spanish-weave@learning`. Then restart Claude Code, run
-`/spanish-weave:setup` again with the same answers as the first time (it keeps your progress), and in Chrome open
-`chrome://extensions` and click the reload arrow on Spanish Weave. `/spanish-weave:status` tells you when the copies
-setup made are behind the plugin, which means it's time to rerun setup. With only a pasted block, copy your level's
-block again now and then to pick up fixes.
+`/spanish-weave:setup` again (it keeps your progress): pick the same places as the first time, and for the websites
+question keep the default, "Keep the current site choice", so a choice you made later in the extension's popup
+stays. Then in Chrome open `chrome://extensions` and click the reload arrow on Spanish Weave.
+`/spanish-weave:status` tells you when the copies setup made are behind the plugin, which means it's time to rerun
+setup. With only a pasted block, copy your level's block again now and then to pick up fixes.
 
 ## Privacy
 
@@ -198,8 +199,9 @@ Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, 
 Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others) and local or work-network addresses start off.
 Instagram and X direct messages are never read. Banking and health sites stay on in the default every-site mode, so
 turn those off from the toolbar, or set "Other sites" in the extension's popup to "Only sites I turn on" (setup asks
-you this too; whichever you chose last wins). A pause, or a setup rerun, reaches Chrome within 2 minutes, or as soon
-as you open the popup.
+you this too; whichever you chose last wins). A pause stops new page text going to Gemini within 2 minutes; Spanish
+already on an open page goes when you reload it after that, when you open the popup, or within 10 minutes. Resuming,
+or a setup rerun, reaches Chrome within 10 minutes, or as soon as you open the popup.
 
 Only load the extension folder that setup gives you, never a copy someone sends you: the extension's ID is public,
 and a lookalike with the same ID would be handed your Gemini key.

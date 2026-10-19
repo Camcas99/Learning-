@@ -59,9 +59,10 @@ granted:
   refreshes, so then rerun setup as in "Update" in INSTALL-FOR-AGENTS.md (`python3 "$SW" setup` with no flags keeps
   their progress, site choice and stored key, and asks nothing), have them click the reload arrow on Spanish Weave
   in `chrome://extensions`, and restart Claude Code (the update reaches new sessions only). If you'd rather use
-  `/spanish-weave:setup`, restart Claude Code first and give the same answers as the first time. `sw.py check` and
-  `/spanish-weave:status` say when those copies are behind the installed plugin, and `check` flags a local
-  marketplace folder that has gone missing.
+  `/spanish-weave:setup`, restart Claude Code first, have them pick the same places as the first time, and keep "Keep
+  the current site choice" (the rerun's default) for the websites question: a site answer would override a choice
+  they made later in the extension's popup. `sw.py check` and `/spanish-weave:status` say when those copies are
+  behind the installed plugin, and `check` flags a local marketplace folder that has gone missing.
 - Needs: macOS or Linux (not Windows yet), Python 3.9+ and git (on a Mac, both come with Apple's command line
   developer tools, which macOS offers to install the first time either is run), Claude Code for the plugin, Chrome
   (or Chromium) for the extension. No pip installs. On Windows, offer only option 1 and say the full version is

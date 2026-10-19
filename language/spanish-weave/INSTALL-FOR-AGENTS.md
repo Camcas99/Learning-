@@ -67,6 +67,7 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | 2. Chrome extension | pass answers 3 and 4; give the Chrome steps at the end |
 | 2. Preferences block | run `export` at the end |
 | 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
+| 3. Keep the current site choice (offer it first when `setup --dry-run` shows a `current_sites`) | no `--sites` |
 | 4. A file path | `--gemini-key-file <path>` |
 
 `--known-top N` marks as known those of the N most common words in `data/lexicon.csv` that aren't introduced yet;
@@ -140,7 +141,8 @@ and whichever came last of setup's `--sites` and the popup's "Other sites" choic
 It always installs the extension folder and native host, even if the person didn't pick the extension. It creates:
 
 - `~/.spanish-weave/` (or `$SPANISH_WEAVE_HOME`, which must be a new or empty folder, or an earlier Spanish Weave
-  one, that the person owns; setup refuses any other): word state, the extension folder to load, the native host
+  one, that the person owns; setup refuses any other, and the chat hook and commands write nothing into it): word
+  state, the extension folder to load, the native host
 - Chrome and Chromium native messaging host manifests (user level, no sudo):
   - Linux: `~/.config/google-chrome/NativeMessagingHosts/`, `~/.config/chromium/NativeMessagingHosts/`
   - macOS: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`, `.../Chromium/NativeMessagingHosts/`
@@ -208,8 +210,10 @@ python3 "$SW" check
 
 The extension folder, native host and Codex hook script run from copies in `~/.spanish-weave` that a plugin update
 doesn't touch; setup refreshes them. With no flags it keeps word progress, the site choice and a stored key, and
-asks nothing. `check` (and `/spanish-weave:status`) says when those copies are behind the installed plugin, and
-`check` flags a local marketplace folder that is gone. Then the person clicks the reload arrow on Spanish Weave in
+asks nothing. Don't add `--sites` here: it is timed, so it would override an "Other sites" choice the person made in
+the extension popup since (turning every site back on for someone who chose "Only sites I turn on"). `check` (and
+`/spanish-weave:status`) says when those copies are behind the installed plugin, and `check` flags a local
+marketplace folder that is gone. Then the person clicks the reload arrow on Spanish Weave in
 `chrome://extensions` (HUMAN), and the updated chat hook loads in the next Claude Code session. If the marketplace
 was added from a local folder, bring that folder up to date first (`git pull` in it, or unzip the new version into
 the same place), since `marketplace update` reads from it.
