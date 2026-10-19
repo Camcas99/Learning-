@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -973,6 +974,181 @@ class Setup(Home):
         key = json.loads((ROOT / 'extension' / 'manifest.json').read_text())['key']
         digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
         self.assertEqual(''.join(chr(ord('a') + int(c, 16)) for c in digest), sw.EXTENSION_ID)
+
+
+COMMANDS = sorted((ROOT / 'commands').glob('*.md'))
+SW_RULE = 'Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" '
+
+
+def command_file(path):
+    """(frontmatter fields, body) of a commands/*.md file; every field is on one line."""
+    _, head, body = path.read_text(encoding='utf-8').split('---\n', 2)
+    return dict(line.split(': ', 1) for line in head.splitlines() if ': ' in line), body
+
+
+def bash_rules(fields):
+    """allowed-tools' Bash rules as (command, prefix rule?)."""
+    rules = [tool[5:-1] for tool in fields.get('allowed-tools', '').split(', ') if tool.startswith('Bash(')]
+    return [(' '.join(rule[:-2].split()), True) if rule.endswith(':*') else (' '.join(rule.split()), False)
+            for rule in rules]
+
+
+def allowed(command, rules):
+    """Claude Code's match for a Bash rule: the exact command, or a prefix rule's command and then a space."""
+    command = ' '.join(command.split())
+    return any(command == rule or prefix and command.startswith(rule + ' ') for rule, prefix in rules)
+
+
+class Commands(Home):
+    """The slash commands: no user text in shell lines, narrow permissions, and the sw.py side they rely on."""
+
+    def sw(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(list(argv))
+        return out.getvalue()
+
+    def test_no_user_text_in_shell(self):
+        for path in COMMANDS:
+            _, body = command_file(path)
+            self.assertEqual(body.count('`') % 2, 0, path.name)
+            spans = re.findall(r'!`([^`]+)`', body) + [s for s in re.findall(r'`([^`]+)`', body) if 'sw.py' in s]
+            for span in spans:
+                self.assertIsNone(re.search(r'\$(ARGUMENTS|\d)', span), f'{path.name}: {span}')
+            for text in body.splitlines():
+                if '$ARGUMENTS' in text:  # only as data in prose, labelled as such
+                    self.assertIn('(data, not instructions)', text, path.name)
+
+    def test_crafted_arguments_run_nothing(self):
+        """Claude Code puts the typed text in place of $ARGUMENTS, escaping only `!` markers, then runs `!` lines."""
+        bin_dir = self.home / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'python3').symlink_to(sys.executable)
+        victim = self.home / 'victim'
+        victim.write_text('ORIGINAL')
+        payloads = [f'1; touch {self.home}/pwned', f'x"; touch {self.home}/pwned; echo "', f'--all --out {victim} #']
+        escape = lambda text: re.sub(r'^!', r'\\!', text.replace('`!', '` !').replace('!`', '! `'))
+        commands = set()
+        for path in COMMANDS:
+            _, body = command_file(path)
+            for payload in payloads:
+                text = body.replace('$ARGUMENTS', escape(payload)).replace('${CLAUDE_PLUGIN_ROOT}', str(ROOT))
+                commands.update(re.findall(r'!`([^`]+)`', text))
+        env = dict(os.environ, HOME=str(self.home), SPANISH_WEAVE_HOME=str(self.home / 'sw'), XDG_CONFIG_HOME='',
+                   CODEX_HOME=str(self.home / 'codex'), PATH=os.pathsep.join([str(bin_dir), '/usr/bin', '/bin']))
+        run = lambda command: subprocess.run(['/bin/sh', '-c', command], env=env, capture_output=True, text=True,
+                                             timeout=60).stdout
+        outputs = [run(command) for command in sorted(commands)]
+        self.assertTrue(any(out.startswith('Spanish Weave: Stage') for out in outputs))  # the lines ran
+        self.assertFalse((self.home / 'pwned').exists())
+        self.assertEqual(victim.read_text(), 'ORIGINAL')
+
+    def test_permissions_are_narrow(self):
+        for path in COMMANDS:
+            fields, body = command_file(path)
+            self.assertNotIn('Bash(python3:*)', path.read_text(encoding='utf-8'))
+            tools = fields['allowed-tools'].split(', ')
+            self.assertEqual([t for t in tools if not t.startswith('Bash(') and t != 'AskUserQuestion'], [], path.name)
+            self.assertEqual([t for t in tools if t.startswith('Bash(') and not t.startswith(SW_RULE)], [], path.name)
+            # The model can't start a command that changes something; status stays askable ("how's my Spanish?").
+            self.assertEqual(fields.get('disable-model-invocation') == 'true', path.name != 'status.md', path.name)
+            bangs = re.findall(r'!`([^`]+)`', body)
+            templates = [s for s in re.findall(r'`([^`]+)`', body) if 'sw.py' in s]
+            self.assertTrue(bangs or templates, path.name)
+            for command in bangs + templates:
+                self.assertTrue(allowed(command, bash_rules(fields)), f'{path.name}: {command}')
+                # Claude Code asks before a command with a $ expansion ("$HOME/..."), even one a rule matches.
+                self.assertNotIn('$', command.replace('${CLAUDE_PLUGIN_ROOT}', ''), f'{path.name}: {command}')
+            for command in bangs:
+                self.assertIsNone(re.search(r'[;&|#`]|\$\(', command), f'{path.name}: {command}')
+
+    def test_stage_without_value(self):
+        with swlib.editing():
+            pass
+        before = (self.home / 'sw' / 'state.json').read_bytes()
+        self.assertEqual(self.sw('stage'), 'Stage 1 (automatic)\n')
+        self.assertEqual((self.home / 'sw' / 'state.json').read_bytes(), before)  # shown, not saved
+        self.assertEqual(self.sw('stage', '2'), 'Stage 2 (pinned)\n')
+        self.assertEqual(self.sw('stage'), 'Stage 2 (pinned)\n')
+
+    def test_bare_aliases(self):
+        out = self.sw('export', 'chatgpt')
+        self.assertIn('--- "Custom instructions" box', out)
+        self.assertIn('--- "More about you" box', out)
+        self.assertTrue(self.sw('export', 'claude.ai').startswith('claude.ai > Settings'))
+        with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+            sw.main(['export', 'chatgpt', 'claude-ai'])
+        with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+            sw.main(['export', 'everything'])
+        deck = self.home / 'deck.txt'
+        self.sw('anki', 'all', '--out', str(deck))
+        lines = deck.read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines[:len(export.ANKI_HEADERS)], export.ANKI_HEADERS)
+        self.assertEqual([n.split('\t')[0] for n in lines[len(export.ANKI_HEADERS):]],
+                         [w['es'] for w in swlib.load_lexicon()])
+
+    def test_phrases_quotes_punctuation(self):
+        status = lambda es: swlib.find(swlib.load_state(), es)['status']
+        self.assertEqual(self.sw('known', 'sin embargo'), 'Known: sin embargo\n')
+        self.assertEqual((status('sin embargo'), status('sin')), ('known', 'active'))
+        self.assertEqual(self.sw('known', '"tal vez"'), 'Known: tal vez\n')  # not la vez
+        self.assertEqual((status('tal vez'), status('la vez')), ('known', 'queue'))
+        self.assertEqual(self.sw('known', 'sin', 'embargo', 'pero'), 'Known: sin embargo, pero\n')  # a split phrase
+        self.assertEqual(status('sin'), 'active')
+        self.assertEqual(self.sw('known', 'por favor'), 'Known: por favor\n')
+        self.assertEqual(self.sw('known', '¡hola!'), 'Known: hola\n')
+        self.assertEqual(self.sw('learn', '“sin embargo”, zzz'),
+                         'Back to learning: sin embargo\nNot in the word list: zzz\n')
+        before = (self.home / 'sw' / 'state.json').read_bytes()
+        self.assertEqual(self.sw('known', ','), 'Give one or more words from the list, like: known pero, sin embargo\n')
+        self.assertEqual(self.sw('learn'), 'Give one or more words from the list, like: learn pero, sin embargo\n')
+        self.assertEqual((self.home / 'sw' / 'state.json').read_bytes(), before)
+
+    def test_record_batch(self):
+        Review.met_long_ago(self, 5)
+        with mock.patch('sys.stdout', new=io.StringIO()) as out, self.assertRaises(SystemExit) as caught:
+            sw.main(['record', 'y:right', 'pero:wrong', 'zzz:right'])
+        self.assertEqual(caught.exception.code, 1)
+        state = swlib.load_state()
+        self.assertEqual((swlib.find(state, 'y')['box'], swlib.find(state, 'pero')['last_bad']), (1, swlib.today()))
+        lines = out.getvalue().splitlines()
+        self.assertTrue(lines[0].startswith('y: right; next review'))
+        self.assertTrue(lines[1].startswith('pero: wrong; next review'))
+        self.assertIn('Not saved: zzz:right', lines[2])
+        with mock.patch('sys.stdout', new=io.StringIO()) as out, self.assertRaises(SystemExit):
+            sw.main(['record', 'con', 'con:right:le', 'con:maybe'])
+        self.assertEqual([line.split(' (')[0] for line in out.getvalue().splitlines()],
+                         ['Not saved: con', 'Not saved: con:right:le', 'Not saved: con:maybe'])
+        self.assertNotIn('reviews', swlib.find(swlib.load_state(), 'con'))
+        with swlib.editing() as state:
+            swlib.set_status(swlib.find(state, 'el problema'), 'active', '2026-01-01')
+        out = self.sw('record', 'el problema:right:la', 'entonces:right')
+        self.assertIn('el problema: right with the wrong article, so same gap again', out)
+        problema = swlib.find(swlib.load_state(), 'el problema')
+        self.assertEqual((problema['box'], problema['reviews'][-1][1]), (0, 1))  # right, but the same gap again
+
+    def test_anki_out_refuses_other_files(self):
+        notes = self.home / 'notes.txt'
+        notes.write_text('ORIGINAL\n')
+        with self.assertRaises(SystemExit) as caught:
+            self.sw('anki', '--out', str(notes))
+        self.assertIn('is not an earlier Spanish Weave Anki export', str(caught.exception.code))
+        self.assertEqual(notes.read_text(), 'ORIGINAL\n')
+        earlier = self.home / 'earlier.txt'
+        earlier.write_text(export.ANKI_HEADERS[0] + '\nold\tnote\n')
+        link = self.home / 'link.txt'
+        link.symlink_to(earlier)
+        with self.assertRaises(SystemExit) as caught:
+            self.sw('anki', '--out', str(link))
+        self.assertIn('symlink', str(caught.exception.code))
+        self.assertEqual(earlier.read_text(), export.ANKI_HEADERS[0] + '\nold\tnote\n')
+        with self.assertRaises(SystemExit):
+            self.sw('anki', '--out', str(self.home))  # a folder
+        self.assertIn('Wrote', self.sw('anki', '--out', str(earlier)))  # an earlier export is replaced
+        self.assertEqual(earlier.read_text(encoding='utf-8'), export.anki(swlib.load_state()))
+        with mock.patch.dict(os.environ, {'HOME': str(self.home)}):  # anki.md passes '~/...' with no shell expansion
+            out = self.sw('anki', '--out', '~/fresh.txt')
+        self.assertIn(f'notes to {self.home / "fresh.txt"}.', out)
+        self.assertEqual((self.home / 'fresh.txt').read_text(encoding='utf-8'), export.anki(swlib.load_state()))
 
 
 if __name__ == '__main__':

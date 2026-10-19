@@ -1,6 +1,7 @@
 ---
 description: Pause Spanish Weave in chat and on websites
-allowed-tools: Bash(python3:*)
+allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" pause)
+disable-model-invocation: true
 ---
 !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" pause`
 

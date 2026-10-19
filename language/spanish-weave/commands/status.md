@@ -1,6 +1,6 @@
 ---
 description: Show your Spanish Weave stage and learning words
-allowed-tools: Bash(python3:*)
+allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" status)
 ---
 !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" status`
 

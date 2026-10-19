@@ -1,6 +1,7 @@
 ---
 description: Resume Spanish Weave
-allowed-tools: Bash(python3:*)
+allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" resume)
+disable-model-invocation: true
 ---
 !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" resume`
 

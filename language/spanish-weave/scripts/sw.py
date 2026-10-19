@@ -10,13 +10,16 @@
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
   sw.py status                                       stage, word counts, learning words
-  sw.py known WORD...                                mark words as known
+  sw.py known WORD...                                mark words as known; listed phrases too (known sin embargo,
+                                                     pero), and quotes and ¡!¿? are fine
   sw.py learn WORD...                                put words back in the learning set (shaky)
-  sw.py stage N|auto                                 pin the stage (1-4) or let it follow known words
+  sw.py stage [N|auto]                               pin the stage (1-4) or let it follow known words; with no
+                                                     value, show it
   sw.py pause | resume                               stop or restart Spanish in chat and on websites
   sw.py refresh                                      rescan chat transcripts and apply the promotion rules
   sw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   sw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
+                                                     (the flags work without dashes too: export chatgpt)
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   sw.py check                                        verify the state, extension folder and native host
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
@@ -24,10 +27,13 @@
   sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
                                                      it wasn't the listed one; a noun whose ending doesn't give
                                                      its gender away then stays in its box)
+  sw.py record WORD:right|wrong[:A]...               record several quiz answers in one save, each as review does
+                                                     (A: the --article); exits 1 if any was not saved
   sw.py placement [--items] [--answers NUMS] [--apply]
                                                      2-minute placement test (Yes/No vocabulary test); NUMS like
                                                      "1, 4, 9-12"
-  sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated)
+  sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated; all works
+                                                     without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
                                                      remove the native host manifests (and the Codex hook and the
@@ -462,33 +468,62 @@ def status(_args):
           f'  {nothing_due(state)[0].lower()}{nothing_due(state)[1:]}')
 
 
+QUOTES = '"“”«»\'‘’'
+LONGEST_PHRASE = 5  # tokens; the longest listed phrases have 4
+
+
+def word_groups(words):
+    """known/learn arguments as token lists, one per comma-separated group: the arguments joined (a shell may have
+    split a phrase), quotes dropped, and Spanish punctuation taken off each token: '"tal vez", ¡hola!' ->
+    [['tal', 'vez'], ['hola']]."""
+    text = ' '.join(words).translate({ord(c): None for c in QUOTES})
+    groups = [[t for t in (t.strip('¡!¿?.;:()') for t in group.split()) if t] for group in text.split(',')]
+    return [group for group in groups if group]
+
+
 def mark(kind):
     def run(args):
+        groups = word_groups(args.words)
+        if not groups:
+            print(f'Give one or more words from the list, like: {args.command} pero, sin embargo')
+            return
         missing, done = [], []
         with swlib.editing() as state:
-            for chunk in (c for arg in args.words for c in arg.split(',')):
-                chunk = chunk.strip()
-                # "tal vez" is one word; "y pero" is two.
-                for word in [chunk] if swlib.find(state, chunk) or ' ' not in chunk else chunk.split():
-                    found = swlib.find(state, word)
-                    if found and swlib.apply_event(state, word, kind):
+            for tokens in groups:
+                i = 0
+                while i < len(tokens):
+                    # Longest listed phrase first: "sin embargo pero" is sin embargo and pero, not sin.
+                    for n in range(min(LONGEST_PHRASE, len(tokens) - i), 0, -1):
+                        phrase = ' '.join(tokens[i:i + n])
+                        found = swlib.find(state, phrase)
+                        if found:
+                            break
+                    if found and swlib.apply_event(state, phrase, kind):
                         done.append(found['es'])  # the list's spelling, accents included: "tambien" -> también
                     else:
-                        missing.append(word)
+                        missing.append(phrase)
+                    i += n
         if done:
-            print(f'{"Known" if kind == "known" else "Back to learning"}: {", ".join(done)}')
+            print(f'{"Known" if kind == "known" else "Back to learning"}: {", ".join(dict.fromkeys(done))}')
         if missing:
-            print(f'Not in the word list: {", ".join(missing)}')
+            print(f'Not in the word list: {", ".join(dict.fromkeys(missing))}')
     return run
 
 
+def stage_line(state):
+    return f'Stage {swlib.stage_for(state)}{" (pinned)" if state.get("stage_pinned") else " (automatic)"}'
+
+
 def stage(args):
+    if args.value is None:  # only shows it, so nothing is saved
+        print(stage_line(swlib.load_state()))
+        return
     with swlib.editing() as state:
         if args.value == 'auto':
             state['stage_pinned'] = False
         else:
             state['stage'], state['stage_pinned'] = int(args.value), True
-    print(f'Stage {swlib.stage_for(state)}{" (pinned)" if state["stage_pinned"] else " (automatic)"}')
+    print(stage_line(state))
 
 
 def pause(value):
@@ -636,16 +671,51 @@ def quiz(args):
             print(f'{n}. {way}: {question(word, way)} | answer: {answer_line(word)}')
 
 
-def review_cmd(args):
-    with swlib.editing() as state:
-        found = swlib.find(state, args.word)
-        hold = bool(found and args.result == 'right' and swlib.gender_slip(found['es'], args.article))
-        word = swlib.review(state, args.word, args.result == 'right', hold=hold)
-    if word is None:
-        sys.exit(f'Not a word you are learning or know: {args.word}')
+def record_answer(state, es, result, article=None):
+    """Records one quiz answer. Returns (the word, or None when it isn't being learned or known; whether the gender
+    hold applied)."""
+    found = swlib.find(state, es)
+    hold = bool(found and result == 'right' and swlib.gender_slip(found['es'], article))
+    return swlib.review(state, es, result == 'right', hold=hold), hold
+
+
+def recorded(word, result, hold):
+    """The line for a recorded answer; called after the save, so it shows the status promotion left."""
     status = {'active': 'learning', 'shaky': 'shaky', 'known': 'known'}[word['status']]
     slip = f' with the wrong article, so same gap again (it\'s {word["es"]})' if hold else ''
-    print(f'{word["es"]}: {args.result}{slip}; next review {word["due"]} ({status})')
+    return f'{word["es"]}: {result}{slip}; next review {word["due"]} ({status})'
+
+
+def review_cmd(args):
+    with swlib.editing() as state:
+        word, hold = record_answer(state, args.word, args.result, args.article)
+    if word is None:
+        sys.exit(f'Not a word you are learning or know: {args.word}')
+    print(recorded(word, args.result, hold))
+
+
+ITEM = re.compile(r'([^:]+):(right|wrong)(?::([^:]+))?')
+
+
+def record_cmd(args):
+    """A whole quiz's answers (WORD:right|wrong[:ARTICLE]) in one command and one save, so the quiz needs one
+    permission at the end instead of one per answer. Each is recorded as review records it."""
+    lines = []
+    with swlib.editing() as state:
+        for item in args.items:
+            m = ITEM.fullmatch(item.strip())
+            if not m:
+                lines.append(f'Not saved: {item} (expected WORD:right or WORD:wrong, with an optional :ARTICLE)')
+            elif m.group(3) and m.group(3) not in swlib.GENDER_OF:
+                lines.append(f'Not saved: {item} (the article can be {", ".join(sorted(swlib.GENDER_OF))})')
+            else:
+                word, hold = record_answer(state, m.group(1), m.group(2), m.group(3))
+                lines.append((word, m.group(2), hold) if word else
+                             f'Not saved: {item} (not a word you are learning or know)')
+    for line in lines:  # after the save, like review's line
+        print(line if isinstance(line, str) else recorded(*line))
+    if any(isinstance(line, str) for line in lines):
+        sys.exit(1)
 
 
 def item_numbers(text, last):
@@ -713,13 +783,37 @@ def placement_cmd(args):
               'weeks, and any you miss go back to learning.')
 
 
+def write_anki(path, text):
+    """Writes an Anki export to path (~ is expanded here, so the slash command needs no shell expansion), which may be
+    new or an earlier export but nothing else: a symlink, a folder or device, or any other file is left alone, so a
+    mistyped or planted --out can't overwrite it. Returns the full path."""
+    path = Path(path).expanduser()
+    keep = (f'Left {path} alone: it is there and is not an earlier Spanish Weave Anki export. Move it, then run this '
+            'again.')
+    if path.is_symlink():
+        sys.exit(f'Left {path} alone: it is a symlink, so it could point at another file.')
+    if path.exists() and not path.is_file():
+        sys.exit(keep)
+    try:
+        if path.exists():
+            with open(path, encoding='utf-8', errors='replace') as file:
+                if file.readline(200).rstrip('\r\n') != export.ANKI_HEADERS[0]:
+                    sys.exit(keep)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o644)
+        with os.fdopen(fd, 'w', encoding='utf-8') as file:
+            file.write(text)
+    except OSError as error:
+        sys.exit(f'Could not write {path}: {error.strerror or error.__class__.__name__}.')
+    return path
+
+
 def anki_cmd(args):
     with swlib.editing() as state:
         pass
     text = export.anki(state, every=args.all)
     if args.out:
-        Path(args.out).expanduser().write_text(text, encoding='utf-8')
-        print(f'Wrote {text.count(chr(10)) - len(export.ANKI_HEADERS)} notes to {args.out}. In Anki: File > Import, '
+        path = write_anki(args.out, text)
+        print(f'Wrote {text.count(chr(10)) - len(export.ANKI_HEADERS)} notes to {path}. In Anki: File > Import, '
               'pick the file (the deck, note type and tags are set by the file).')
     else:
         print(text, end='')
@@ -743,6 +837,16 @@ def positive(text):
     return int(text)
 
 
+def bare(*words):
+    """argparse type for an option typed without its dashes (export chatgpt, anki all), as slash commands invite.
+    choices= would do, but on Python 3.9 it rejects an empty nargs='*' list."""
+    def check(text):
+        if text not in words:
+            raise argparse.ArgumentTypeError(f'expected {" or ".join(words)}, not {text}')
+        return text
+    return check
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Spanish Weave', formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=__doc__)
@@ -764,10 +868,10 @@ def main(argv=None):
     sub.add_parser('check').set_defaults(run=check)
     for name, kind in (('known', 'known'), ('learn', 'asked')):
         p = sub.add_parser(name)
-        p.add_argument('words', nargs='+')
+        p.add_argument('words', nargs='*')
         p.set_defaults(run=mark(kind))
     p = sub.add_parser('stage')
-    p.add_argument('value', choices=['1', '2', '3', '4', 'auto'])
+    p.add_argument('value', nargs='?', choices=['1', '2', '3', '4', 'auto'], help='leave out to show the stage')
     p.set_defaults(run=stage)
     sub.add_parser('pause').set_defaults(run=pause(True))
     sub.add_parser('resume').set_defaults(run=pause(False))
@@ -777,7 +881,10 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
+                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
     p.set_defaults(run=export_cmd)
+    exporter = p
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     p = sub.add_parser('quiz')
     p.add_argument('-n', type=positive, default=10, help='most words to ask')
@@ -788,6 +895,9 @@ def main(argv=None):
     p.add_argument('result', choices=['right', 'wrong'])
     p.add_argument('--article', choices=sorted(swlib.GENDER_OF), help='the el/la/un/una the learner used, if not the listed one')
     p.set_defaults(run=review_cmd)
+    p = sub.add_parser('record')
+    p.add_argument('items', nargs='+', metavar='WORD:right|wrong[:ARTICLE]')
+    p.set_defaults(run=record_cmd)
     p = sub.add_parser('placement')
     p.add_argument('--items', action='store_true', help='print the numbered test instead of asking')
     p.add_argument('--answers', metavar='NUMS', help='the item numbers you know, e.g. "1, 4, 9-12"')
@@ -795,12 +905,17 @@ def main(argv=None):
     p.set_defaults(run=placement_cmd)
     p = sub.add_parser('anki')
     p.add_argument('--all', action='store_true', help='every listed word, not only the ones you have met')
-    p.add_argument('--out', metavar='FILE')
+    p.add_argument('--out', metavar='FILE', help='a new file or an earlier export; nothing else is overwritten')
+    p.add_argument('extra', nargs='*', metavar='all', help='the same as --all', type=bare('all'))
     p.set_defaults(run=anki_cmd)
     p = sub.add_parser('output')
     p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
     args = parser.parse_args(argv)
+    for word in getattr(args, 'extra', []):  # chatgpt -> --chatgpt, claude.ai -> --claude-ai, all -> --all
+        setattr(args, re.sub(r'[-.]', '_', word), True)
+    if args.command == 'export' and args.chatgpt and args.claude_ai:
+        exporter.error('argument --chatgpt: not allowed with argument --claude-ai')
     try:
         args.run(args)
     except swlib.StateError as error:
