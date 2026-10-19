@@ -52,7 +52,9 @@ It asks a few questions and does the rest. This version tracks your words for yo
 at your level.
 
 **3. Everywhere you read, with the Chrome extension.**
-During setup, say yes to the Chrome extension. You'll need a free Gemini API key from
+During setup, say yes to the Chrome extension. Setup then asks whether it should run on every site or only on sites
+you turn on: the extension sends the readable text of each page it runs on to Google's Gemini (see Privacy below),
+so pick "Only sites I turn on" if you'd rather choose site by site. You'll need a free Gemini API key from
 https://aistudio.google.com/apikey (Google requires you to be 18 or older, and school or supervised Google accounts
 are often blocked), which you paste into the extension's popup yourself (never into a chat). Then in Chrome:
 `chrome://extensions` > Developer mode > Load unpacked > the folder Claude names > pin Spanish Weave from the
@@ -71,7 +73,8 @@ should work on Instagram's website too (see below).
    hidden folder (`.spanish-weave`), so you won't see it by browsing: press Cmd+Shift+G on a Mac (Ctrl+L on Linux),
    paste the full path setup gave you, press Return, then click Select. New extensions start hidden, so click the
    puzzle-piece icon in Chrome's toolbar and pin Spanish Weave. Then click its icon (a gray "S"), paste the key,
-   and click Allow all websites.
+   and click Allow all websites (if you chose only sites you turn on, tick the box next to the site's name on each
+   site you want instead).
 4. For claude.ai and ChatGPT, on the web and in their phone apps: run `/spanish-weave:export` and
    `/spanish-weave:export --chatgpt`, and paste each block where it says. Do it again about once a week; Claude Code
    reminds you.
@@ -83,8 +86,9 @@ The only places it can't reach are web pages on a phone and the Instagram app (s
 
 Already know some Spanish? Pick "Not sure: take a 2-minute placement test" during setup, or run
 `/spanish-weave:placement` later. You'll mark the words you know from a list; a few are made up, so only mark ones
-you could actually translate (pick three made-up ones and it asks you to try again). The words it marks known still
-come up in your quizzes over the next few weeks, so any you don't really know go back to learning.
+you could actually translate (pick three made-up ones and it asks you to try again). Claude Code asks you once before
+saving the result. The words it marks known still come up in your quizzes over the next few weeks, so any you don't
+really know go back to learning.
 
 ## The best way to use it
 
@@ -95,7 +99,8 @@ come up in your quizzes over the next few weeks, so any you don't really know go
    shows up every few replies, and it's the most valuable 3 seconds of the day.
 4. **Quiz for 3 to 5 minutes most days** with `/spanish-weave:quiz`. Words you get right come back after longer and
    longer gaps (3 days, a week, two weeks...). Missed words come back soon, and the quiz asks them once more at the
-   end, so you always finish on a right answer. That spacing is what turns "I've seen it" into "I know it".
+   end, so you always finish on a right answer. Your answers are saved together at the end, so Claude Code asks you
+   once to save them. That spacing is what turns "I've seen it" into "I know it".
 5. **Say words out loud.** The hints show the stressed syllable in capitals: `también` = `tahm-BYEN`. In Chrome,
    Alt+click (Option+click on a Mac) a Spanish word to hear it, or turn on "Say words aloud when the meaning shows"
    in the extension's popup. Underline colors tell you a noun's gender: teal for masculine (el), rose for feminine
@@ -123,11 +128,13 @@ come up in your quizzes over the next few weeks, so any you don't really know go
 
 ## Commands (in Claude Code)
 
+You type these yourself: Claude can't start them for you (except status).
+
 | Type this | To |
 |---|---|
 | `/spanish-weave:status` | see your stage, words, and what's due for review |
-| `/spanish-weave:quiz` | do a short spaced-repetition quiz |
-| `/spanish-weave:placement` | take the placement test |
+| `/spanish-weave:quiz` | do a short spaced-repetition quiz (it asks once to save your answers) |
+| `/spanish-weave:placement` | take the placement test (it asks once to save the result) |
 | `/spanish-weave:known <word>` / `learn <word>` | mark a word known, or bring it back |
 | `/spanish-weave:stage 1-4` / `stage auto` | set the amount of Spanish yourself, or let it follow your progress |
 | `/spanish-weave:output on` / `off` | turn "Your turn" practice on or off |
@@ -161,23 +168,49 @@ commands above.
 - **The Instagram app**: no. Phone apps can't be changed by other software; that's how iPhone and Android keep
   apps safe.
 
+## Updates
+
+Now and then there's a new version with fixes. In Claude Code, type these one at a time:
+`/plugin marketplace update learning`, then `/plugin update spanish-weave@learning`. Then restart Claude Code, run
+`/spanish-weave:setup` again with the same answers as the first time (it keeps your progress), and in Chrome open
+`chrome://extensions` and click the reload arrow on Spanish Weave. `/spanish-weave:status` tells you when the copies
+setup made are behind the plugin, which means it's time to rerun setup. With only a pasted block, copy your level's
+block again now and then to pick up fixes.
+
 ## Privacy
 
-Your words and progress stay on your computer, in a `.spanish-weave` folder. The Claude Code part reads your local
-chat history only to count which words you've seen, and never sends it anywhere. The Chrome extension sends the
-readable text of pages it runs on to Google's Gemini with your own key. With a free key, Google may use that text
-to improve its products and AI, and human reviewers may read it; Google asks free users not to send personal or
-sensitive information. (In the EEA, the UK and Switzerland, Google treats free keys like paid ones.) Gmail,
-Outlook.com, Yahoo Mail, Proton Mail, claude.ai, ChatGPT, Gemini and local addresses start off, and Instagram
-messages are never read. In the default every-site mode, other sites are on, including other email and AI chat
-sites (iCloud Mail, work Outlook, Copilot) and banking or health sites, so turn those off from the toolbar, or set
-"Other sites" in the extension's popup to "Only sites I turn on" (setup asks you this too).
+What's kept where, and what gets sent:
+
+- **Only on your computer**, in a `.spanish-weave` folder: your word list with each word's status and dates, which
+  words you've seen in chats (counted from your Claude Code and Codex history, which is never sent anywhere), and how
+  many messages each chat has had.
+- **To Claude (Anthropic), and to OpenAI if you use Codex:** your current word lists and stage go along with each
+  message you send, so the reply can use them.
+- **To Google's Gemini, with your own key:** the Chrome extension sends the readable text of each page it runs on,
+  with your word lists and stage. With a free key, Google may use that text to improve its products and AI, and
+  human reviewers may read it; Google asks free users not to send personal or sensitive information. (In the EEA,
+  the UK and Switzerland, Google treats free keys like paid ones.)
+- **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
+- **In Chrome:** the extension keeps its settings, your key and a small cache of swapped words with a few words of
+  page text around each, in Chrome's own storage. Removing the extension deletes them.
+
+Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, WhatsApp Web, Messenger, Slack,
+Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others) and local or work-network addresses start off.
+Instagram and X direct messages are never read. Banking and health sites stay on in the default every-site mode, so
+turn those off from the toolbar, or set "Other sites" in the extension's popup to "Only sites I turn on" (setup asks
+you this too; whichever you chose last wins). A pause, or a setup rerun, reaches Chrome within 2 minutes, or as soon
+as you open the popup.
+
+Only load the extension folder that setup gives you, never a copy someone sends you: the extension's ID is public,
+and a lookalike with the same ID would be handed your Gemini key.
 
 ## If something's off
 
 - **No Spanish in Claude's replies:** open a new Claude Code session (the plugin loads at start), and check
   `/spanish-weave:status` isn't paused.
 - **No Spanish on websites:** click the Spanish Weave icon. Is it on, is there a Gemini key, and is the site allowed?
+- **Spanish in automated work** (scheduled tasks or workflows in the Claude desktop app): Spanish Weave can't tell
+  those from your own chats yet, so `/spanish-weave:pause` while they run, and `/spanish-weave:resume` after.
 - **AI Studio won't make a key** (or sends you to an "available regions" page): Google only gives keys to accounts
   it knows are 18 or older. Verify your age in your Google Account settings, or use a personal account instead of a
   school or Family Link one.

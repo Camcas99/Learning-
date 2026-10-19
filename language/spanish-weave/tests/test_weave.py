@@ -1617,5 +1617,52 @@ class Commands(Home):
         self.assertEqual((self.home / 'fresh.txt').read_text(encoding='utf-8'), export.anki(swlib.load_state()))
 
 
+DOCS = sorted(ROOT.glob('*.md')) + COMMANDS + [p for p in [ROOT.parent / 'README.md'] if p.exists()]
+
+
+def section(path, title):
+    """The text under a `## title` heading of a markdown file, up to the next `## ` heading."""
+    text = path.read_text(encoding='utf-8')
+    return text.split(f'\n## {title}\n', 1)[1].split('\n## ', 1)[0] if f'\n## {title}\n' in text else ''
+
+
+class Docs(unittest.TestCase):
+    """The docs friends and their agents follow: commands that run as written, and claims that match the code."""
+
+    def test_versions_agree(self):
+        """Installed copies update only when the version changes, so the plugin and extension move together."""
+        versions = [json.loads((ROOT / path).read_text())['version']
+                    for path in ('.claude-plugin/plugin.json', 'extension/manifest.json', 'extension/package.json')]
+        self.assertEqual(len(set(versions)), 1, versions)
+        self.assertGreaterEqual(tuple(int(part) for part in versions[0].split('.')), (0, 3, 0))
+
+    def test_agent_docs_define_sw(self):
+        """An agent's shell keeps no variables between commands, so a block that runs "$SW" sets it first."""
+        text = (ROOT / 'INSTALL-FOR-AGENTS.md').read_text(encoding='utf-8')
+        blocks = re.findall(r'```sh\n(.*?)```', text, re.S)
+        self.assertTrue(any('"$SW"' in block for block in blocks))
+        for block in blocks:
+            defined = False
+            for command in block.splitlines():
+                defined = defined or command.startswith('SW=')
+                if 'sw.py' in command and not command.startswith('SW='):
+                    self.assertIn('~/.spanish-weave/app/scripts/sw.py', command)  # the copy that outlives the plugin
+                if '"$SW"' in command and not command.startswith('SW='):
+                    self.assertTrue(defined, f'"$SW" used before SW= in:\n{block}')
+
+    def test_docs_avoid_sort_tail_lookup(self):
+        """`find | sort | tail -1` picked the marketplace clone, and 0.2.9 over 0.2.10."""
+        for path in DOCS:
+            self.assertFalse('| sort | tail -1' in path.read_text(encoding='utf-8'), path.name)
+
+    def test_docs_dont_say_everything_stays_local(self):
+        """The word lists go to Claude, Codex and Gemini, so the Privacy sections can't say everything stays local."""
+        for name in ('README.md', 'START-HERE.md'):
+            privacy = section(ROOT / name, 'Privacy')
+            self.assertIn('Gemini', privacy, name)
+            for claim in ('Everything stays on your machine', 'Your words and progress stay on your computer'):
+                self.assertFalse(claim in privacy, f'{name}: {claim}')
+
+
 if __name__ == '__main__':
     unittest.main()

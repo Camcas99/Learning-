@@ -27,10 +27,13 @@ granted:
 
 - **The code lives at** https://github.com/Camcas99/Learning- in the folder `language/spanish-weave`. The plugin
   marketplace (named `learning`) is at the repo root, so add the repo itself, not the subfolder:
-  `claude plugin marketplace add Camcas99/Learning-`, then `claude plugin install spanish-weave@learning`. If your
-  human gave you a zip or a local folder instead, unzip it if needed and add the repo's top folder (the one whose
-  `.claude-plugin/` holds `marketplace.json`), not `language/spanish-weave`. If they only have the `spanish-weave`
-  folder, use the GitHub form above or ask them for the whole repo.
+  `claude plugin marketplace add Camcas99/Learning-`, then `claude plugin install spanish-weave@learning`. Use the
+  GitHub form whenever there is network access, even if your human gave you a zip or a local folder. Only without
+  network, add the repo's top folder (the one whose `.claude-plugin/` holds `marketplace.json`), not
+  `language/spanish-weave`, and first put it somewhere permanent (not Downloads or a temp folder): Claude Code loads
+  the plugin from that folder, so moving or deleting it silently stops the chat weaving. Never delete a folder that
+  `claude plugin marketplace list` shows as a source. If they only have the `spanish-weave` folder, use the GitHub
+  form or ask them for the whole repo.
 - **Pick the path that fits them**, and don't push the full install on someone who just wants to try it:
   1. *Just curious:* no install at all. Send them the link to `blocks/level-01.md`
      (https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/blocks/level-01.md). The claude.ai
@@ -56,7 +59,9 @@ granted:
   refreshes, so then rerun setup as in "Update" in INSTALL-FOR-AGENTS.md (`python3 "$SW" setup` with no flags keeps
   their progress, site choice and stored key, and asks nothing), have them click the reload arrow on Spanish Weave
   in `chrome://extensions`, and restart Claude Code (the update reaches new sessions only). If you'd rather use
-  `/spanish-weave:setup`, restart Claude Code first and give the same answers as the first time.
+  `/spanish-weave:setup`, restart Claude Code first and give the same answers as the first time. `sw.py check` and
+  `/spanish-weave:status` say when those copies are behind the installed plugin, and `check` flags a local
+  marketplace folder that has gone missing.
 - Needs: macOS or Linux (not Windows yet), Python 3.9+ and git (on a Mac, both come with Apple's command line
   developer tools, which macOS offers to install the first time either is run), Claude Code for the plugin, Chrome
   (or Chromium) for the extension. No pip installs. On Windows, offer only option 1 and say the full version is
@@ -70,10 +75,11 @@ pasted block's rules in your own replies.
 - **Word list** (`data/lexicon.csv`): 1,043 Latin American words and phrases in learning order: connectors and
   adverbs first (y, pero, entonces, con, sin...), then everyday phrases, nouns, adjectives and verbs, then coding
   words. Each has an English gloss and a sound hint with the stressed syllable in capitals.
-- **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 at once, 5 new a day) -> known (seen on 3
-  days with no slips), with "shaky" as the penalty box for words they flip back to English, keep looking up, or no
-  longer recognize in a quiz (a missed learning word just starts its three days over). A shaky word is known again
-  after a week with no slips and at least one new sighting. Stage 1-4 follows the count of known words (40, 150,
+- **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 learning words at once, shaky ones included;
+  5 new a day) -> known (seen on 3 days with no slips), with "shaky" as the penalty box for words they flip back to
+  English, keep looking up, or no longer recognize in a quiz (a missed learning word just starts its three days
+  over). A shaky word is known again after a week with no slips and at least one real sighting since (days counted
+  by `log-chat-day` don't count). Stage 1-4 follows the count of known words (40, 150,
   400) and sets how much Spanish goes in a reply (about 6%, 12%, 25%, 40%).
 - **The hook** (`scripts/weave.py`) builds the brief you'll see each turn: the stage, the words to use, short
   guards for the words that are easiest to swap in the wrong sense (es only for what something is, so "it's ready"
@@ -86,11 +92,12 @@ pasted block's rules in your own replies.
   - `/spanish-weave:quiz`: spaced retrieval practice. Leitner-style boxes (1, 3, 7, 14, 30, 60, 120 days), meaning
     questions first, then producing the Spanish after two right answers in a row. You run it: ask one question at a
     time, judge leniently (accents and el/la don't count against them, and another Spanish word with the same
-    meaning does count; the false friend in a note doesn't), and record each answer with
-    `sw.py review "<word>" right|wrong`. If the word was right but with the wrong el/la, add
-    `--article <the one they used>`: a noun whose ending doesn't give its gender away (el problema, la mano) then
-    comes back at the same gap. Recording a word again the same day replaces the earlier answer, so you can fix a
-    wrong call. At the end, ask each missed word once more without recording it, so they finish on a success.
+    meaning does count; the false friend in a note doesn't), and record all the answers at the end in one
+    `sw.py record '<word>:right' '<word>:wrong' ...` call, so they approve one save. If a word was right but with
+    the wrong el/la, write it as `'<word>:right:<the article they used>'`: a noun whose ending doesn't give its
+    gender away (el problema, la mano) then comes back at the same gap. Recording a word again the same day replaces
+    the earlier answer, so you can fix a wrong call. Then ask each missed word once more without recording it, so
+    they finish on a success.
   - `/spanish-weave:placement`: a Yes/No vocabulary test with made-up words to catch guessing. Never reveal which
     items are made up. If they pick 3 or more made-up words, nothing is marked: offer a retake, kindly. Words it
     marks known get a first quiz check over the next four weeks.
@@ -124,8 +131,8 @@ This is the part I care about most.
 
 ## Working on the code
 
-- Tests: `python3 -m unittest discover -s tests` (55 tests) and `cd extension && bun install && bun test` (90).
-  Keep them green, and add tests with anything you change.
+- Tests: `python3 -m unittest discover -s tests` and `cd extension && bun install && bun test`. Keep them green,
+  and add tests with anything you change.
 - After changing the word list or the rules: `python3 scripts/hints.py --check` (every hint must match the
   pronunciation rules; `--fill` writes hints for new rows) and `python3 scripts/make_blocks.py` (regenerates the
   42 paste-in levels; a ChatGPT field must stay under 1,500 characters, and some are within a few characters).

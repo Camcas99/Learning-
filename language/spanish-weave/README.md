@@ -30,14 +30,15 @@ Or install the plugin yourself in Claude Code, one line at a time:
 /spanish-weave:setup
 ```
 
-On Claude Code 2.1.292 or later, `/plugin install spanish-weave --marketplace Camcas99/Learning-` does the first
-two lines in one step. The Claude Code and Chrome parts need macOS or Linux for now; on Windows, use the paste-in
-blocks below.
+On Claude Code 2.1.275 or later, `/plugin install spanish-weave --marketplace Camcas99/Learning-` does the first
+two lines in one step (in a terminal, `claude plugin install spanish-weave --marketplace Camcas99/Learning-` needs
+2.1.292 or later). The Claude Code and Chrome parts need macOS or Linux for now; on Windows, use the paste-in blocks
+below.
 
 Setup first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
 Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome
-extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on, and
-how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/spanish-weave:setup`)
+extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the
+question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/spanish-weave:setup`)
 asks again and never resets your progress. Words you're already learning keep their status, so if Spanish Weave
 had already handed you its first 5 learning words (the plugin's prompt hook does this on your first prompt), or
 you rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3
@@ -57,7 +58,8 @@ and paste what it prints:
   consider in responses?"). Replace any older Spanish Weave block.
 - ChatGPT: Settings > Personalization: one block in the "Custom instructions" box, the other in "More about you"
   (under About you), each in place of what was there. Each block fits the 1,500-character limit of the Free and Go
-  plans (paid plans allow 5,000).
+  plans (paid plans allow 5,000): with long word lists the "More about you" block names fewer known words, then
+  drops sound hints, glosses and the older shaky words, to fit, and export says so if one still doesn't.
 
 Re-export about once a week; Claude Code reminds you when the pasted block is more than a week behind.
 
@@ -67,11 +69,13 @@ block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead,
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
-**Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. Then
-restart Claude Code (the update reaches new sessions only) and rerun `/spanish-weave:setup`, giving the same
-answers as the first time: the extension folder, native host and Codex hook run from copies in `~/.spanish-weave`
-that only setup refreshes, and it never resets your progress. Last, click the reload arrow on Spanish Weave in
-`chrome://extensions`.
+**Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning` (or
+`/plugin marketplace update learning` and `/plugin update spanish-weave@learning` in chat). Then restart Claude Code
+(the update reaches new sessions only) and rerun `/spanish-weave:setup`, giving the same answers as the first time:
+the extension folder, native host and Codex hook run from copies in `~/.spanish-weave` that only setup refreshes,
+and it never resets your progress. Last, click the reload arrow on Spanish Weave in `chrome://extensions`.
+`/spanish-weave:status` and `sw.py check` say when those copies are behind the installed plugin, and `check` also
+flags a local folder the marketplace was added from that has gone missing.
 
 ### On a phone
 
@@ -87,15 +91,17 @@ that only setup refreshes, and it never resets your progress. Last, click the re
 
 ## What it does
 
-- **Claude Code and Codex**: a prompt hook gives the model your stage and word lists every turn. Every sentence
-  stays an English sentence, new words get a one-line gloss with a sound hint at the end, and every third reply
-  opens with a recall cue. Never in code, files, commits or anything meant to be shared, and never in scripted
+- **Claude Code and Codex**: a prompt hook gives the model your stage and word lists every turn, plus a line on how
+  much Spanish its last reply in that chat had, judged by the same stage rules. Sentences stay English sentences
+  (Stages 3 and 4 add a few short Spanish ones), new words get a one-line gloss with a sound hint at the end, and
+  every third reply opens with a recall cue. Never in code, files, commits or anything meant to be shared, and never in scripted
   runs (`claude -p`, `codex exec`).
 - **claude.ai and ChatGPT**: the same rules as a pasted preferences block. No hooks there, so the block is static
   until you refresh it.
 - **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
-  Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default; turn sites off from the toolbar popup, or set it to only the
-  sites you turn on. Swaps are chosen by Gemini on your own key.
+  Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
+  messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
+  on. Swaps are chosen by Gemini on your own key.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -108,31 +114,33 @@ All of it shares one word list on your machine, so words you see on the web coun
   "Color noun gender" in the popup.
 - **Notes:** false friends show their note after the gloss: `long · "LAHR-goh" · not 'large' (that's grande)`.
 - **Hear it:** Alt+click (Option+click on a Mac) or Alt+Enter says the word aloud, preferring a Latin American
-  voice, without flipping it. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome may
-  keep a page silent until you've clicked on it once.
+  voice and one installed on your computer, without flipping it. Chrome's own "Google" voices are online: when one
+  is used, the word goes to Google. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome
+  may keep a page silent until you've clicked on it once.
 - **Instagram:** instagram.com is supported out of the box, like X: captions, comments and profile bios. It hasn't
   been checked on the live site yet: the markup is modeled on instagram.com's structure, which changes often, so if
   Instagram gets no Spanish, the selectors
-  in `extension/src/page.js` (the `SITES` table) are the place to look. Direct messages are never read, like
-  webmail. The Instagram app itself can't be changed, and Chrome on phones doesn't run extensions (see "On a
-  phone" above).
+  in `extension/src/page.js` (the `SITES` table) are the place to look. Direct messages (instagram.com/direct, and
+  X messages) are never read. The Instagram app itself can't be changed, and Chrome on phones doesn't run extensions
+  (see "On a phone" above).
 
 ## Commands (Claude Code)
 
 | Command | What it does |
 |---|---|
-| `/spanish-weave:status` | Stage, word counts, the words you're learning |
-| `/spanish-weave:known <word>` | Mark a word known (no more glosses); accents optional, so `tambien` works |
+| `/spanish-weave:status` | Stage, word counts, the words you're learning, and whether setup's copies are behind |
+| `/spanish-weave:known <word>` | Mark a word known (no more glosses); accents optional, so `tambien` works, and listed phrases too |
 | `/spanish-weave:learn <word>` | Put a word back into the learning set |
-| `/spanish-weave:stage 1-4\|auto` | Pin your stage, or let it follow your known words |
+| `/spanish-weave:stage [1-4\|auto]` | Pin your stage, or let it follow your known words (no value: show it) |
 | `/spanish-weave:pause` / `resume` | Stop or restart Spanish in chat and on websites |
-| `/spanish-weave:export [--chatgpt] [--log-day]` | Paste-ready block for claude.ai or ChatGPT |
-| `/spanish-weave:quiz [N]` | Spaced-repetition quiz on the words that are due |
-| `/spanish-weave:placement` | 2-minute placement test that sets your starting words |
-| `/spanish-weave:anki [--all]` | Your words as an Anki import file |
+| `/spanish-weave:export [chatgpt] [log-day]` | Paste-ready block for claude.ai or ChatGPT (dashes optional) |
+| `/spanish-weave:quiz [N]` | Spaced-repetition quiz on the words that are due; the answers are saved at the end, with one approval |
+| `/spanish-weave:placement` | 2-minute placement test that sets your starting words; one approval to save |
+| `/spanish-weave:anki [all]` | Your words as an Anki import file |
 | `/spanish-weave:output [on\|off]` | "Your turn" lines that invite you to write a little Spanish (no argument: is it on?) |
 
-The same commands work from a terminal as `python3 ~/.spanish-weave/app/scripts/sw.py <command>`.
+You type these yourself: Claude can't start them for you, except status. The same commands work from a terminal as
+`python3 ~/.spanish-weave/app/scripts/sw.py <command>`.
 
 ## Reading the sound hints
 
@@ -159,7 +167,8 @@ respells each syllable. Try it: `python3 scripts/hints.py "la computadora"`.
 
 ## Quiz yourself (spaced repetition)
 
-`/spanish-weave:quiz` (or `sw.py quiz` in a terminal) asks about the words that are due, one at a time.
+`/spanish-weave:quiz` (or `sw.py quiz` in a terminal) asks about the words that are due, one at a time. In Claude
+Code, the answers are saved together at the end, so Claude Code asks at most once before saving them.
 
 - A new word is first quizzed the day after it arrives, once you've had a chance to read it.
 - Words ask for the meaning first ("What does "pero" mean?"). After two right answers in a row it asks for the
@@ -182,7 +191,8 @@ respells each syllable. Try it: `python3 scripts/hints.py "la computadora"`.
 - One exception for el/la: when a noun's ending doesn't give its gender away (el problema, el día, la mano, la
   clase), the wrong article still counts as recalled, but the word stays in its box and comes back at the same gap,
   because that gender has to be remembered. On la casa, whose -a says feminine, it's only a slip.
-- Answering the same word again on the same day replaces the earlier answer, so a wrong call can be corrected.
+- Answering the same word again on the same day replaces the earlier answer, so a wrong call can be corrected
+  (unless something else, like `known` or a flip, changed the word in between; then the new answer goes on top).
 
 ## Placement test
 
@@ -208,8 +218,9 @@ only ask questions.
 
 ## Anki
 
-`/spanish-weave:anki` writes `~/spanish-weave-anki.txt` (or `sw.py anki --out FILE`; `--all` for the whole list
-instead of the words you've met). In Anki 2.1.55 or later, File > Import reads the deck (Spanish Weave, created if
+`/spanish-weave:anki` writes `~/spanish-weave-anki.txt` (or `sw.py anki --out FILE`; `all` or `--all` for the whole
+list instead of the words you've met). It replaces only an earlier Spanish Weave export there, never another file or
+a symlink. In Anki 2.1.55 or later, File > Import reads the deck (Spanish Weave, created if
 it doesn't exist), note type (Basic and reversed card) and tags from the file, so Anki quizzes both directions on
 its own spaced-repetition schedule (FSRS). If Anki's menus are in another language, pick the "Basic (and reversed
 card)" note type in the import window.
@@ -256,13 +267,16 @@ frequency/usefulness order (connectors and adverbs first, then everyday phrases,
 coding words at the end), each with a gloss and a sound hint.
 
 - **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or on a web page.
-- **Learning (active)**: up to 20 at a time; at most 5 new words a day, and none while 5 or more are shaky.
+- **Learning**: at most 20 words at a time, shaky ones included; at most 5 new words a day, and none while 5 or more
+  are shaky.
 - **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
 - **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English, `/spanish-weave:learn`, or a
   known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
-  word; a known word peeked on 2 days within a week turns shaky. **Shaky -> known** after 7 days with no flip, peek
-  or quiz miss, once you've seen the word again since the last one (solo, mayor and sensible, which chat can't
-  count, need only the week).
+  word; a known word peeked on 2 days within a week, both since it became known, turns shaky. **Shaky -> known**
+  after 7 days with no flip, peek or quiz miss, once you've really seen the word again since the last one (days
+  counted by `log-chat-day` don't count; solo, mayor and sensible, which chat can't count, need only the week).
+- **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
+  native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
   `/spanish-weave:stage N` pins it; `/spanish-weave:stage auto` unpins.
 
@@ -273,9 +287,11 @@ coding words at the end), each with a gloss and a sound hint.
 | 3 | about 25%, never over 35% | at most 4 | plus one short Spanish sentence in five |
 | 4 | about 40%, never over 55% | at most 4 | plus two in five |
 
-Once you know 150 words, the brief and exports stop listing them: they name the band ("about the 400 most common
-Spanish words") plus the exceptions, so with a thousand known words the brief stays under 4 KB and the claude.ai
-block is about 6 KB (each ChatGPT field still fits its 1,500 characters).
+From about 150 known words, the brief and exports stop listing them all: they name the stretch of the word list
+you know ("the first 400 words of the Spanish Weave list"; the claude.ai block adds the words it starts with and the
+40 newest) plus the exceptions, so with a thousand known words the brief stays under 4 KB and the claude.ai block is
+about 6.5 KB (each ChatGPT field still fits its 1,500 characters). The list is in learning order, not a general
+frequency rank, so it never says "the most common Spanish words".
 
 **Words in the right sense.** The brief and the pasted blocks carry short guards for the words that are easiest to
 swap in the wrong sense, each added once its word is in use: es and soy only for what something is ("it's ready"
@@ -296,28 +312,55 @@ uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`.
 `sw.py log-chat-day` (or `export --log-day`) counts today as exposure for your learning words. It's off by default
 because it's a guess: it never makes a word known on its own; a word still needs one real sighting.
 
-**Only in conversations you read.** The hook weaves in every chat surface (terminal, desktop, IDE, Remote Control,
+**Chats, not scripts.** The hook weaves in every chat surface (terminal, desktop, IDE, Remote Control,
 claude.ai/code, the Codex TUI) and stays silent only in one-shot scripted runs: `claude -p` without
 `--sdk-url`/`--input-format stream-json`, Agent SDK scripts (`CLAUDE_CODE_ENTRYPOINT` `sdk-ts` or `sdk-py`) and
-`codex exec`. Set `SPANISH_WEAVE_OFF=1` to switch it off for anything else, or `SPANISH_WEAVE_FORCE=1` to weave in a
-script. Health, medication, legal, money, safety, emergency and driving topics get no Spanish at all.
+`codex exec`. Automated sessions the desktop app starts (scheduled tasks, workflows, child sessions) look the same
+as the chats you read, so they can't be told apart yet: they get Spanish too, and their replies count as exposure.
+Use `/spanish-weave:pause` while they run, or set `SPANISH_WEAVE_OFF=1` in their environment; that variable
+switches it off anywhere else too, and `SPANISH_WEAVE_FORCE=1` weaves in a script. Health, medication, legal, money,
+safety, emergency and driving topics get no Spanish at all.
 
 The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level 2 rules.
 
 ## Privacy
 
-Everything stays on your machine in `~/.spanish-weave` (override with `SPANISH_WEAVE_HOME`). The hook reads your
-local Claude Code and Codex transcripts to count exposure and never sends them anywhere. By default the extension
-runs on every site you allow, and readable page text from those sites goes to Google's Gemini API with your key
-(with a free-tier key, Google may use that text to improve its products, human reviewers may read it, and Google
-asks that no personal or sensitive information be sent; in the EEA, UK and Switzerland the paid-tier data terms
-apply). Gmail, Outlook.com, Yahoo Mail, Proton Mail, claude.ai, ChatGPT, Gemini and local addresses start off;
-other webmail and AI chat sites (iCloud Mail, work Outlook at outlook.cloud.microsoft, Copilot) and banking or
-health sites do not, so turn them off in the popup or run setup with `--sites ask`. Instagram direct messages are
-never read. It talks
-to the plugin through a Chrome native messaging host that only this extension's ID may call. If setup stored
-your Gemini key, it sits in `~/.spanish-weave/gemini_key` (mode 600) and is handed only to the extension's
-background worker, never to the pages it runs on.
+What Spanish Weave keeps, and what it sends:
+
+- **Stored only on your machine**, in `~/.spanish-weave` (or `SPANISH_WEAVE_HOME`, which must be a new or empty
+  folder, or an earlier Spanish Weave one, that you own; setup refuses any other): `state.json` (each word's status
+  and dates, quiz answers and settings), `exposure.json` (how often and on which days each word showed up in chat,
+  the transcript paths it has read and short hashes of recent replies), `sessions.json` (chat ids, turn counts and
+  recall words used) and, if setup stored it, `gemini_key` (mode 600). The hook reads your local Claude Code and
+  Codex transcripts to count exposure and never sends them anywhere.
+- **Sent with each prompt** to Anthropic through Claude Code, and to OpenAI through Codex: your word lists and stage
+  (the brief the hook adds), and the Spanish share of the last reply.
+- **Sent to Google's Gemini API with each page**, with your key: the readable text of the page, and your word lists
+  and stage. With a free-tier key, Google may use that text to improve its products, human reviewers may read it,
+  and Google asks that no personal or sensitive information be sent; in the EEA, UK and Switzerland the paid-tier
+  data terms apply.
+- **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
+  day each learning word arrived), stage and sync time.
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key and a cache of
+  chosen swaps with a few words of page text around each. Removing the extension deletes them; deleting
+  `~/.spanish-weave` doesn't.
+
+Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites
+(Gmail, Outlook, iCloud Mail, Yahoo Mail, Proton Mail, WhatsApp Web, Messenger, Telegram, Slack, Discord, Teams,
+claude.ai, ChatGPT, Gemini, Copilot and others) and local or intranet addresses (localhost, private IPs, names
+without a dot, and .local, .lan, .corp, .internal and similar), which start off. Instagram direct messages
+(instagram.com/direct) and X messages are never read, and on any site pages under paths like /messages, /inbox,
+/chat, /account or /settings are skipped. Banking and health sites stay on unless you turn them off: passages about
+balances, cards, insurance or appointments are skipped, but other text on those pages isn't, so turn them off in the
+popup, or choose "Only sites I turn on". Setup's site choice and the popup's "Other sites" choice are the same
+setting: whichever you made last wins. Pausing and setup reruns reach Chrome within 2 minutes, or as soon as you open
+the popup. If the extension has never reached the native host, sites stay off until you turn them on.
+
+The extension talks to the plugin through a Chrome native messaging host that only this extension's ID may call. If
+setup stored your Gemini key, the host hands it only to the extension's background worker, never to the pages it runs
+on. The extension's ID is public (it comes from the key in `extension/manifest.json`), so only load Spanish Weave
+from the folder setup makes from this repo: a lookalike unpacked extension with the same key would get the same ID,
+and with it your Gemini key.
 
 ## Layout
 
@@ -338,7 +381,7 @@ tests/            python tests, live model checks, extension end-to-end check
 ## Develop
 
 ```sh
-python3 -m unittest discover -s tests            # hook, rules, hints, quiz, placement, notes, exports, host, setup
+python3 -m unittest discover -s tests            # hook, rules, hints, quiz, placement, notes, exports, host, setup, docs
 python3 scripts/hints.py --check                 # every hint in the word list matches the rules
 python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
 cd extension && bun install && bun test           # extension (happy-dom)
@@ -350,7 +393,9 @@ PROFILE=/tmp/sw-profile node tests/extension_e2e.mjs       # Playwright Chromium
 ```
 
 When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in
-`.claude-plugin/plugin.json` and `extension/manifest.json`: installed copies only update when the version changes.
+`.claude-plugin/plugin.json`, `extension/manifest.json` and `extension/package.json`, all three the same: installed
+copies only update when the version changes. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
+or empty folder you own (setup refuses one that holds other things).
 
 To add a word, append a row `es,en,` to `data/lexicon.csv` (in the rank where it belongs), run
 `python3 scripts/hints.py --fill` to generate its hint, then `python3 scripts/make_blocks.py`.
