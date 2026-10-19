@@ -359,7 +359,7 @@ def main(argv):
     try:
         state = swlib.load_state()
     except Exception as error:  # never block a prompt because of Spanish; Claude Code shows no stderr on exit 0
-        reason = error if isinstance(error, swlib.StateError) else error.__class__.__name__
+        reason = error if isinstance(error, (swlib.StateError, swlib.UnsafeHome)) else error.__class__.__name__
         print(f'Spanish Weave: skipped, {reason}; /spanish-weave:status says how to fix it', file=sys.stderr)
         return 0
     if state.get('paused'):
@@ -392,5 +392,6 @@ if __name__ == '__main__':
     except Exception as error:  # in a hook, any other failure also leaves the prompt alone: one line, exit 0
         if '--hook' not in sys.argv[1:]:
             raise
-        print(f'Spanish Weave: skipped ({error.__class__.__name__}); run sw.py check', file=sys.stderr)
+        reason = error if isinstance(error, swlib.UnsafeHome) else error.__class__.__name__  # a lock-file link, say
+        print(f'Spanish Weave: skipped ({reason}); run sw.py check', file=sys.stderr)
         sys.exit(0)

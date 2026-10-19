@@ -44,7 +44,8 @@ class Home(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name)
-        self.env = mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'sw')})
+        self.env = mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'sw'),
+                                                'CLAUDE_CONFIG_DIR': str(self.home / 'claude')})
         self.env.start()
 
     def tearDown(self):
@@ -974,6 +975,235 @@ class Setup(Home):
         key = json.loads((ROOT / 'extension' / 'manifest.json').read_text())['key']
         digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
         self.assertEqual(''.join(chr(ord('a') + int(c, 16)) for c in digest), sw.EXTENSION_ID)
+
+
+PLUGIN_VERSION = json.loads((ROOT / '.claude-plugin' / 'plugin.json').read_text())['version']
+
+
+class SetupSafety(Home):
+    """Setup and uninstall touch only what is Spanish Weave's: whose the state dir is, symlinks, the host launcher, and
+    copies older than the installed plugin."""
+
+    def setUp(self):
+        super().setUp()
+        self.patches = [mock.patch.object(Path, 'home', return_value=self.home),
+                        mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')})]
+        for patch in self.patches:
+            patch.start()
+
+    def tearDown(self):
+        for patch in reversed(self.patches):  # before Home's, so the environment comes back as it was
+            patch.stop()
+        super().tearDown()
+
+    def sw(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(list(argv))
+        return out.getvalue()
+
+    def refused(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()), self.assertRaises(SystemExit) as caught:
+            sw.main(list(argv))
+        return str(caught.exception.code)
+
+    def check(self):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            try:
+                sw.main(['check'])
+            except SystemExit:
+                pass
+        return out.getvalue()
+
+    def host(self, launcher, env, message):
+        raw = json.dumps(message).encode()
+        result = subprocess.run([str(launcher)], input=struct.pack('=I', len(raw)) + raw, capture_output=True,
+                                timeout=30, env=env)
+        return json.loads(result.stdout[4:]) if result.stdout else result.stderr.decode()
+
+    def claude_file(self, name, data):
+        (self.home / 'claude' / 'plugins').mkdir(parents=True, exist_ok=True)
+        (self.home / 'claude' / 'plugins' / name).write_text(json.dumps(data))
+
+    def installed(self, version, path='/elsewhere/spanish-weave', sha='0123456789abcdef'):
+        """installed_plugins.json as Claude Code writes it."""
+        self.claude_file('installed_plugins.json', {'version': 2, 'plugins': {'spanish-weave@learning': [
+            {'scope': 'user', 'installPath': path, 'version': version, 'gitCommitSha': sha}]}})
+
+    def test_setup_refuses_a_folder_that_is_not_spanish_weaves(self):
+        home = self.home / 'sw'
+        (home / 'extension').mkdir(parents=True)
+        (home / 'keep.txt').write_text('mine')
+        (home / 'extension' / 'keep').write_text('mine too')
+        home.chmod(0o755)
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'))
+        self.assertEqual(((home / 'keep.txt').read_text(), (home / 'extension' / 'keep').read_text()), ('mine', 'mine too'))
+        self.assertEqual(home.stat().st_mode & 0o777, 0o755)
+        empty = self.home / 'empty'  # a new or empty folder is fine; one that was there keeps its mode
+        empty.mkdir(mode=0o755)
+        empty.chmod(0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(empty)}):
+            self.sw('setup')
+        self.assertEqual(empty.stat().st_mode & 0o777, 0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'new')}):
+            self.sw('setup')
+        self.assertEqual((self.home / 'new').stat().st_mode & 0o777, 0o700)
+
+    def test_setup_refuses_a_symlinked_app_folder(self):
+        with swlib.editing():
+            pass  # a Spanish Weave folder
+        checkout = self.home / 'dev'
+        (checkout / 'scripts').mkdir(parents=True)
+        (checkout / 'scripts' / 'wip.txt').write_text('work in progress')
+        (self.home / 'sw' / 'app').symlink_to(checkout)
+        self.assertIn('is a symbolic link', self.refused('setup'))
+        self.assertEqual((checkout / 'scripts' / 'wip.txt').read_text(), 'work in progress')
+
+    def test_gemini_key_is_never_written_through_a_symlink(self):
+        key = self.home / 'key.txt'
+        key.write_text(FAKE_KEY + '\n')
+        notes = self.home / 'notes.txt'
+        notes.write_text('NOTES\n')
+        with swlib.editing():
+            pass
+        stored = self.home / 'sw' / 'gemini_key'
+        stored.symlink_to(notes)
+        message = self.refused('setup', '--gemini-key-file', str(key))
+        self.assertIn('gemini_key is a symbolic link', message)
+        self.assertNotIn(FAKE_KEY, message)
+        self.assertEqual(notes.read_text(), 'NOTES\n')
+        stored.unlink()
+        stored.write_text('old\n')
+        stored.chmod(0o644)
+        self.sw('setup', '--gemini-key-file', str(key))
+        self.assertEqual((stored.read_text(), stored.stat().st_mode & 0o777), (FAKE_KEY + '\n', 0o600))
+
+    def test_launcher_quotes_paths_names_its_home_and_falls_back_to_python3(self):
+        home = self.home / 'my $HOME "sw"'
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(home)}):
+            self.sw('setup')
+        launcher = home / 'app' / 'sw-host'
+        env = {k: v for k, v in os.environ.items() if k != 'SPANISH_WEAVE_HOME'}  # Chrome sets no SPANISH_WEAVE_HOME
+        env['HOME'] = str(self.home / 'fake-home')
+        self.assertEqual(self.host(launcher, env, {'type': 'ping'}), {'ok': True, 'host': 1})
+        (home / 'state.json').rename(home / 'state.json.aside')  # the repair advice for a broken state.json
+        self.assertTrue(self.host(launcher, env, {'type': 'state'})['ok'])
+        self.assertTrue((home / 'state.json').exists())  # a fresh list in the same home, not in ~/.spanish-weave
+        self.assertFalse((self.home / 'fake-home' / '.spanish-weave').exists())
+        bin_dir = self.home / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'python3').symlink_to(sys.executable)
+        gone = self.home / 'launcher-without-its-python'
+        gone.write_text(sw.launcher_text('/nonexistent/python3', home / 'app' / 'scripts' / 'sw_host.py', home))
+        gone.chmod(0o755)
+        env['PATH'] = os.pathsep.join([str(bin_dir), '/usr/bin', '/bin'])
+        self.assertEqual(self.host(gone, env, {'type': 'ping'}), {'ok': True, 'host': 1})
+
+    def test_uninstall_leaves_files_it_did_not_make(self):
+        self.sw('setup')
+        foreign = self.home / 'notes' / 'important.json'
+        foreign.parent.mkdir()
+        foreign.write_text('{"keep": true}')
+        lookalike = self.home / 'other-profile' / 'NativeMessagingHosts' / 'com.spanishweave.host.json'
+        lookalike.parent.mkdir(parents=True)
+        lookalike.write_text(json.dumps({'name': 'com.spanishweave.host', 'allowed_origins': ['chrome-extension://x/']}))
+        record = swlib.read_json(self.home / 'sw' / 'install.json')
+        record['host_manifests'] += [str(foreign), str(lookalike)]  # an edited or copied install.json
+        swlib.write_json(self.home / 'sw' / 'install.json', record)
+        (self.home / 'sw' / 'mine.txt').write_text('not Spanish Weave\'s')
+        out = self.sw('uninstall')
+        self.assertEqual(foreign.read_text(), '{"keep": true}')
+        self.assertTrue(lookalike.exists())
+        for path in (foreign, lookalike):
+            self.assertIn(f'{path} (not a Spanish Weave host manifest; left alone)', out)
+        base = self.home / ('Library/Application Support/Google/Chrome' if sys.platform == 'darwin' else '.config/google-chrome')
+        self.assertFalse((base / 'NativeMessagingHosts' / 'com.spanishweave.host.json').exists())  # ours is gone
+        home = self.home / 'sw'
+        self.assertNotIn(f'rm -rf "{home}"', out)  # the folder holds mine.txt too
+        self.assertIn(f'rm -rf "{home / "state.json"}"', out)
+        self.assertNotIn('mine.txt', out)
+
+    def test_codex_files_linked_from_dotfiles_stay_links(self):
+        dotfiles, codex = self.home / 'dotfiles', self.home / 'codex'
+        dotfiles.mkdir()
+        codex.mkdir()
+        theirs = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'x.sh'}]}]}}
+        (dotfiles / 'hooks.json').write_text(json.dumps(theirs))
+        (dotfiles / 'config.toml').write_text('model = "o3"\n')
+        for name in ('hooks.json', 'config.toml'):
+            (codex / name).symlink_to(dotfiles / name)
+        self.sw('setup', '--codex')
+        self.assertTrue((codex / 'hooks.json').is_symlink() and (codex / 'config.toml').is_symlink())
+        hooks = json.loads((dotfiles / 'hooks.json').read_text())
+        self.assertTrue(sw.has_our_hook(hooks))
+        self.assertEqual(hooks['hooks']['Stop'], theirs['hooks']['Stop'])
+        self.assertEqual((dotfiles / 'config.toml').read_text(), 'model = "o3"\n\n[features]\nhooks = true\n')
+        self.assertEqual(sorted(p.name for p in dotfiles.iterdir()), ['config.toml', 'hooks.json'])  # no temp files
+        del hooks['hooks']['Stop']  # with no other hooks left, uninstall takes `hooks = true` out too
+        (dotfiles / 'hooks.json').write_text(json.dumps(hooks))
+        self.sw('uninstall', '--codex')
+        self.assertTrue((codex / 'hooks.json').is_symlink() and (codex / 'config.toml').is_symlink())
+        self.assertFalse(sw.has_our_hook(json.loads((dotfiles / 'hooks.json').read_text())))
+        self.assertEqual((dotfiles / 'config.toml').read_text(), 'model = "o3"\n')
+
+    def test_a_lock_file_link_is_never_followed(self):
+        home = self.home / 'sw'
+        home.mkdir()
+        victim = self.home / 'victim.txt'
+        victim.write_text('PRECIOUS\n')
+        (home / 'state.lock').symlink_to(victim)
+        self.assertIn(f'{home / "state.lock"} is a symbolic link; remove it', self.refused('status'))
+        self.assertEqual(victim.read_text(), 'PRECIOUS\n')
+        self.assertIn('is a symbolic link', BrokenState.hook(self))  # quiet: exit 0, one stderr line
+        self.assertEqual(victim.read_text(), 'PRECIOUS\n')
+
+    def test_state_dir_is_private_and_a_world_writable_one_is_refused(self):
+        subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], input='{}', capture_output=True,
+                       text=True, timeout=30, check=True)  # the hook before setup creates the state dir
+        self.assertEqual((self.home / 'sw').stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.home / 'sw' / 'state.lock').stat().st_mode & 0o777, 0o600)
+        shared = self.home / 'shared'
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(shared)}):
+            with swlib.editing():
+                pass
+            shared.chmod(0o777)  # now anyone could write the words that go into Claude's context
+            before = sorted(p.name for p in shared.iterdir())
+            self.assertIn(f'any user can write to {shared}', self.refused('status'))
+            self.assertIn('any user can write to', BrokenState.hook(self))
+            self.assertIn('FAIL word state: any user can write to', self.check())
+        self.assertEqual(sorted(p.name for p in shared.iterdir()), before)
+
+    def test_check_and_status_say_when_copies_are_behind(self):
+        self.sw('setup')
+        home = self.home / 'sw'
+        self.installed('9.9.9')  # the plugin was updated, setup not rerun
+        self.assertIn(f'FAIL copies in {home} are from {PLUGIN_VERSION}; the installed plugin is 9.9.9: rerun setup',
+                      self.check())
+        self.assertIn(f'the extension and native host copies are from {PLUGIN_VERSION}, the plugin is 9.9.9: rerun '
+                      '/spanish-weave:setup', self.sw('status'))
+        record = swlib.read_json(home / 'install.json')
+        del record['version']  # set up by 0.2.2 or earlier
+        swlib.write_json(home / 'install.json', record)
+        self.assertIn('are from an older version; the installed plugin is 9.9.9: rerun setup', self.check())
+        self.installed(PLUGIN_VERSION)
+        self.sw('setup')
+        self.assertNotIn('rerun', self.check() + self.sw('status'))
+        gone = self.home / 'Downloads' / 'Learning-'  # unzipped there, then the folder was cleared out
+        self.claude_file('known_marketplaces.json', {'learning': {'source': {'source': 'directory', 'path': str(gone)},
+                                                                  'installLocation': str(gone)}})
+        out = self.check()
+        self.assertIn(f'FAIL the learning marketplace was added from {gone}, which is gone', out)
+        self.assertIn('claude plugin marketplace add Camcas99/Learning-', out)
+        gone.mkdir(parents=True)
+        self.assertNotIn('marketplace', self.check())
+
+    def test_setup_records_and_shows_the_version(self):
+        self.installed(PLUGIN_VERSION, path=str(ROOT), sha='abcdef0123456789')  # this folder is the installed plugin
+        out = self.sw('setup')
+        self.assertTrue(out.startswith(f'Spanish Weave {PLUGIN_VERSION} is set up (commit abcdef0).'), out[:80])
+        record = swlib.read_json(self.home / 'sw' / 'install.json')
+        self.assertEqual((record['version'], record['commit']), (PLUGIN_VERSION, 'abcdef0123456789'))
+        self.installed(PLUGIN_VERSION)  # installed elsewhere: this folder's commit isn't known
+        self.assertTrue(self.sw('setup').startswith(f'Spanish Weave {PLUGIN_VERSION} is set up.'))
 
 
 COMMANDS = sorted((ROOT / 'commands').glob('*.md'))

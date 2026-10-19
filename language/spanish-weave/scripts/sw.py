@@ -2,14 +2,17 @@
 """Spanish Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
   sw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--known-top N] [--sites all|ask] [--dry-run]
-                                                     install the state dir, extension copy and native host;
+                                                     install the state dir, extension copy and native host; the
+                                                     state dir (SPANISH_WEAVE_HOME) must be yours and new, empty or
+                                                     an earlier Spanish Weave one, or setup refuses it;
                                                      --user-data-dir also registers the host for a browser run
                                                      with that --user-data-dir (Chromium looks there);
                                                      --known-top marks the top N lexicon words known unless
                                                      already introduced (40: some basics, 150: simple Spanish);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
-  sw.py status                                       stage, word counts, learning words
+  sw.py status                                       stage, word counts, learning words, and a line when setup's
+                                                     copies are behind the installed plugin
   sw.py known WORD...                                mark words as known; listed phrases too (known sin embargo,
                                                      pero), and quotes and ¡!¿? are fine
   sw.py learn WORD...                                put words back in the learning set (shaky)
@@ -21,7 +24,9 @@
   sw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
                                                      (the flags work without dashes too: export chatgpt)
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
-  sw.py check                                        verify the state, extension folder and native host
+  sw.py check                                        verify the state, extension folder and native host, that
+                                                     setup's copies match the installed plugin's version, and that
+                                                     a local folder the marketplace was added from is still there
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
                                                      N questions with answers instead, default 5, for Claude to ask)
   sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
@@ -36,15 +41,18 @@
                                                      without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
-                                                     remove the native host manifests (and the Codex hook and the
-                                                     `hooks = true` setup added), then list what is left
+                                                     remove the native host manifests (only Spanish Weave's; and
+                                                     the Codex hook and the `hooks = true` setup added), then list
+                                                     what is left
 """
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import sys
 
@@ -55,6 +63,9 @@ import placement  # noqa: E402
 
 HOST_NAME = 'com.spanishweave.host'
 EXTENSION_ID = 'papkhjkhjagpimlholdmecddkhhhcfje'  # fixed by the "key" in extension/manifest.json
+ORIGIN = f'chrome-extension://{EXTENSION_ID}/'
+PLUGIN_KEY = 'spanish-weave@learning'  # the plugin's name in Claude Code: plugin@marketplace
+REPO = 'Camcas99/Learning-'  # the GitHub repo the marketplace comes from
 
 
 def host_dirs(extra=()):
@@ -206,8 +217,8 @@ def setup_codex(dry_run):
     for path in (hooks_path, config_path):
         if first and path.exists() and not backup_of(path).exists():
             shutil.copy2(path, backup_of(path))
-    swlib.write_json(hooks_path, data)
-    config_path.write_text(config)
+    swlib.write_json(hooks_path, data)  # both writes keep a symlinked file a link
+    swlib.write_text(config_path, config)
     print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
     print('  Human step: start `codex` once; at "Hooks need review" pick "Trust all and continue" (or review first).')
     print('  Codex never runs a new hook before that. `codex exec` runs stay Spanish-free either way.')
@@ -230,6 +241,89 @@ def read_key_file(arg):
     return key
 
 
+def installed_entries():
+    """Claude Code's install records for the plugin (version, installPath, gitCommitSha), from
+    <config>/plugins/installed_plugins.json; [] when it isn't installed (or runs from --plugin-dir)."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'installed_plugins.json', {})
+    plugins = data.get('plugins') if isinstance(data, dict) else None
+    entries = plugins.get(PLUGIN_KEY) if isinstance(plugins, dict) else None
+    entries = [entries] if isinstance(entries, dict) else entries if isinstance(entries, list) else []
+    return [e for e in entries if isinstance(e, dict)]
+
+
+def installed_plugin():
+    return next(iter(installed_entries()), None)
+
+
+def marketplace_entry():
+    """known_marketplaces.json's entry for the marketplace the plugin comes from, or None."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'known_marketplaces.json', {})
+    entry = data.get(PLUGIN_KEY.split('@')[1]) if isinstance(data, dict) else None
+    return entry if isinstance(entry, dict) else None
+
+
+def plugin_version():
+    """This copy's version from .claude-plugin/plugin.json, or None (the copies in <home>/app have no plugin.json)."""
+    data = swlib.read_json(swlib.PLUGIN_ROOT / '.claude-plugin' / 'plugin.json', {})
+    version = data.get('version') if isinstance(data, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def copies_behind(home):
+    """(version of setup's copies in home or None, the installed plugin's version) when they differ, else None. The
+    extension, native host and Codex hook run from those copies, so a plugin update reaches them only through setup."""
+    plugin = (installed_plugin() or {}).get('version')
+    have = install_record().get('version')
+    return (have, plugin) if plugin and (home / 'app').exists() and have != plugin else None
+
+
+# Everything Spanish Weave keeps in its state dir: uninstall offers `rm -rf` on the dir only when nothing else is in it.
+SW_NAMES = {'state.json', INSTALL, 'exposure.json', 'sessions.json', 'state.lock', 'exposure.lock', 'sessions.lock',
+            'gemini_key', 'app', 'extension'}
+
+
+def check_home(home):
+    """Exits (one line naming the folder, never the key) when setup could damage the state dir: it is not a folder or
+    not the user's own, it holds other things and no Spanish Weave files, or a folder setup replaces (app, extension
+    and those in app) is a symlink or leads outside it."""
+    if not home.exists() and not home.is_symlink():
+        return
+    if not home.is_dir():
+        sys.exit(f'{home} is not a folder; set SPANISH_WEAVE_HOME to a new or empty folder.')
+    swlib.check_owner(home)
+    names = {p.name for p in home.iterdir()} - {'.DS_Store'}
+    if names and not names & {'state.json', INSTALL, 'state.lock'}:
+        sys.exit(f'{home} is not a Spanish Weave folder; pick a new or empty one (SPANISH_WEAVE_HOME).')
+    inside = home.resolve()
+    for name in ('app', 'extension', 'app/scripts', 'app/data', 'app/sw-host'):
+        path = home / name
+        if path.is_symlink() or path.exists() and inside not in path.resolve().parents:
+            sys.exit(f'{path} is a symbolic link or leads outside {home}; remove it, then rerun setup.')
+
+
+def write_key(path, key):
+    """Stores the Gemini key 0600 from the first byte, and never through a symlink (it could point anywhere)."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    except OSError as error:
+        if error.errno == errno.ELOOP or path.is_symlink():
+            sys.exit('gemini_key is a symbolic link; remove it, then rerun setup.')
+        raise
+    with os.fdopen(fd, 'w') as file:
+        os.fchmod(fd, 0o600)  # an older key file may be 0644
+        file.write(key + '\n')
+
+
+def launcher_text(python, script, home):
+    """The native host launcher. Chrome starts it without SPANISH_WEAVE_HOME, so it names the state dir itself; the
+    paths are shell-quoted; and if the Python that ran setup is gone (a Homebrew cleanup, a deleted venv), python3 on
+    PATH takes over."""
+    python, script, home = (shlex.quote(str(x)) for x in (python, script, home))
+    return (f'#!/bin/sh\nSPANISH_WEAVE_HOME={home}; export SPANISH_WEAVE_HOME\n'
+            f'if [ -x {python} ]; then exec {python} {script} "$@"; fi\n'
+            f'exec /usr/bin/env python3 {script} "$@"\n')
+
+
 def setup(args):
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
@@ -244,8 +338,13 @@ def setup(args):
         if args.codex:
             setup_codex(True)
         return
-    home.mkdir(parents=True, exist_ok=True)
-    os.chmod(home, 0o700)
+    check_home(home)
+    existed = home.exists()
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not existed or (home / 'state.json').exists() or (home / INSTALL).exists():
+        os.chmod(home, 0o700)  # never a folder of someone's that setup was only pointed at
+    if key:
+        write_key(home / 'gemini_key', key)
     # Stable copies: the plugin cache path changes on every update, Chrome needs fixed paths.
     for name, ignore in (('extension', shutil.ignore_patterns('test', 'node_modules', 'package.json', 'bun.lock')),
                          ('app/scripts', shutil.ignore_patterns('__pycache__')), ('app/data', None)):
@@ -255,18 +354,19 @@ def setup(args):
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=ignore)
     launcher = home / 'app' / 'sw-host'
-    launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "sw_host.py"}" "$@"\n')
+    swlib.write_text(launcher, launcher_text(sys.executable, home / 'app' / 'scripts' / 'sw_host.py', home))
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'Spanish Weave word state', 'path': str(launcher), 'type': 'stdio',
-                'allowed_origins': [f'chrome-extension://{EXTENSION_ID}/']}
+                'allowed_origins': [ORIGIN]}
     for directory in host_dirs(args.user_data_dir):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
-    remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])))
-    if key:
-        path = home / 'gemini_key'
-        path.write_text(key + '\n')
-        path.chmod(0o600)
+    # The version of the copies, for check and status; the commit when this is the installed plugin's own folder.
+    version = plugin_version() or install_record().get('version')
+    commit = next((e.get('gitCommitSha') for e in installed_entries() if isinstance(e.get('installPath'), str)
+                   and Path(e['installPath']).expanduser().resolve() == root), None)
+    remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])),
+             version=version, commit=commit)
     with swlib.locked():
         if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
             swlib.save_state(swlib.new_state(known_top=args.known_top))
@@ -276,7 +376,8 @@ def setup(args):
             state.setdefault('prefs', {})['extension_sites'] = args.sites
     if args.codex:
         setup_codex(False)
-    print('Spanish Weave is set up.')
+    print(f'Spanish Weave{f" {version}" if version else ""} is set up'
+          + (f' (commit {commit[:7]}).' if isinstance(commit, str) and commit else '.'))
     print(f'  word state:  {home / "state.json"} (Stage {swlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
@@ -327,12 +428,28 @@ def check(_args):
                                                                             else ': not there yet; run setup'))
     except swlib.StateError as error:
         report(False, 'word state: ' + state_fix(error).replace('\n', '\n     '))
+    except swlib.UnsafeHome as error:
+        report(False, f'word state: {error}')
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
+    behind = copies_behind(home)
+    if behind:
+        report(False, f'copies in {home} are from {behind[0] or "an older version"}; the installed plugin is '
+                      f'{behind[1]}: rerun setup')
+    market = marketplace_entry() or {}
+    source = market.get('source') if isinstance(market.get('source'), dict) else {}
+    local = source.get('source') in ('directory', 'local')  # a GitHub marketplace has its own copy, kept by Claude Code
+    folder = (source.get('path') or market.get('installLocation')) if local else None
+    if isinstance(folder, str) and not Path(folder).expanduser().exists():
+        name = PLUGIN_KEY.split('@')[1]
+        report(False, f'the {name} marketplace was added from {folder}, which is gone, so Claude Code can\'t load the '
+                      'plugin (no Spanish in chat). Add it again from GitHub:\n'
+                      f'       claude plugin marketplace remove {name}\n'
+                      f'       claude plugin marketplace add {REPO}\n'
+                      f'       claude plugin install {PLUGIN_KEY}')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         manifest = swlib.read_json(path)
-        report(bool(manifest) and manifest.get('allowed_origins') == [f'chrome-extension://{EXTENSION_ID}/'],
-               f'native host manifest {path}')
+        report(bool(manifest) and manifest.get('allowed_origins') == [ORIGIN], f'native host manifest {path}')
     launcher = home / 'app' / 'sw-host'
     try:
         message = json.dumps({'type': 'ping'}).encode()
@@ -354,6 +471,13 @@ def check(_args):
         sys.exit(1)
 
 
+def is_host_manifest(path):
+    """True for our native host manifest: that file name, our host name and only our extension allowed."""
+    data = swlib.read_json(path)
+    return (path.name == f'{HOST_NAME}.json' and isinstance(data, dict) and data.get('name') == HOST_NAME
+            and data.get('allowed_origins') == [ORIGIN])
+
+
 def other_codex_hooks(data, config):
     """True when Codex has hooks besides ours (in hooks.json, or as hooks tables in config.toml)."""
     groups = [g for gs in (data.get('hooks') or {}).values() if isinstance(gs, list) for g in gs if isinstance(g, dict)]
@@ -362,7 +486,8 @@ def other_codex_hooks(data, config):
 
 
 def uninstall(args):
-    """Removes what setup put outside the state dir, then prints what is left and how to remove each piece."""
+    """Removes what setup put outside the state dir (a listed host manifest only if it is ours), then prints what is
+    left and how to remove each piece: the state dir with one rm -rf only when nothing else is in it."""
     verb = 'would remove' if args.dry_run else 'removed'
     home, codex, record, left = swlib.home(), swlib.codex_home(), install_record(), []
     me = f'python3 "{Path(__file__).resolve()}"'
@@ -396,7 +521,7 @@ def uninstall(args):
             rest = disable_codex_hooks(config)
             print(f'{verb} `{line.strip()}` from [features] in {config_path}' + ('' if rest else ' (and the file, now empty)'))
             if not args.dry_run and rest:
-                config_path.write_text(rest)
+                swlib.write_text(config_path, rest)
             elif not args.dry_run:
                 config_path.unlink()
             record.pop('codex_hooks_added', None)
@@ -404,7 +529,7 @@ def uninstall(args):
             print(f'{"would restore" if args.dry_run else "restored"} `{before.strip()}` (from before setup) in [features] '
                   f'in {config_path}')
             if not args.dry_run:
-                config_path.write_text(enable_codex_hooks(config, before.strip()))
+                swlib.write_text(config_path, enable_codex_hooks(config, before.strip()))
             record.pop('codex_hooks_added', None)
         else:
             why = 'other Codex hooks use it' if others else 'it was there before setup' if not added else 'changed since setup'
@@ -413,15 +538,20 @@ def uninstall(args):
     manifests = [Path(m) for m in dict.fromkeys([str(d / f'{HOST_NAME}.json') for d in host_dirs(args.user_data_dir)]
                                                 + (record.get('host_manifests') or []))]
     for path in manifests:
-        if path.exists():
-            print(f'{verb} {path}')
-            if not args.dry_run:
-                try:
-                    path.unlink()
-                except OSError as error:
-                    left.append(f'{path} (could not remove it: {error.strerror})')
+        if not path.exists():
+            continue
+        if not is_host_manifest(path):  # install.json may have been edited or copied from another machine
+            left.append(f'{path} (not a Spanish Weave host manifest; left alone)')
+            continue
+        print(f'{verb} {path}')
+        if not args.dry_run:
+            try:
+                path.unlink()
+            except OSError as error:
+                left.append(f'{path} (could not remove it: {error.strerror})')
     if not args.dry_run and (home / INSTALL).exists():
-        swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests if m.exists()]))
+        swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests
+                                                                       if m.exists() and is_host_manifest(m)]))
     backups = [p for p in (hooks_path, config_path) if backup_of(p).exists()]
     print('Left in place:')
     print('  - the Claude Code plugin, if installed; its hook keeps weaving until it is gone. Remove it before the state '
@@ -434,9 +564,16 @@ def uninstall(args):
     for path in backups:
         print(f'  - {backup_of(path)}: your {path.name} from before setup first changed it; once you no longer need it:\n'
               f'      rm "{backup_of(path)}"')
-    if home.exists():
+    names = sorted(p.name for p in home.iterdir()) if home.is_dir() else None
+    ours = [name for name in names or [] if name in SW_NAMES]
+    if names is not None and len(ours) == len(names):
         print(f'  - {home}: your word progress, the extension folder, the native host and any stored Gemini key:\n'
               f'      rm -rf "{home}"')
+    elif ours:  # rm -rf on the folder would take the other things with it
+        print(f'  - your word progress, the extension folder, the native host and any stored Gemini key, in {home}; '
+              'it holds other things too, so delete only these:')
+        for name in ours:
+            print(f'      rm -rf "{home / name}"')
 
 
 def status(_args):
@@ -466,6 +603,10 @@ def status(_args):
     due = len(swlib.due_reviews(state, limit=len(state['words'])))
     print(f'  {due} word{"s" if due != 1 else ""} due for review: /spanish-weave:quiz or sw.py quiz' if due else
           f'  {nothing_due(state)[0].lower()}{nothing_due(state)[1:]}')
+    behind = copies_behind(swlib.home())
+    if behind:
+        print(f'  the extension and native host copies are from {behind[0] or "an older version"}, the plugin is '
+              f'{behind[1]}: rerun /spanish-weave:setup')
 
 
 QUOTES = '"“”«»\'‘’'
@@ -920,6 +1061,8 @@ def main(argv=None):
         args.run(args)
     except swlib.StateError as error:
         sys.exit(f'Spanish Weave: {state_fix(error)}')
+    except swlib.UnsafeHome as error:
+        sys.exit(f'Spanish Weave: {error}.')
 
 
 if __name__ == '__main__':

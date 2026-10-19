@@ -9,12 +9,14 @@ Statuses: queue -> active -> known, with shaky as the penalty box (see README "H
 import contextlib
 import csv
 import datetime as dt
+import errno
 import functools
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import time
 import unicodedata
@@ -109,20 +111,46 @@ def load_lexicon(path=LEXICON):
 
 # ---- files ----
 
-def write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
+class UnsafeHome(Exception):
+    """The state dir can't be trusted: another user owns it or can write to it, or a lock file in it is a symlink.
+    Nothing is read from it or written to it until that is fixed; the message says how."""
+
+
+def check_owner(directory):
+    """Raises UnsafeHome when directory (a symlinked one is followed) belongs to another user or anyone can write to
+    it: whoever can write there could plant lock-file links, swap the native host or put words in Claude's context.
+    Group-writable is allowed."""
+    info = os.stat(directory)
+    if hasattr(os, 'getuid') and info.st_uid != os.getuid():
+        raise UnsafeHome(f'{directory} belongs to another user; set SPANISH_WEAVE_HOME to a folder of your own')
+    if info.st_mode & 0o002:
+        raise UnsafeHome(f'any user can write to {directory}; run chmod o-w "{directory}" or pick another folder')
+
+
+def write_text(path, text):
+    """Writes text atomically: a temp file in the same folder, then a rename, so a crash never leaves the file half
+    written. A symlinked path keeps its link (dotfiles setups link ~/.codex files): the file it points to is replaced.
+    An existing file keeps its mode; a new one is 0600."""
+    path = Path(path)
+    target = Path(os.path.realpath(path)) if path.is_symlink() else path
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile('w', dir=path.parent, delete=False, encoding='utf-8') as file:
+        with tempfile.NamedTemporaryFile('w', dir=target.parent, delete=False, encoding='utf-8') as file:
             temporary = Path(file.name)
-            json.dump(data, file, ensure_ascii=False, indent=1)
-            file.write('\n')
-        os.replace(temporary, path)
+            file.write(text)
+        with contextlib.suppress(FileNotFoundError):
+            os.chmod(temporary, stat.S_IMODE(os.stat(target).st_mode))
+        os.replace(temporary, target)
         temporary = None
     finally:
         if temporary is not None:
             with contextlib.suppress(OSError):
                 temporary.unlink()
+
+
+def write_json(path, data):
+    write_text(path, json.dumps(data, ensure_ascii=False, indent=1) + '\n')
 
 
 def read_json(path, default=None):
@@ -135,10 +163,20 @@ def read_json(path, default=None):
 
 @contextlib.contextmanager
 def locked(name='state.lock', blocking=True):
-    """Exclusive lock in the state dir; yields False when non-blocking and someone else holds it."""
+    """Exclusive lock in the state dir; yields False when non-blocking and someone else holds it. A new state dir is
+    made 0700, and one that fails check_owner raises UnsafeHome, as does a lock file that is a symlink (opening it
+    never follows the link or truncates anything)."""
     directory = home()
-    directory.mkdir(parents=True, exist_ok=True)
-    with open(directory / name, 'w') as handle:
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    check_owner(directory)
+    path = directory / name
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    except OSError as error:
+        if error.errno == errno.ELOOP or path.is_symlink():
+            raise UnsafeHome(f'{path} is a symbolic link; remove it') from None
+        raise
+    with os.fdopen(fd, 'r+b') as handle:
         if fcntl is None:
             yield True
             return
@@ -220,8 +258,12 @@ def state_problem(path):
 
 def load_state(create=True, lock=True):
     """The saved state; creates it on first use (create=False: None until then). lock=False when the caller already
-    holds state.lock. Raises StateError when state.json is there but unreadable."""
-    path = home() / 'state.json'
+    holds state.lock. Raises StateError when state.json is there but unreadable, and UnsafeHome when the state dir
+    fails check_owner (someone else could have written the words that go into Claude's context)."""
+    directory = home()
+    if directory.exists():
+        check_owner(directory)
+    path = directory / 'state.json'
     state = read_json(path)
     if isinstance(state, dict) and isinstance(state.get('words'), list):
         return state
@@ -622,12 +664,15 @@ def codex_home():
     return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').expanduser()
 
 
+def claude_config_dir():
+    return Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser()
+
+
 def transcript_roots():
     """Chat transcripts to scan: SPANISH_WEAVE_TRANSCRIPTS, else Claude Code's projects and Codex's sessions."""
     if os.environ.get('SPANISH_WEAVE_TRANSCRIPTS'):
         return [Path(os.environ['SPANISH_WEAVE_TRANSCRIPTS']).expanduser()]
-    claude = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser() / 'projects'
-    return [claude, codex_home() / 'sessions']
+    return [claude_config_dir() / 'projects', codex_home() / 'sessions']
 
 
 class Lines:
