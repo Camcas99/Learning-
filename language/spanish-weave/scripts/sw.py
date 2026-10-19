@@ -55,6 +55,7 @@ import re
 import shlex
 import shutil
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
@@ -64,6 +65,8 @@ import placement  # noqa: E402
 HOST_NAME = 'com.spanishweave.host'
 EXTENSION_ID = 'papkhjkhjagpimlholdmecddkhhhcfje'  # fixed by the "key" in extension/manifest.json
 ORIGIN = f'chrome-extension://{EXTENSION_ID}/'
+# The native host can't push changes; the extension syncs when its word state is 2 minutes old or the popup opens.
+CHROME_PICKS_UP = 'Chrome picks this up within 2 minutes, or as soon as you open the Spanish Weave popup.'
 PLUGIN_KEY = 'spanish-weave@learning'  # the plugin's name in Claude Code: plugin@marketplace
 REPO = 'Camcas99/Learning-'  # the GitHub repo the marketplace comes from
 
@@ -372,8 +375,8 @@ def setup(args):
             swlib.save_state(swlib.new_state(known_top=args.known_top))
     with swlib.editing() as state:  # later runs: adds new lexicon words, seeds only words not yet introduced
         swlib.seed_known(state, args.known_top)
-        if args.sites:
-            state.setdefault('prefs', {})['extension_sites'] = args.sites
+        if args.sites:  # timed, so the extension can tell whether this or a popup choice came last
+            state.setdefault('prefs', {}).update(extension_sites=args.sites, extension_sites_at=int(time.time()))
     if args.codex:
         setup_codex(False)
     print(f'Spanish Weave{f" {version}" if version else ""} is set up'
@@ -382,7 +385,9 @@ def setup(args):
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
-    print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
+    print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}'
+          ' (a later "Other sites" choice in the extension popup wins until setup sets it again)')
+    print(f'               {CHROME_PICKS_UP}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
     print('Human steps left (Chrome blocks scripts from doing these):')
@@ -672,6 +677,7 @@ def pause(value):
         with swlib.editing() as state:
             state['paused'] = value
         print('Spanish Weave paused: no Spanish in chat or on websites until you resume.' if value else 'Spanish Weave resumed.')
+        print(CHROME_PICKS_UP)
     return run
 
 

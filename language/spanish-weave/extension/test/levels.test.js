@@ -126,4 +126,11 @@ describe('guards', () => {
     expect(isZeroSpanish('shipped the new onboarding flow today')).toBe(false);
     expect(isZeroSpanish('the taxi was late again')).toBe(false);
   });
+  test('bank and health pages', () => {
+    for (const text of ['Your available balance is $1,240.18 as of this morning', 'Book an appointment with your care team online',
+      'insurance', 'Download your bank statement for last month', 'Set up direct deposit for your paycheck', 'View your medical records'])
+      expect([text, isZeroSpanish(text)]).toEqual([text, true]);
+    for (const text of ['Be patient with the build, it takes a while', 'Wrap the writes in a database transaction', 'The test results look good'])
+      expect([text, isZeroSpanish(text)]).toEqual([text, false]);
+  });
 });

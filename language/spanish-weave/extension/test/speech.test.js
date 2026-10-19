@@ -19,6 +19,15 @@ describe('pickVoice', () => {
     expect(pickVoice([v('en-US'), v('fr-FR'), v('et-EE')])).toBeNull();
     expect(pickVoice([])).toBeNull();
   });
+  test('voices on this device before online ones (Chrome\'s Google voices send the word to Google)', () => {
+    const local = (lang) => ({ ...v(lang), localService: true });
+    const online = (lang) => ({ ...v(lang), localService: false });
+    expect(pickVoice([online('es-MX'), local('es-US')])).toEqual(local('es-US'));
+    expect(pickVoice([online('es-MX'), local('es-419'), local('es-US')])).toEqual(local('es-US')); // LATAM order among local ones
+    expect(pickVoice([local('es-ES'), online('es-MX')])).toEqual(online('es-MX')); // Latin American first, even online
+    expect(pickVoice([online('es-ES'), local('es-AR')])).toEqual(local('es-AR'));
+    expect(pickVoice([online('es-ES'), online('en-US')])).toEqual(online('es-ES'));
+  });
 });
 
 describe('speak', () => {

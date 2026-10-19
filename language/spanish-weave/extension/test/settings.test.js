@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test';
-import { cleanSettings, siteEnabled, swapSettings } from '../src/settings.js';
+import { cleanSettings, newSitesDefault, siteEnabled, swapSettings } from '../src/settings.js';
 
 it('speech starts off and gender colors on; only booleans are kept', () => {
   expect(cleanSettings()).toMatchObject({ speak: false, genderColors: true });
@@ -7,10 +7,12 @@ it('speech starts off and gender colors on; only booleans are kept', () => {
   expect(cleanSettings({ speak: 'yes', genderColors: 0 })).toMatchObject({ speak: false, genderColors: true });
 });
 
-it('display settings stay out of what picks swaps, so toggling them asks the model nothing', () => {
+it('only the model and level pick swaps, so display and site settings ask the model nothing', () => {
   expect(swapSettings(cleanSettings({ speak: true, genderColors: false }))).toEqual(swapSettings(cleanSettings()));
+  expect(swapSettings(cleanSettings({ enabled: false, newSitesEnabled: false, siteOverrides: { 'a.example': false } })))
+    .toEqual(swapSettings(cleanSettings()));
   expect(swapSettings(cleanSettings({ levelOverride: 2 }))).not.toEqual(swapSettings(cleanSettings()));
-  expect(Object.keys(swapSettings(cleanSettings()))).toEqual(['enabled', 'model', 'levelOverride', 'newSitesEnabled', 'siteOverrides']);
+  expect(Object.keys(swapSettings(cleanSettings()))).toEqual(['model', 'levelOverride']);
 });
 
 it('webmail, AI chat and local addresses start off; a popup choice wins', () => {
@@ -29,4 +31,31 @@ it('webmail, AI chat and local addresses start off; a popup choice wins', () => 
   expect(siteEnabled(withChoices, 'http://localhost:8080/')).toBe(true);
   expect(siteEnabled(withChoices, 'https://example.com/')).toBe(false);
   expect(siteEnabled({ ...chosen, newSitesEnabled: false }, 'https://mail.google.com/')).toBe(true);
+});
+
+it('intranet names, more webmail and messaging apps start off too', () => {
+  const every = { ...cleanSettings(), newSitesEnabled: true };
+  for (const url of ['http://wiki/', 'http://jira:8080/browse/X-1', 'http://nas.home/', 'http://srv.corp/', 'http://box.localdomain/',
+    'http://hr.intranet/', 'http://files.private/', 'https://outlook.cloud.microsoft/mail/', 'https://www.icloud.com/mail/',
+    'https://www.messenger.com/t/1', 'https://web.whatsapp.com/', 'https://app.slack.com/client/T1', 'https://discord.com/channels/1/2'])
+    expect([url, siteEnabled(every, url)]).toEqual([url, false]);
+  expect(siteEnabled(every, 'https://example.com/')).toBe(true);
+  expect(siteEnabled(every, 'https://homes.example.com/')).toBe(true);
+});
+
+it('setup and the popup site choice: the latest wins; with no word state from the host, sites start off', () => {
+  const setupAt = 1_800_000_000; // seconds, as setup stores prefs.extension_sites_at
+  const popup = (on, at) => cleanSettings({ newSitesEnabled: on, newSitesAt: at });
+  expect(newSitesDefault(popup(true, setupAt * 1000 - 60000), 'ask', setupAt)).toBe(false); // popup first, then setup
+  expect(newSitesDefault(popup(false, setupAt * 1000 - 60000), 'all', setupAt)).toBe(true);
+  expect(newSitesDefault(popup(true, setupAt * 1000 + 60000), 'ask', setupAt)).toBe(true); // setup first, then popup
+  expect(newSitesDefault(popup(false, setupAt * 1000 + 60000), 'all', setupAt)).toBe(false);
+  expect(newSitesDefault(popup(true, 5), 'ask')).toBe(true); // a setup from before it was timed loses to any choice
+  expect(newSitesDefault(cleanSettings(), 'ask', setupAt)).toBe(false);
+  expect(newSitesDefault(cleanSettings(), 'all', setupAt)).toBe(true);
+  expect(newSitesDefault(cleanSettings(), undefined)).toBe(false); // the host never answered
+  expect(newSitesDefault(popup(true, 5), undefined)).toBe(true);
+  expect(cleanSettings({ newSitesAt: -1 }).newSitesAt).toBe(0);
+  expect(cleanSettings({ newSitesAt: 'soon' }).newSitesAt).toBe(0);
+  expect(cleanSettings({ newSitesAt: 12.5 }).newSitesAt).toBe(12.5);
 });

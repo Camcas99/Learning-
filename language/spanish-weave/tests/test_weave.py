@@ -435,12 +435,15 @@ class Brief(Home):
         self.assertIn('Spanish Weave (Stage 1)', context)
         self.assertIn('Recall: y?', context)
         self.assertLess(len(context), 3000)
-        with mock.patch('sys.stdout', new=io.StringIO()):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['pause'])
         self.assertEqual(self.run_hook({'session_id': 'x'}), '')
-        with mock.patch('sys.stdout', new=io.StringIO()):
+        # The extension has no push from the plugin: say when Chrome follows.
+        self.assertIn('within 2 minutes, or as soon as you open the Spanish Weave popup', out.getvalue())
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['resume'])
         self.assertIn('Spanish Weave', self.run_hook({}))
+        self.assertIn('as soon as you open the Spanish Weave popup', out.getvalue())
 
     def test_no_spanish_in_scripted_runs(self):
         self.assertIn('Spanish Weave', self.run_hook({}))  # no claude parent here: weave by default
@@ -917,9 +920,9 @@ class Host(Home):
 
     def test_state_reply_carries_prefs(self):
         with swlib.editing() as state:
-            state['prefs'] = {'extension_sites': 'ask'}
+            state['prefs'] = {'extension_sites': 'ask', 'extension_sites_at': 1800000000}
         reply, = self.converse({'type': 'state'})
-        self.assertEqual(reply['prefs'], {'extension_sites': 'ask'})
+        self.assertEqual(reply['prefs'], {'extension_sites': 'ask', 'extension_sites_at': 1800000000})
 
     def test_message_framing(self):
         stream = io.BytesIO()
@@ -1098,12 +1101,28 @@ class Setup(Home):
         self.assertEqual(by['pero']['days'], [swlib.today()])
         self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 145)
         self.assertEqual(swlib.stage_for(state), 2)  # 145 known: stage 3 comes once the learning words graduate
-        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})
+        self.assertEqual(state['prefs']['extension_sites'], 'ask')
         before = json.dumps(state)
         state = self.run_setup('--known-top', '40')  # a lower answer later changes nothing
         self.assertEqual(json.dumps(state), before)
-        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})  # --sites left out keeps the choice
-        self.assertEqual(self.run_setup('--sites', 'all')['prefs'], {'extension_sites': 'all'})
+        self.assertEqual(state['prefs']['extension_sites'], 'ask')  # --sites left out keeps the choice
+        self.assertEqual(self.run_setup('--sites', 'all')['prefs']['extension_sites'], 'all')
+
+    def test_sites_choice_is_timed_so_the_latest_of_setup_and_popup_wins(self):
+        self.run_setup()
+        self.assertNotIn('prefs', swlib.load_state(create=False))  # no --sites: nothing to time
+        start = int(time.time())
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['setup', '--sites', 'ask'])
+        at = swlib.load_state(create=False)['prefs']['extension_sites_at']
+        self.assertIsInstance(at, int)
+        self.assertTrue(start <= at <= time.time() + 1)
+        self.assertIn('a later "Other sites" choice in the extension popup wins until setup sets it again', out.getvalue())
+        self.assertIn('as soon as you open the Spanish Weave popup', out.getvalue())
+        self.assertEqual(self.run_setup('--known-top', '40')['prefs']['extension_sites_at'], at)  # a rerun without --sites
+        reply = sw_host.handle({'type': 'state'})
+        self.assertEqual(reply['prefs'], {'extension_sites': 'ask', 'extension_sites_at': at})
 
     def test_dry_run_reports_answers_and_writes_nothing(self):
         with mock.patch.object(Path, 'home', return_value=self.home), \

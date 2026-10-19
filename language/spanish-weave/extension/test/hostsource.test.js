@@ -22,12 +22,16 @@ const host = (reply) => async () => reply;
 describe('parseState', () => {
   it('reads the host reply shape', () => {
     const s = parseState(REPLY);
-    expect(s).toEqual({ version: 'abc123', stage: 1, paused: false, sites: 'all', words: REPLY.words });
+    expect(s).toEqual({ version: 'abc123', stage: 1, paused: false, sites: 'all', sitesAt: 0, words: REPLY.words });
   });
   it('reads the site default setup chose; anything but "ask" means all sites', () => {
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'ask' } }).sites).toBe('ask');
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'all' } }).sites).toBe('all');
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'bogus' } }).sites).toBe('all');
+  });
+  it('reads when setup last chose the sites (seconds), so a later popup choice can win', () => {
+    expect(parseState({ ...REPLY, prefs: { extension_sites: 'ask', extension_sites_at: 1800000000 } }).sitesAt).toBe(1800000000);
+    for (const at of [undefined, 'soon', -5, null]) expect(parseState({ ...REPLY, prefs: { extension_sites_at: at } }).sitesAt).toBe(0);
   });
   it('drops unusable rows and duplicates; bad stage falls back to 1', () => {
     const s = parseState({ stage: 9, words: [{ es: 'y', en: 'and' }, { es: 'y', en: 'x' }, { es: ' ', en: 'y' }, null, { es: 'pero' }] });

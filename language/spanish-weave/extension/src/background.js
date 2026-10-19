@@ -14,7 +14,8 @@ const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
 const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
-const SYNC_MINUTES = 30; // word statuses change at most a few times a day
+const SYNC_MINUTES = 10; // a backstop: pages and the popup sync sooner when the word state is stale
+const STALE_MS = 120000; // a pause or setup rerun in Claude Code reaches pages within about this long
 const FLUSH_DELAY_MS = 10000;
 const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
 
@@ -26,27 +27,31 @@ const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
 const ready = (async () => {
-  // Content scripts run on every enabled site, so stored keys are kept out of their reach.
-  if (store.setAccessLevel) await store.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  // Content scripts run on every enabled site, so stored keys are kept out of their reach. Some Chromium builds reject
+  // this; page scripts still can't read extension storage, so the extension carries on without it.
+  try {
+    if (store.setAccessLevel) await store.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  } catch { /* see above */ }
   const { settings } = await store.get('settings');
   if (settings?.apiKey) await store.set({ apiKey: settings.apiKey }); // 0.1 kept a pasted key in settings
   await store.set({ settings: cleanSettings(settings) });
 })();
 
-// What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped;
-// display-only settings (speech, gender colors) don't change it, so toggling them costs no model calls.
+// What pages get. The revision changes whenever anything that affects which swaps are chosen does, so stale replies
+// are dropped. Where swaps run (on/off, sites, access, pause) and how they look don't change it: pages stop or start
+// for those, and cached swaps stay good, so toggling them costs no model calls.
 async function context() {
   await ready;
   const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
-  const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites) };
+  const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites, state?.sitesAt) };
   const level = resolveLevel(saved, state?.stage).effective;
   const hasKey = !!(data.apiKey || data.hostKey);
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
   const revision = swapRevision({ extension: chrome.runtime.getManifest?.()?.version || '', epoch: data.epoch || '',
-    settings: swapSettings(settings), level, words: state?.version || '', paused, hasKey, origins });
+    settings: swapSettings(settings), level, words: state?.version || '', hasKey });
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
 }
 
@@ -58,7 +63,22 @@ async function broadcast(type = 'config') {
   await Promise.allSettled(tabs.map((t) => chrome.tabs.sendMessage(t.id, { type, config })));
 }
 
+// The native host can't push a pause or a setup rerun, so a page asking for swaps with word state older than
+// STALE_MS syncs first. lastAttempt keeps a missing host to one try per STALE_MS; requests meanwhile wait on it.
+let lastAttempt = 0;
+let syncing = Promise.resolve();
+async function maybeSync() {
+  const { wordState } = await store.get('wordState');
+  const now = Date.now();
+  if (now - (wordState?.fetchedAt || 0) >= STALE_MS && now - lastAttempt >= STALE_MS) {
+    lastAttempt = now;
+    syncing = syncWords().catch(() => {});
+  }
+  await syncing;
+}
+
 async function swaps(msg, sender) {
+  await maybeSync();
   const ctx = await context();
   if (msg.revision !== ctx.revision || !activeOn(ctx, sender.url)) return { results: {}, stale: true };
   if (!Array.isArray(msg.items) || msg.items.length > 8) throw new Error('Invalid text batch');
@@ -69,15 +89,18 @@ async function swaps(msg, sender) {
   if (!misses.length) return { results };
   try {
     const fresh = await modelCall(async () => {
-      if ((await context()).revision !== ctx.revision) return null;
+      const now = await context();
+      if (now.revision !== ctx.revision || !activeOn(now, sender.url)) return null;
       if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) throw new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; Spanish resumes tomorrow`);
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
       return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
         shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
     });
+    // Turned off, paused or changed during the request: nothing is cached or painted.
     return await locked(async () => {
-      if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
+      const now = await context();
+      if (!fresh || now.revision !== ctx.revision || !activeOn(now, sender.url)) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
       await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
       return { results: { ...results, ...fresh.results } };
@@ -130,6 +153,8 @@ async function save(msg) {
   await locked(async () => {
     const saved = await store.get('settings');
     const merged = { ...saved.settings, ...msg.settings };
+    // Timed, so whichever of this and setup's --sites came last wins (newSitesDefault).
+    if (msg.settings && Object.hasOwn(msg.settings, 'newSitesEnabled')) merged.newSitesAt = Date.now();
     if (msg.siteOverride && typeof msg.siteOverride.host === 'string') {
       merged.siteOverrides = { ...saved.settings?.siteOverrides };
       if (msg.siteOverride.enabled === null) delete merged.siteOverrides[msg.siteOverride.host];

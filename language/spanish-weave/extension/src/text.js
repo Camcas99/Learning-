@@ -9,8 +9,9 @@ export const SWAP_CLASS = 'sw-word';
 // Remember synthetic siblings so a framework replacing its original text node wins.
 const splitGroups = new WeakMap();
 const spanGroups = new WeakMap();
-// Spans this extension made -> their learning word ('' if none). Kept out of the DOM, so a page can neither read the
-// word list from attributes nor pass off its own span as a swap.
+// Spans this extension made -> their learning word ('' if none). Pages can read a placed span's data-es, data-tip
+// and data-sw-status; only the word list and the revision stay off the DOM, and a page can't pass off its own span
+// as a swap.
 const owned = new WeakMap();
 export const isSwap = (span) => owned.has(span);
 export const swapWord = (span) => owned.get(span) || '';
