@@ -211,8 +211,9 @@ and a lookalike with the same ID would be handed your Gemini key.
 - **No Spanish in Claude's replies:** open a new Claude Code session (the plugin loads at start), and check
   `/spanish-weave:status` isn't paused.
 - **No Spanish on websites:** click the Spanish Weave icon. Is it on, is there a Gemini key, and is the site allowed?
-- **Spanish in automated work** (scheduled tasks or workflows in the Claude desktop app): Spanish Weave can't tell
-  those from your own chats yet, so `/spanish-weave:pause` while they run, and `/spanish-weave:resume` after.
+- **Spanish in automated work:** scheduled tasks, subagents and sessions another session starts get none (with
+  Claude Code 2.1.281 or later). If some still do, such as a session forked with the whole conversation,
+  `/spanish-weave:pause` while it runs, and `/spanish-weave:resume` after.
 - **AI Studio won't make a key** (or sends you to an "available regions" page): Google only gives keys to accounts
   it knows are 18 or older. Verify your age in your Google Account settings, or use a personal account instead of a
   school or Family Link one.
