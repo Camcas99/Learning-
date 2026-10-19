@@ -31,12 +31,12 @@ LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
 NOTES = PLUGIN_ROOT / 'data' / 'notes.csv'
 
 # ---- promotion rules (documented in README "How words advance") ----
-WINDOW = 20             # target number of active (learning) words
+WINDOW = 20             # most learning words (active plus shaky) at once
 NEW_PER_DAY = 5         # new words per day, including the first day
 SHAKY_BLOCK = 5         # no new words while this many or more are shaky
 GRADUATE_DAYS = 3       # active -> known: exposure days needed, and length of the clean streak
-SHAKY_DAYS = 7          # shaky -> known: days with no new flip, asked or peek
-PEEK_WINDOW = 7         # a known word peeked on 2 different days within this many days becomes shaky
+SHAKY_DAYS = 7          # shaky -> known: days with no new flip, asked or peek, and a real sighting since the last one
+PEEK_WINDOW = 7         # known -> shaky: peeked on 2 different days within this many days, both since it became known
 ASSUMED_WEIGHT = 1      # a day with only opt-in "assumed" exposure (sw.py log-chat-day) counts this much
 STAGES = [(400, 4), (150, 3), (40, 2)]  # (known words, stage): first match wins; otherwise Stage 1
 
@@ -162,10 +162,11 @@ def read_json(path, default=None):
 
 
 @contextlib.contextmanager
-def locked(name='state.lock', blocking=True):
-    """Exclusive lock in the state dir; yields False when non-blocking and someone else holds it. A new state dir is
-    made 0700, and one that fails check_owner raises UnsafeHome, as does a lock file that is a symlink (opening it
-    never follows the link or truncates anything)."""
+def locked(name='state.lock', blocking=True, timeout=None):
+    """Exclusive lock in the state dir; yields False when non-blocking and someone else holds it. With a timeout
+    (seconds), waits at most that long and then raises TimeoutError. A new state dir is made 0700, and one that fails
+    check_owner raises UnsafeHome, as does a lock file that is a symlink (opening it never follows the link or
+    truncates anything)."""
     directory = home()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     check_owner(directory)
@@ -180,11 +181,18 @@ def locked(name='state.lock', blocking=True):
         if fcntl is None:
             yield True
             return
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
-        except OSError:
-            yield False
-            return
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking and deadline is None else fcntl.LOCK_NB))
+                break
+            except OSError:
+                if deadline is None:
+                    yield False
+                    return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f'{name} is busy')
+            time.sleep(0.05)
         try:
             yield True
         finally:
@@ -222,15 +230,23 @@ def blank(word):
 
 
 def merge_lexicon(state, lexicon=None):
-    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list) and takes the list's current
-    meaning and sound hint for the others, so a corrected gloss reaches everyone; never drops a word."""
-    have = {key(w['es']): w for w in state['words']}
+    """Puts the words in lexicon order, adding the ones the state doesn't have yet at their rank (a plugin update can
+    grow the list; refill, seeding and the known band all follow this order), and takes the list's current meaning and
+    sound hint, so a corrected gloss reaches everyone. Never drops a word: one no longer listed keeps its progress at
+    the end."""
+    have = {}
+    for w in reversed(state['words']):
+        have[key(w['es'])] = w  # the first of any duplicates wins; the others stay at the end
+    words = []
     for w in lexicon or load_lexicon():
-        mine = have.get(key(w['es']))
+        mine = have.pop(key(w['es']), None)
         if mine is None:
-            state['words'].append(blank(w))
+            mine = blank(w)
         else:
             mine.update(en=w['en'], hint=w['hint'])
+        words.append(mine)
+    placed = {id(w) for w in words}
+    state['words'] = words + [w for w in state['words'] if id(w) not in placed]
     return state
 
 
@@ -283,9 +299,9 @@ def save_state(state):
 
 
 @contextlib.contextmanager
-def editing():
-    """Load, let the caller change, promote and save the state under the lock."""
-    with locked():
+def editing(timeout=None):
+    """Load, let the caller change, promote and save the state under the lock (timeout: see locked)."""
+    with locked(timeout=timeout):
         state = load_state(lock=False)
         merge_lexicon(state)
         yield state
@@ -309,8 +325,9 @@ def find(state, es):
         if bare(w) == k:
             return w
     # Accept missing accents, but only when exactly one word matches ("si" and "sí" are different words).
+    folded = fold(k)
     for spelling in (lambda w: key(w['es']), bare):
-        hits = [w for w in state['words'] if fold(spelling(w)) == fold(k)]
+        hits = [w for w in state['words'] if fold(spelling(w)) == folded]
         if len(hits) == 1:
             return hits[0]
     return None
@@ -344,14 +361,14 @@ def exposure_days(word, chat=None):
 
 
 def refill(state, day, cap=NEW_PER_DAY):
-    """Fill the learning set up to WINDOW from lexicon order, at most cap new words per day, none while
-    SHAKY_BLOCK or more words are shaky."""
+    """Fill the learning set (active and shaky words) up to WINDOW from lexicon order, at most cap new words per day,
+    none while SHAKY_BLOCK or more words are shaky."""
     words = state['words']
     if sum(w['status'] == 'shaky' for w in words) >= SHAKY_BLOCK:
         return 0
     last_day, count = state.get('refilled') or ['', 0]
     count = count if last_day == day else 0
-    room = min(WINDOW - sum(w['status'] == 'active' for w in words), cap - count)
+    room = min(WINDOW - sum(w['status'] in ('active', 'shaky') for w in words), cap - count)
     added = 0
     for w in words:
         if added >= room:
@@ -376,6 +393,17 @@ def graduates(word, chat=None):
     return clean and 'seen' in days.values()
 
 
+def recovers(word, day, chat=None):
+    """shaky -> known: SHAKY_DAYS with no slip (flip, asked or peek), and at least one genuinely seen day since the last
+    one: a word nobody saw isn't relearned, and assumed days never count. Chat can't count UNMEASURABLE words, so for
+    them the clean week alone has to do."""
+    slip = word['last_bad'] or word['changed']
+    if days_between(slip, day) < SHAKY_DAYS:
+        return False
+    return norm(word['es']) in UNMEASURABLE or any(d > slip and kind == 'seen'
+                                                   for d, kind in exposure_days(word, chat).items())
+
+
 def promote(state, day=None, chat=None):
     """Applies the promotion rules for today. Idempotent: safe to call as often as you like."""
     day = day or today()
@@ -385,11 +413,7 @@ def promote(state, day=None, chat=None):
         if w['status'] == 'active' and graduates(w, chat):
             set_status(w, 'known', day)
             schedule(w, day, max(w.get('box', 0), KNOWN_BOX['graduated']))
-        elif (w['status'] == 'shaky' and days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS
-              and (any(d > (w['last_bad'] or w['changed']) for d in exposure_days(w, chat))
-                   or norm(w['es']) in UNMEASURABLE)):
-            # A week with no slips, and at least one sighting since the last one: a word nobody saw isn't relearned.
-            # Chat can't count UNMEASURABLE words, so for them the clean week alone has to do.
+        elif w['status'] == 'shaky' and recovers(w, day, chat):
             set_status(w, 'known', day)
             schedule(w, day, max(w.get('box', 0), KNOWN_BOX['recovered']))
     refill(state, day)
@@ -405,28 +429,30 @@ def apply_event(state, es, kind, day=None):
 
     seen / assumed: exposure. flip (clicked back to English) / asked: shaky. peek (hovered for the meaning):
     blocks graduation of an active word, restarts a shaky word's clock, and a known word peeked on 2 different
-    days within PEEK_WINDOW days becomes shaky. known / active: set directly (commands)."""
+    days within PEEK_WINDOW days since it became known turns shaky. known / active: set directly (commands).
+    A flip, asked or peek dated before the word's last change (a browser queue sent late) never undoes that change."""
     day = day or today()
     w = find(state, es)
     if w is None or kind not in EVENTS:
         return False
+    since = w.get('changed') or ''
     if kind in ('seen', 'assumed'):
         field = 'days' if kind == 'seen' else 'assumed'
         if w['status'] != 'queue' and day not in (w.get(field) or []):
             w[field] = sorted((w.get(field) or []) + [day])[-60:]
     elif kind in ('flip', 'asked'):
-        w['last_bad'] = day
-        set_status(w, 'shaky', day)
-        schedule(w, day, 0)  # a slip: quiz it again from the first box, starting tomorrow
+        w['last_bad'] = max(w['last_bad'] or '', day)
+        if day >= since:
+            set_status(w, 'shaky', day)
+            schedule(w, day, 0)  # a slip: quiz it again from the first box, starting tomorrow
     elif kind == 'peek':
-        peeks = w.setdefault('peeks', [])
-        if not peeks or peeks[-1] != day:
-            peeks.append(day)
-            del peeks[:-10]
-        if w['status'] == 'shaky':
-            w['last_bad'] = day
-        elif w['status'] == 'known' and len(peeks) >= 2 and days_between(peeks[-2], day) < PEEK_WINDOW:
-            w['last_bad'] = day
+        w['peeks'] = peeks = sorted(set((w.get('peeks') or []) + [day]))[-10:]
+        if w['status'] == 'shaky' and day >= since:
+            w['last_bad'] = max(w['last_bad'] or '', day)
+        elif w['status'] == 'known' and day >= since and any(
+                p >= since and p != day and abs(days_between(p, day)) < PEEK_WINDOW for p in peeks):
+            # Only peeks since it became known count: hovering a word in its learning days is how it gets learned.
+            w['last_bad'] = max(w['last_bad'] or '', peeks[-1])
             set_status(w, 'shaky', day)
             schedule(w, day, 0)
     elif kind == 'known':
@@ -608,12 +634,15 @@ def check(word, answer, way):
     return None
 
 
-UNDO = ('box', 'status', 'changed', 'last_bad')  # what an answer can change, saved with it so a same-day redo can undo it
+# What an answer can change, saved with it before and after ([day, ok, *before, *after]) so a same-day redo can undo it.
+UNDO = ('box', 'status', 'changed', 'last_bad')
 
 
 def review(state, es, right, day=None, hold=False):
     """Records a quiz answer. A second answer the same day replaces the first (a retried command or a corrected
-    verdict), so answers can't stack boxes and a wrong verdict can be taken back.
+    verdict), so answers can't stack boxes and a wrong verdict can be taken back. The first answer is undone only if
+    nothing else changed the word since (a known, learn or flip in between stays); otherwise the new answer goes on
+    top.
 
     Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day. With hold
     (right, but with a gender_slip), it stays in its box and comes back at the same gap.
@@ -623,11 +652,15 @@ def review(state, es, right, day=None, hold=False):
     w = find(state, es)
     if w is None or w['status'] == 'queue':
         return None
+    fields = lambda: [w.get(k, 0 if k == 'box' else '') for k in UNDO]
     reviews = list(w.get('reviews') or [])
-    if reviews and reviews[-1][0] == day:  # undo the earlier answer from today first
-        w.update(zip(UNDO, reviews.pop()[2:]))
+    if reviews and reviews[-1][0] == day:  # an earlier answer from today: this one replaces it
+        saved = reviews.pop()[2:]
+        before, after = saved[:len(UNDO)], saved[len(UNDO):]
+        if not after or after == fields():  # (0.2.2 records have no after-snapshot)
+            w.update(zip(UNDO, before))
     way, box = direction(dict(w, reviews=reviews)), w.get('box', 0)
-    before = [w.get(k, 0 if k == 'box' else '') for k in UNDO]
+    before = fields()
     if right:
         apply_event(state, w['es'], 'seen', day)
         schedule(w, day, box if hold else box + 1)
@@ -638,7 +671,7 @@ def review(state, es, right, day=None, hold=False):
     else:
         w['last_bad'] = day
         schedule(w, day, 0)
-    w['reviews'] = (reviews + [[day, int(bool(right))] + before])[-10:]
+    w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields()])[-10:]
     return w
 
 

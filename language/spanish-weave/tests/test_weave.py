@@ -241,6 +241,66 @@ class Rules(Home):
         self.assertEqual(swlib.find(state, 'si')['es'], 'si')  # "si" (if) is its own word, not a missing-accent "sí"
         self.assertIsNone(swlib.find(state, 'nope'))
 
+    def test_assumed_days_never_bring_a_shaky_word_back(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'el tiempo', 'asked', '2026-10-02')  # /spanish-weave:learn on a word never met
+        export.log_chat_day(state, '2026-10-10')
+        swlib.promote(state, '2026-10-10', {})
+        self.assertEqual(swlib.find(state, 'el tiempo')['status'], 'shaky')  # a clean week, but never really seen
+        swlib.apply_event(state, 'el tiempo', 'seen', '2026-10-11')
+        swlib.promote(state, '2026-10-11', {})
+        self.assertEqual(swlib.find(state, 'el tiempo')['status'], 'known')
+
+    def test_late_events_never_override_a_newer_change(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'pero', 'known', '2026-10-09')
+        swlib.apply_event(state, 'pero', 'flip', '2026-10-01')  # queued in a browser that stayed closed for a week
+        pero = swlib.find(state, 'pero')
+        self.assertEqual((pero['status'], pero['changed'], pero['box']), ('known', '2026-10-09', 3))
+        swlib.apply_event(state, 'con', 'asked', '2026-10-08')  # learn
+        swlib.apply_event(state, 'con', 'seen', '2026-10-09')
+        swlib.apply_event(state, 'con', 'flip', '2026-10-02')  # older than the learn
+        swlib.promote(state, '2026-10-10', {})
+        con = swlib.find(state, 'con')
+        self.assertEqual((con['status'], con['changed'], con['last_bad']), ('shaky', '2026-10-08', '2026-10-08'))
+
+    def test_peeks_from_learning_days_never_count_against_a_known_word(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'sin', 'peek', '2026-10-01')  # hovered on its first day: the normal way to learn it
+        for day in ('2026-10-02', '2026-10-03', '2026-10-04'):
+            swlib.apply_event(state, 'sin', 'seen', day)
+        swlib.promote(state, '2026-10-04', {})
+        self.assertEqual(swlib.find(state, 'sin')['status'], 'known')
+        swlib.apply_event(state, 'sin', 'peek', '2026-10-06')
+        self.assertEqual(swlib.find(state, 'sin')['status'], 'known')  # one peek since it became known
+        swlib.apply_event(state, 'pero', 'peek', '2026-10-03')
+        swlib.apply_event(state, 'pero', 'peek', '2026-10-02')  # arrives late
+        self.assertEqual(swlib.find(state, 'pero')['peeks'], ['2026-10-02', '2026-10-03'])
+
+    def test_learning_set_never_passes_20_with_shaky_words(self):
+        state = swlib.new_state('2026-10-01')
+        for day in ('2026-10-02', '2026-10-03', '2026-10-04'):
+            swlib.promote(state, day, {})
+        active = [w['es'] for w in state['words'] if w['status'] == 'active']
+        self.assertEqual(len(active), swlib.WINDOW)
+        for es in active[:4]:
+            swlib.apply_event(state, es, 'flip', '2026-10-05')
+        swlib.promote(state, '2026-10-05', {})
+        self.assertEqual(sum(w['status'] in ('active', 'shaky') for w in state['words']), swlib.WINDOW)
+
+    def test_merge_puts_new_words_at_their_rank_and_keeps_progress(self):
+        state = swlib.new_state('2026-10-01')
+        for day in ('2026-10-02', '2026-10-03'):
+            swlib.promote(state, day, {})
+        swlib.review(state, 'pero', True, '2026-10-03')
+        new = state['words'].pop(9)['es']  # as if a plugin update added the word at rank 10
+        state['words'].insert(3, dict(swlib.blank({'es': 'la palabra vieja', 'en': 'old', 'hint': 'x'}), status='known'))
+        before = {w['es']: (w['status'], w.get('box')) for w in state['words']}
+        swlib.merge_lexicon(state)
+        self.assertEqual([w['es'] for w in state['words']], [w['es'] for w in swlib.load_lexicon()] + ['la palabra vieja'])
+        self.assertEqual((state['words'][9]['es'], state['words'][9]['status']), (new, 'queue'))
+        self.assertEqual({w['es']: (w['status'], w.get('box')) for w in state['words'] if w['es'] != new}, before)
+
 
 class Brief(Home):
     seen = {'y': {'n': 40, 'days': [f'2026-10-0{i}' for i in range(1, 8)]},
@@ -298,10 +358,10 @@ class Brief(Home):
         words = [word('y'), word('entonces'), word('pero'), word('sencillo', 'active'), word('el perro', 'active'), word('solo')]
         state = {'stage': 2, 'stage_pinned': True, 'words': words}
         english = 'The build passes and the cache is warm, so nothing else needs doing before the release goes out today. ' * 3
-        self.assertEqual(weave.share(english, words), (0, 57, 0, 0))
+        self.assertEqual(weave.share(english, words), (0, 57, 0, 0, 0))
         woven = 'The build passes, y the cache is warm, entonces nothing else needs el perro, pero solo sencillo things wait. ' * 3
         # y, entonces, el perro (2), pero, sencillo: 6 Spanish words a sentence, 2 of them learning words; solo can't be counted
-        self.assertEqual(weave.share(woven + '```y entonces pero```\n(el perro = the dog, "el PEH-rroh")\nRecall: y?', words), (18, 57, 6, 0))
+        self.assertEqual(weave.share(woven + '```y entonces pero```\n(el perro = the dog, "el PEH-rroh")\nRecall: y?', words), (18, 57, 6, 0, 0))
         self.assertIn('under the 12% target', weave.calibration(english, state))
         self.assertIn('over the 20% cap', weave.calibration(woven, state))
         self.assertEqual(weave.calibration('Done, y pushed.', state), '')
@@ -310,6 +370,31 @@ class Brief(Home):
         self.assertIn('slipped into Spanish sentences', weave.calibration(spanish, state))
         overlap = [word('tener'), word('tener cuidado'), word('todo'), word('todo el mundo')]
         self.assertEqual(weave.share('Please tener cuidado, todo el mundo, then tener it. ' * 6, overlap)[0], 36)  # 2 + 3 + 1 per sentence, not 8
+
+    def test_calibration_follows_the_stage_rules(self):
+        first = swlib.new_state('2026-10-01')  # Stage 1: y, pero, entonces, con, sin
+        one = ('I looked at the failing build y found the cause. The test runner starts before the database is ready, pero '
+               'only on the slower CI machines, entonces the first query times out and the whole suite stops. I changed the '
+               'setup script so it waits for the health check con a short retry loop, and the suite now runs sin the random '
+               'timeouts. I also cleaned up two old helper functions that nothing called anymore, renamed the config file so '
+               'it matches the other services, and added a note to the README about the new wait step. Locally everything '
+               'passes, and the CI run on my branch went green three times in a row. If you want, I can also add a timeout to '
+               'the retry loop so a broken database fails fast instead of hanging the job for the full hour.')
+        self.assertEqual(weave.share(one, swlib.introduced(first))[1:3], (142, 5))
+        self.assertIn('on target', weave.calibration(one, first))  # all 5 learning words: the brief asks for 2 to 4
+        words = [word('y'), word('entonces'), word('pero'), word('sencillo', 'active'), word('el perro', 'active')]
+        three = ('I traced the slow page to the image loader, y the fix was small. The loader asked for every thumbnail at '
+                 'full size, entonces the browser spent most of its time scaling them down. Now it asks for the small size '
+                 'first and only loads the large one when you open a picture. Ahora la página está lista. The cache headers '
+                 'were also wrong, pero that only mattered for repeat visits, so I set them to one day. I ran the same test '
+                 'three times and the page now loads in under a second on a slow connection. Creo que es una buena idea, y '
+                 'se puede cambiar después. If anything looks off, tell me which page and I will check it.')
+        self.assertNotIn('slipped', weave.calibration(three, {'stage': 3, 'stage_pinned': True, 'words': words}))
+        four = ('Encontré el problema: la configuración todavía usaba una ruta vieja. The build read that old path, y '
+                'entonces every test failed. Lo cambié y ahora todo está bien. I also removed a duplicate step in the '
+                'workflow, porque it ran the same checks twice. La prueba completa se hace en menos de dos minutos aquí. The '
+                'first run is still slow, pero after that it is muy rápido. Otherwise this is ready to merge.')
+        self.assertIn('on target', weave.calibration(four, grown(400)))  # Spanish beyond the lists counts at Stage 4
 
     def test_last_reply(self):
         log = self.home / 'chat.jsonl'
@@ -324,9 +409,9 @@ class Brief(Home):
         swlib.save_state(grown(400))  # Stage 4: hundreds of words in use, each one a regex pass over the scored text
         words = swlib.introduced(swlib.load_state())
         sentence = 'The build passes, y the cache is warm, entonces nothing else needs doing, pero the tests wait. '
-        spanish, total, _, _ = weave.share(sentence * 6000, words)  # about 580 KB
+        spanish, total, *_ = weave.share(sentence * 6000, words)  # about 580 KB
         self.assertLess(total, weave.SCORED // 4)  # only the end is scored...
-        small, small_total, _, _ = weave.share(sentence * 20, words)
+        small, small_total, *_ = weave.share(sentence * 20, words)
         self.assertAlmostEqual(100 * spanish / total, 100 * small / small_total, delta=1)  # ...and it gives the same share
         self.assertTrue(weave.extra('(sin = without, "seen"; con = with, "kohn")') and weave.extra('**Recall: y?**'))
         self.assertFalse(weave.extra('x = y ' * 50000))
@@ -377,6 +462,17 @@ class Brief(Home):
         self.assertTrue(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-cli'}, args_check=lambda: remote))
         self.assertTrue(weave.interactive({'SPANISH_WEAVE_FORCE': '1'}, args_check=lambda: one_shot))
         self.assertFalse(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts'}, args_check=lambda: []))
+
+    def test_desktop_apps_claude_path_with_a_space(self):
+        path = '/Users/u/Library/Application Support/Claude/claude-code/2.1.299/x/claude.app/Contents/MacOS/claude'
+        ps = lambda command, **_: subprocess.CompletedProcess(command, 0, path + '\n' if 'comm=' in command else
+                                                              f'  321 {path} -p hi\n', '')
+        with mock.patch.object(weave, 'open', side_effect=OSError, create=True), mock.patch.object(subprocess, 'run', ps):
+            args, parent = weave.process_args(123)  # macOS: no /proc, so ps
+        self.assertEqual((args, parent), ([path, '-p', 'hi'], 321))
+        self.assertTrue(weave.is_claude(args) and weave.one_shot(args))
+        self.assertEqual(weave.split_args('claude -p hi', '/opt/bin/claude'), ['claude', '-p', 'hi'])  # started from PATH
+        self.assertEqual(weave.split_args('claude-code-helper -x', 'claude-code-hel'), ['claude-code-helper', '-x'])
 
 
 class BrokenState(Home):
@@ -524,6 +620,17 @@ class Review(Home):
         self.assertEqual((y['status'], y['box'], y['last_bad']), ('shaky', 0, '2026-10-20'))
         swlib.review(state, 'y', True, '2026-10-20')  # the verdict was wrong: undone, then counted right
         self.assertEqual((y['status'], y['box'], y['last_bad'], y['due']), ('known', 4, '', '2026-11-19'))
+
+    def test_same_day_redo_keeps_a_change_made_in_between(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.review(state, 'pero', False, '2026-10-02')
+        swlib.apply_event(state, 'pero', 'flip', '2026-10-02')  # clicked back to English on a page
+        pero = swlib.review(state, 'pero', True, '2026-10-02')
+        self.assertEqual((pero['status'], pero['box'], [r[:2] for r in pero['reviews']]), ('shaky', 1, [['2026-10-02', 1]]))
+        con = swlib.find(state, 'con')  # a record saved by 0.2.2, without the after-snapshot: undone as before
+        con.update(status='shaky', box=0, last_bad='2026-10-02', reviews=[['2026-10-02', 0, 0, 'active', '2026-10-01', '']])
+        swlib.review(state, 'con', True, '2026-10-02')
+        self.assertEqual((con['status'], con['box'], con['last_bad'], len(con['reviews'])), ('active', 1, '', 1))
 
     def test_known_words_get_spaced_reviews(self):
         state = swlib.new_state('2026-10-01', known_top=40)
@@ -778,7 +885,10 @@ class Codex(Home):
 
 class Host(Home):
     def converse(self, *messages):
-        raw = b''.join(struct.pack('=I', len(m)) + m for m in (json.dumps(x).encode() for x in messages))
+        return self.exchange(b''.join(struct.pack('=I', len(m)) + m for m in (json.dumps(x).encode() for x in messages)))[0]
+
+    def exchange(self, raw):
+        """(replies, stderr) of a host run fed these framed bytes."""
         result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'sw_host.py')], input=raw, capture_output=True,
                                 timeout=30, env=dict(os.environ))
         out, replies = result.stdout, []
@@ -786,7 +896,7 @@ class Host(Home):
             size = struct.unpack('=I', out[:4])[0]
             replies.append(json.loads(out[4:4 + size]))
             out = out[4 + size:]
-        return replies
+        return replies, result.stderr
 
     def test_protocol(self):
         ping, state, events, after, bad = self.converse(
@@ -799,7 +909,7 @@ class Host(Home):
         self.assertEqual(len(state['words']), swlib.NEW_PER_DAY)
         self.assertNotIn('geminiKey', state)
         self.assertEqual(state['prefs'], {})
-        self.assertEqual(events, {'ok': True, 'applied': 2})
+        self.assertEqual(events, {'ok': True, 'applied': 2, 'skipped': 2})
         self.assertEqual(after['words'][0], {'es': 'pero', 'en': 'but', 'hint': 'PEH-roh', 'status': 'shaky',
                                              'note': "'not X but Y' is sino"})
         self.assertNotEqual(after['version'], state['version'])
@@ -817,6 +927,43 @@ class Host(Home):
         stream.seek(0)
         self.assertEqual(sw_host.read_message(stream), {'a': 'é'})
         self.assertIsNone(sw_host.read_message(io.BytesIO(b'')))
+
+    def test_bad_days_are_skipped_and_the_rest_applied(self):
+        bad = ['2026-00-00', '2026-01-01\n', '٢٠٢٦-٠١-٠١', '1900-01-01']  # month 0, a newline, Arabic-Indic digits, too old
+        events = [{'word': 'pero', 'kind': 'peek', 'day': day} for day in bad] + [{'word': 'y', 'kind': 'seen'}]
+        reply, = self.converse({'type': 'events', 'events': events})
+        self.assertEqual(reply, {'ok': True, 'applied': 1, 'skipped': 4})
+        state = swlib.load_state()
+        self.assertEqual((swlib.find(state, 'pero')['peeks'], swlib.find(state, 'y')['days']), ([], [swlib.today()]))
+        reply, = self.converse({'type': 'events', 'events': [{'word': 'pero', 'kind': 'seen'}]})
+        self.assertEqual(reply['applied'], 1)  # nothing bad was saved to trip the next batch
+
+    def test_one_failing_event_never_sinks_the_batch(self):
+        real = swlib.apply_event
+        def apply_event(state, es, kind, day=None):
+            if es == 'pero':
+                raise ValueError('month must be in 1..12')
+            return real(state, es, kind, day)
+        events = [{'word': 'pero', 'kind': 'flip'}, {'word': 'y', 'kind': 'seen'}]
+        with mock.patch.object(swlib, 'apply_event', apply_event):
+            self.assertEqual(sw_host.handle({'type': 'events', 'events': events}), {'ok': True, 'applied': 1, 'skipped': 1})
+        self.assertEqual(swlib.find(swlib.load_state(), 'y')['days'], [swlib.today()])
+
+    def test_deep_json_gets_an_error_reply(self):
+        deep = b'[' * 200_000 + b']' * 200_000
+        replies, stderr = self.exchange(struct.pack('=I', len(deep)) + deep)
+        self.assertEqual((len(replies), replies[0]['ok'], stderr), (1, False, b''))
+
+    def test_long_words_are_skipped_fast(self):
+        events = [{'word': f'{i}' + 'x' * 10_000, 'kind': 'seen'} for i in range(500)]
+        start = time.time()
+        reply = sw_host.handle({'type': 'events', 'events': events})
+        self.assertLess(time.time() - start, 5)
+        self.assertEqual(reply, {'ok': True, 'applied': 0, 'skipped': 500})
+
+    def test_lock_wait_is_bounded(self):
+        with mock.patch.object(sw_host, 'LOCK_TIMEOUT', 0.2), swlib.locked():  # someone else holds state.lock
+            self.assertRaises(TimeoutError, sw_host.handle, {'type': 'state'})
 
 
 FAKE_KEY = 'AIzaTEST_placeholder_not_a_real_key_0000'

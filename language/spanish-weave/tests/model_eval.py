@@ -68,14 +68,14 @@ def sentences(text):
 
 def spanish_sentence(sentence, words):
     """A sentence that reads as Spanish: several Spanish grammar words, or most of its words Spanish."""
-    _, total, _, grammar = weave.share(sentence, words)
+    _, total, _, grammar, _ = weave.share(sentence, words)
     spanish = weave.share(sentence, words)[0]
     return grammar >= 2 or (total >= 4 and spanish / total > 0.5)
 
 
 def measure(text, state):
     words = swlib.introduced(state)
-    spanish, total, learning, grammar = weave.share(text, words)
+    spanish, total, learning, grammar, _ = weave.share(text, words)
     code = ' '.join(CODE_BLOCK.findall(text))
     code_spanish = sorted({w['es'] for w in words if swlib.norm(w['es']) not in swlib.UNMEASURABLE
                           and len(w['es']) > 2 and swlib.pattern(w['es']).search(swlib.norm(code))})

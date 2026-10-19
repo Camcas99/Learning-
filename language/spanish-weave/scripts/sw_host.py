@@ -6,8 +6,10 @@ Messages (JSON, 4-byte native-endian length prefix, one per line of conversation
   {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "words": [{es, en, hint, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
                                             "geminiKey"?: stored key if setup saved one}
-  {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
+  {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]}
+                                        -> {"ok": true, "applied": n, "skipped": m}
 """
+import datetime as dt
 import json
 from pathlib import Path
 import re
@@ -18,7 +20,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
 
 MAX_EVENTS = 500
-DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+MAX_WORD = 64       # longest word looked up (the longest listed phrase is far shorter)
+OLDEST = 60         # days back an event's day may be; older ones are skipped
+LOCK_TIMEOUT = 10   # seconds to wait for state.lock before replying with an error
+DAY = re.compile(r'\d{4}-\d{2}-\d{2}', re.ASCII)
+
+
+def event_day(value, today):
+    """The day to apply an event on: today when it has none or one in the future, None (skip it) when it isn't a real
+    YYYY-MM-DD date within OLDEST days, so a bad day is never saved to trip later batches."""
+    if value is None:
+        return today
+    if not isinstance(value, str) or not DAY.fullmatch(value):
+        return None
+    try:
+        age = (dt.date.fromisoformat(today) - dt.date.fromisoformat(value)).days
+    except ValueError:
+        return None
+    return None if age > OLDEST else min(value, today)
 
 
 def read_message(stream):
@@ -43,7 +62,7 @@ def handle(message):
     if kind == 'ping':
         return {'ok': True, 'host': 1}
     if kind == 'state':
-        with swlib.editing() as state:
+        with swlib.editing(timeout=LOCK_TIMEOUT) as state:
             pass  # applies today's promotion before answering
         reply = dict(swlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
         key = swlib.home() / 'gemini_key'
@@ -54,18 +73,21 @@ def handle(message):
         events = message.get('events')
         if not isinstance(events, list):
             return {'ok': False, 'error': 'events must be a list'}
+        today, valid = swlib.today(), []
+        for event in events[:MAX_EVENTS]:
+            if not isinstance(event, dict) or event.get('kind') not in ('seen', 'flip', 'peek'):
+                continue
+            word, day = event.get('word'), event_day(event.get('day'), today)
+            if isinstance(word, str) and len(word) <= MAX_WORD and day:
+                valid.append((day, word, event['kind']))
         applied = 0
-        today = swlib.today()
-        with swlib.editing() as state:
-            for event in events[:MAX_EVENTS]:
-                if not isinstance(event, dict) or event.get('kind') not in ('seen', 'flip', 'peek'):
-                    continue
-                day = event.get('day') if isinstance(event.get('day'), str) and DAY.match(event['day']) else today
-                if day > today:
-                    day = today
-                if isinstance(event.get('word'), str) and swlib.apply_event(state, event['word'], event['kind'], day):
-                    applied += 1
-        return {'ok': True, 'applied': applied}
+        with swlib.editing(timeout=LOCK_TIMEOUT) as state:
+            for day, word, kind in sorted(valid, key=lambda e: e[0]):  # oldest first, as they happened
+                try:
+                    applied += swlib.apply_event(state, word, kind, day)
+                except (ValueError, TypeError, KeyError):
+                    pass  # one bad word state never sinks the batch
+        return {'ok': True, 'applied': applied, 'skipped': len(events) - applied}
     return {'ok': False, 'error': 'unknown message type'}
 
 
@@ -74,7 +96,7 @@ def main():
     while True:
         try:
             message = read_message(stdin)
-        except ValueError as error:
+        except (ValueError, RecursionError) as error:  # not JSON, too big, or nested too deep to parse
             write_message(stdout, {'ok': False, 'error': str(error)})
             return
         if message is None:
