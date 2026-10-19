@@ -29,11 +29,13 @@ export function parseState(data) {
   }
   if (!words.length) throw new Error('host sent no usable words');
   const stage = Math.floor(Number(data?.stage));
+  const sitesAt = Number(data?.prefs?.extension_sites_at);
   return {
     version: String(data?.version ?? ''),
     stage: stage >= 1 && stage <= 4 ? stage : 1,
     paused: data?.paused === true,
     sites: data?.prefs?.extension_sites === 'ask' ? 'ask' : 'all', // setup's default for sites not set in the popup
+    sitesAt: Number.isFinite(sitesAt) && sitesAt > 0 ? sitesAt : 0, // when setup chose them (seconds); 0 = untimed
     words,
   };
 }

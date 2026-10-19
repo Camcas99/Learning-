@@ -43,3 +43,40 @@ test('popup: "Say words aloud" and "Color noun gender" toggles', async () => {
     Object.assign(globalThis, originalGlobals);
   }
 });
+
+// Pause and setup reruns live in the plugin, and the native host can't push them: opening the popup picks them up.
+test('popup: opening it syncs words over a minute old, quietly; fresh ones are left alone', async () => {
+  const names = ['chrome', 'document', 'window'];
+  const originalGlobals = Object.fromEntries(names.map((k) => [k, globalThis[k]]));
+  const html = readFileSync(new URL('../src/popup.html', import.meta.url), 'utf8');
+  const wait = (ms = 50) => new Promise((done) => setTimeout(done, ms));
+  try {
+    for (const [age, syncs] of [[5 * 60000, 1], [5000, 0]]) {
+      const win = new Window({ url: 'chrome-extension://sw-test/src/popup.html' });
+      win.document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/, '');
+      const settings = { ...cleanSettings(), newSitesEnabled: true };
+      const asked = [];
+      Object.assign(globalThis, {
+        window: win, document: win.document,
+        chrome: {
+          tabs: { query: async () => [{ id: 1, url: 'https://example.com/post' }] },
+          permissions: { contains: async () => true, request: async () => false },
+          runtime: { sendMessage: async (msg) => {
+            asked.push(msg.type);
+            if (msg.type === 'syncWords') return { ok: false, error: 'Specified native messaging host not found.' };
+            return { config: { settings, stage: 1, origins: ['https://*/*'], hasKey: true, paused: false }, words: 5,
+              fetchedAt: Date.now() - age, pastedKey: false, hostKey: true, modelStatus: null };
+          } },
+        },
+      });
+      await import(`../src/popup.js?age${age}`);
+      await wait();
+      expect([age, asked.filter((t) => t === 'syncWords').length]).toEqual([age, syncs]);
+      expect(win.document.getElementById('notice').textContent).toBe(''); // a failed quiet sync shows nothing
+      expect(win.document.getElementById('wordInfo').textContent).toContain('5 from Claude Code');
+      await win.happyDOM.close();
+    }
+  } finally {
+    Object.assign(globalThis, originalGlobals);
+  }
+});

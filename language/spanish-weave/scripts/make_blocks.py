@@ -2,7 +2,10 @@
 """Writes blocks/level-NN.md: ready-made Spanish Weave blocks for claude.ai and ChatGPT, no install needed.
 
 Level k knows the lexicon's first (k-1)*PER_LEVEL words (it is in frequency/usefulness order) and learns the next
-PER_LEVEL. Same rules source and state-line format as `sw.py export`, so the blocks can't drift from it.
+PER_LEVEL. The claude.ai block names every known word up to 150; past that it says "the first N words of my Spanish
+Weave list" and names the newest 40 (the list is not a general frequency rank, so it never says "most common"). The
+ChatGPT field names as many as fit. Same rules source and state-line format as `sw.py export`, so the blocks can't
+drift from it.
 Usage: python3 scripts/make_blocks.py [--check]   (--check: fail if blocks/ is out of date or a block is too long)
 """
 import argparse
@@ -14,10 +17,10 @@ import export  # noqa: E402
 import swlib  # noqa: E402
 
 PER_LEVEL = 25  # Spanish entries run longer than French ones, so 25 keep the ChatGPT field under 1,500
-KNOWN_NAMED = 40      # known words named one by one; above this a level block names the rank band
-# claude.ai doesn't document a limit for personal preferences; stay well inside a few pages. The longest export is
-# `sw.py export` with about 150 known words, all named, at about 6,700 characters.
-CLAUDE_AI_MAX = 7000
+KNOWN_NAMED = swlib.COLLAPSE_AT  # known words named one by one, as in `sw.py export`; above this, the band
+# claude.ai doesn't document a limit for personal preferences; stay well inside a few pages. The longest block is
+# level 7, with all 150 known words named, at about 7,100 characters.
+CLAUDE_AI_MAX = 7500
 OUT = swlib.PLUGIN_ROOT / 'blocks'
 
 
@@ -35,7 +38,7 @@ def block(level, levels, lexicon):
     stage = swlib.stage_for(state)
     nxt = f'level-{level + 1:02d}.md' if level < levels else None
     tail = f'Level {level} of {levels}' + (f' (next: {nxt})' if nxt else '')
-    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED)
+    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED, recent=export.RECENT_NAMED)
     about, respond = export.chatgpt(state, tail=tail)
     first, last = (level - 1) * PER_LEVEL + 1, min(level * PER_LEVEL, len(lexicon))
     known = f'words ranked 1-{first - 1}' if first > 1 else 'none yet'

@@ -32,6 +32,7 @@ GRAMMAR = set("yo tú él ella nosotros nosotras ellos ellas usted ustedes una u
               "estaban estuvo fue fueron sido estoy está tiene tienen tenemos hemos han hizo hace hacen puede pueden "
               "podría debe nuestro nuestra nuestros nuestras estos estas aquel aquella les nos se lo le que por tu voy "
               "todos donde cual".split())
+ACCENTED = re.compile('[áéíóúñü]')  # an off-list word with one of these is Spanish too (counted from Stage 3)
 RECALL, GLOSS = re.compile(r'\s*\**recall:', re.I), re.compile(r'\s=\s')  # recall cue and footer gloss lines (see extra)
 # Words that are easy to swap in the wrong sense, and the guard for each; a guard is in the brief once any of its
 # words is in use. These are the most frequent mis-weavings: "it's ready" is not es listo (that means "is clever").
@@ -154,7 +155,7 @@ def band_line(state):
     defaults = ('Default swaps (write the Spanish every time the English word has that meaning): '
                 + '; '.join(f'{w["en"]} → {w["es"]}' for w in swaps) + '\n') if swaps else ''
     cut = lambda xs: ', '.join(xs[:swlib.EXCEPTIONS_MAX]) + (f' and {len(xs) - swlib.EXCEPTIONS_MAX} more' if len(xs) > swlib.EXCEPTIONS_MAX else '')
-    return defaults + (f'Known (use freely, never gloss): roughly the {n} most common Spanish words and phrases'
+    return defaults + (f'Known (use freely, never gloss): the first {n} words of the Spanish Weave list, the most basic ones'
             + (f', except these not learned yet: {cut(missing)}' if missing else '')
             + (f'; also known: {cut(extra)}' if extra else '') + '.')
 
@@ -178,7 +179,9 @@ def extra(line):
 
 
 def share(text, words):
-    """(Spanish words, prose words, learning words used, Spanish grammar words off the lists) in a reply.
+    """(Spanish words, prose words, learning words used, Spanish grammar words off the lists, all Spanish off the
+    lists) in a reply. Off-list Spanish is the grammar words plus any other word with an accent, ñ or ü; Stages 3-4
+    allow Spanish beyond the lists, so it counts toward their share.
 
     Code, links, glosses and the recall cue are skipped. Only the last SCORED characters of prose are scored, so a
     huge reply costs no more than a long one (every listed word is a regex pass over the text)."""
@@ -197,21 +200,28 @@ def share(text, words):
             spanish += uses * len(word['es'].split())
             learning += uses if word['status'] != 'known' else 0
             rest = regex.sub(' ', rest)
-    grammar = sum(token in GRAMMAR for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
-    return spanish, total, learning, grammar
+    tokens = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest)
+    grammar = sum(token in GRAMMAR for token in tokens)
+    offlist = sum(token in GRAMMAR or bool(ACCENTED.search(token)) for token in tokens)
+    return spanish, total, learning, grammar, offlist
 
 
 def calibration(text, state):
-    """One line on how much Spanish the last reply in this chat had, so the next one corrects toward the target."""
-    spanish, total, learning, grammar = share(text, swlib.introduced(state))
+    """One line on how much Spanish the last reply in this chat had, so the next one corrects toward the target. It
+    follows the stage brief: Spanish sentences are a slip only at Stages 1-2, Spanish beyond the lists counts from
+    Stage 3, and a reply with 2 or more learning words (the brief asks for 2 to 4) is never told to use more."""
+    stage = swlib.stage_for(state)
+    spanish, total, learning, grammar, offlist = share(text, swlib.introduced(state))
     if total < SHORT:
         return ''
-    target, cap, _ = STAGES[min(swlib.stage_for(state), 4)]
+    if stage >= 3:
+        spanish += offlist
+    target, cap, _ = STAGES[min(stage, 4)]
     percent = 100 * spanish / total
     verdict = ('it slipped into Spanish sentences, so this time write English sentences with only list words in Spanish'
-               if grammar >= 4 else f'over the {cap}% cap, so use less Spanish this time' if percent > cap else
-               f'under the {target}% target, so use more this time unless the topic needs zero Spanish'
-               if percent < 0.7 * target else 'on target')
+               if stage <= 2 and grammar >= 4 else f'over the {cap}% cap, so use less Spanish this time' if percent > cap
+               else f'under the {target}% target, so use more this time unless the topic needs zero Spanish'
+               if percent < 0.7 * target and learning < 2 else 'on target')
     return (f'\nYour last reply in this chat was {percent:.0f}% Spanish ({spanish} of {total} words, {learning} '
             f'learning word{"" if learning == 1 else "s"}): {verdict}.')
 
@@ -247,6 +257,14 @@ def turn(session):
     return ((swlib.read_json(swlib.home() / 'sessions.json', {}) or {}).get(session) or {}).get('n', 0) if session else 0
 
 
+def split_args(text, comm):
+    """ps's args= text as a list. It loses the boundaries between arguments, so the executable comes from comm= (its
+    full path on macOS), which may hold spaces: the desktop app's own claude is under ~/Library/Application Support."""
+    if comm and (text + ' ').startswith(comm + ' '):
+        return [comm] + text[len(comm):].split()
+    return text.split()
+
+
 def process_args(pid):
     """Command line of a process as a list (Linux /proc, else ps), and its parent pid."""
     try:
@@ -258,10 +276,10 @@ def process_args(pid):
     except (OSError, ValueError, IndexError):
         pass
     try:
-        out = subprocess.run(['ps', '-o', 'ppid=', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True,
-                             timeout=5).stdout.strip()
-        parent, _, args = out.partition(' ')
-        return args.split(), int(parent)
+        ps = lambda *columns: subprocess.run(['ps', *columns, '-p', str(pid)], capture_output=True, text=True,
+                                             timeout=5).stdout.strip()
+        parent, _, args = ps('-o', 'ppid=', '-o', 'args=').partition(' ')
+        return split_args(args.lstrip(), ps('-o', 'comm=')), int(parent)
     except (OSError, ValueError, subprocess.SubprocessError):
         return [], 0
 
@@ -359,7 +377,7 @@ def main(argv):
     try:
         state = swlib.load_state()
     except Exception as error:  # never block a prompt because of Spanish; Claude Code shows no stderr on exit 0
-        reason = error if isinstance(error, swlib.StateError) else error.__class__.__name__
+        reason = error if isinstance(error, (swlib.StateError, swlib.UnsafeHome)) else error.__class__.__name__
         print(f'Spanish Weave: skipped, {reason}; /spanish-weave:status says how to fix it', file=sys.stderr)
         return 0
     if state.get('paused'):
@@ -392,5 +410,6 @@ if __name__ == '__main__':
     except Exception as error:  # in a hook, any other failure also leaves the prompt alone: one line, exit 0
         if '--hook' not in sys.argv[1:]:
             raise
-        print(f'Spanish Weave: skipped ({error.__class__.__name__}); run sw.py check', file=sys.stderr)
+        reason = error if isinstance(error, swlib.UnsafeHome) else error.__class__.__name__  # a lock-file link, say
+        print(f'Spanish Weave: skipped ({reason}); run sw.py check', file=sys.stderr)
         sys.exit(0)

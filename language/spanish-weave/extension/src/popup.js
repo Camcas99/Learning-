@@ -4,6 +4,7 @@ import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
+const FRESH_MS = 60000; // word state older than this is synced when the popup opens
 let status;
 let tab;
 let host = '';
@@ -26,7 +27,7 @@ function ago(t) {
 async function refresh() {
   status = await send({ type: 'status' });
   const c = status.config;
-  const s = c.settings; // newSitesEnabled resolved: popup choice, else setup's answer, else on
+  const s = c.settings; // newSitesEnabled resolved: the later of the popup's choice and setup's, else off
   const all = await chrome.permissions.contains({ origins: ALL_SITES });
   $('enabled').checked = s.enabled;
   $('newSitesEnabled').value = String(s.newSitesEnabled);
@@ -35,7 +36,7 @@ async function refresh() {
   $('siteName').textContent = host || 'This page (not a website)';
   $('grantSites').hidden = all || !s.newSitesEnabled;
   $('accessNote').textContent = s.newSitesEnabled
-    ? (all ? 'On for every site except the ones you turn off. Common webmail, AI chat and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
+    ? (all ? 'On for every site except the ones you turn off. Common webmail, messaging, AI chat and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
     : 'Off on sites until you turn them on here.';
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
@@ -128,8 +129,12 @@ $('clearCache').addEventListener('click', () => run(async () => {
   $('operation').textContent = `Cleared ${res.removed}`;
 }));
 
+// Opening the popup picks up a pause or setup rerun from Claude Code. Quietly: without the plugin it just fails.
 void run(async () => {
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   try { const u = new URL(tab?.url); if (/^https?:$/.test(u.protocol)) host = u.hostname; } catch { /* internal tab */ }
+  await refresh();
+  if (Date.now() - (status.fetchedAt || 0) < FRESH_MS) return;
+  try { await send({ type: 'syncWords' }); } catch { /* the Sync words button shows why */ }
   await refresh();
 });

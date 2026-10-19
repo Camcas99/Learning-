@@ -103,4 +103,16 @@ describe('X and other sites keep their rules', () => {
     page('<header><p id="h">We walked along the quiet beach and watched the boats come home</p></header>');
     expect(accepted('https://example.com/post')).toEqual([]);
   });
+  test('direct messages on X and message pages elsewhere are never read', () => {
+    page('<main><div data-testid="tweetText" id="dm"><span>Can you send me the new address and the door code before tonight</span></div></main>');
+    expect(accepted('https://x.com/home')).toEqual(['dm']); // the same text as a post is read
+    for (const url of ['https://x.com/messages/1', 'https://x.com/messages', 'https://x.com/i/chat/1', 'https://twitter.com/messages/12-34'])
+      expect([url, accepted(url)]).toEqual([url, []]);
+    page('<main><p id="p">Can you send me the new address and the door code before tonight</p></main>');
+    for (const url of ['https://www.linkedin.com/messaging/thread/1/', 'https://www.facebook.com/messages/t/1', 'https://example.com/inbox',
+      'https://forum.example/chat/room-1', 'https://forum.example/dms/42', 'https://example.com/direct/9'])
+      expect([url, accepted(url)]).toEqual([url, []]);
+    for (const url of ['https://example.com/blog/inbox-zero-tips', 'https://example.com/chatting-with-friends', 'https://example.com/directions'])
+      expect([url, accepted(url)]).toEqual([url, ['p']]);
+  });
 });

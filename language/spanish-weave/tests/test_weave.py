@@ -1,8 +1,10 @@
 """Offline tests for the hook, word state, native host and setup. Run: python3 -m unittest discover -s tests"""
+import datetime as dt
 import io
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -43,7 +45,8 @@ class Home(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name)
-        self.env = mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'sw')})
+        self.env = mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'sw'),
+                                                'CLAUDE_CONFIG_DIR': str(self.home / 'claude')})
         self.env.start()
 
     def tearDown(self):
@@ -193,6 +196,15 @@ class Rules(Home):
         self.assertEqual((swlib.find(state, 'pero')['en'], swlib.find(state, 'pero')['hint']), ('but', 'PEH-roh'))
         self.assertNotEqual(swlib.version(state), before)  # the extension refetches swaps with the new gloss
 
+    def test_pause_keeps_the_version_so_cached_swaps_survive(self):
+        """The extension clears its swap cache when the version changes. A pause reaches it as its own field, which
+        stops and starts pages, so pausing and resuming must not cost a model call per passage afterwards."""
+        state = swlib.new_state('2026-10-01')
+        before = swlib.version(state)
+        state['paused'] = True
+        self.assertEqual(swlib.version(state), before)
+        self.assertTrue(swlib.public_state(state)['paused'])
+
     def test_known_word_peeked_twice_in_a_week_becomes_shaky(self):
         state = swlib.new_state('2026-10-01')
         swlib.apply_event(state, 'sin', 'known', '2026-10-01')
@@ -238,6 +250,66 @@ class Rules(Home):
         self.assertEqual(swlib.find(state, 'manana')['es'], 'mañana')  # the exact spelling beats "la mañana"
         self.assertEqual(swlib.find(state, 'si')['es'], 'si')  # "si" (if) is its own word, not a missing-accent "sí"
         self.assertIsNone(swlib.find(state, 'nope'))
+
+    def test_assumed_days_never_bring_a_shaky_word_back(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'el tiempo', 'asked', '2026-10-02')  # /spanish-weave:learn on a word never met
+        export.log_chat_day(state, '2026-10-10')
+        swlib.promote(state, '2026-10-10', {})
+        self.assertEqual(swlib.find(state, 'el tiempo')['status'], 'shaky')  # a clean week, but never really seen
+        swlib.apply_event(state, 'el tiempo', 'seen', '2026-10-11')
+        swlib.promote(state, '2026-10-11', {})
+        self.assertEqual(swlib.find(state, 'el tiempo')['status'], 'known')
+
+    def test_late_events_never_override_a_newer_change(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'pero', 'known', '2026-10-09')
+        swlib.apply_event(state, 'pero', 'flip', '2026-10-01')  # queued in a browser that stayed closed for a week
+        pero = swlib.find(state, 'pero')
+        self.assertEqual((pero['status'], pero['changed'], pero['box']), ('known', '2026-10-09', 3))
+        swlib.apply_event(state, 'con', 'asked', '2026-10-08')  # learn
+        swlib.apply_event(state, 'con', 'seen', '2026-10-09')
+        swlib.apply_event(state, 'con', 'flip', '2026-10-02')  # older than the learn
+        swlib.promote(state, '2026-10-10', {})
+        con = swlib.find(state, 'con')
+        self.assertEqual((con['status'], con['changed'], con['last_bad']), ('shaky', '2026-10-08', '2026-10-08'))
+
+    def test_peeks_from_learning_days_never_count_against_a_known_word(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.apply_event(state, 'sin', 'peek', '2026-10-01')  # hovered on its first day: the normal way to learn it
+        for day in ('2026-10-02', '2026-10-03', '2026-10-04'):
+            swlib.apply_event(state, 'sin', 'seen', day)
+        swlib.promote(state, '2026-10-04', {})
+        self.assertEqual(swlib.find(state, 'sin')['status'], 'known')
+        swlib.apply_event(state, 'sin', 'peek', '2026-10-06')
+        self.assertEqual(swlib.find(state, 'sin')['status'], 'known')  # one peek since it became known
+        swlib.apply_event(state, 'pero', 'peek', '2026-10-03')
+        swlib.apply_event(state, 'pero', 'peek', '2026-10-02')  # arrives late
+        self.assertEqual(swlib.find(state, 'pero')['peeks'], ['2026-10-02', '2026-10-03'])
+
+    def test_learning_set_never_passes_20_with_shaky_words(self):
+        state = swlib.new_state('2026-10-01')
+        for day in ('2026-10-02', '2026-10-03', '2026-10-04'):
+            swlib.promote(state, day, {})
+        active = [w['es'] for w in state['words'] if w['status'] == 'active']
+        self.assertEqual(len(active), swlib.WINDOW)
+        for es in active[:4]:
+            swlib.apply_event(state, es, 'flip', '2026-10-05')
+        swlib.promote(state, '2026-10-05', {})
+        self.assertEqual(sum(w['status'] in ('active', 'shaky') for w in state['words']), swlib.WINDOW)
+
+    def test_merge_puts_new_words_at_their_rank_and_keeps_progress(self):
+        state = swlib.new_state('2026-10-01')
+        for day in ('2026-10-02', '2026-10-03'):
+            swlib.promote(state, day, {})
+        swlib.review(state, 'pero', True, '2026-10-03')
+        new = state['words'].pop(9)['es']  # as if a plugin update added the word at rank 10
+        state['words'].insert(3, dict(swlib.blank({'es': 'la palabra vieja', 'en': 'old', 'hint': 'x'}), status='known'))
+        before = {w['es']: (w['status'], w.get('box')) for w in state['words']}
+        swlib.merge_lexicon(state)
+        self.assertEqual([w['es'] for w in state['words']], [w['es'] for w in swlib.load_lexicon()] + ['la palabra vieja'])
+        self.assertEqual((state['words'][9]['es'], state['words'][9]['status']), (new, 'queue'))
+        self.assertEqual({w['es']: (w['status'], w.get('box')) for w in state['words'] if w['es'] != new}, before)
 
 
 class Brief(Home):
@@ -296,10 +368,10 @@ class Brief(Home):
         words = [word('y'), word('entonces'), word('pero'), word('sencillo', 'active'), word('el perro', 'active'), word('solo')]
         state = {'stage': 2, 'stage_pinned': True, 'words': words}
         english = 'The build passes and the cache is warm, so nothing else needs doing before the release goes out today. ' * 3
-        self.assertEqual(weave.share(english, words), (0, 57, 0, 0))
+        self.assertEqual(weave.share(english, words), (0, 57, 0, 0, 0))
         woven = 'The build passes, y the cache is warm, entonces nothing else needs el perro, pero solo sencillo things wait. ' * 3
         # y, entonces, el perro (2), pero, sencillo: 6 Spanish words a sentence, 2 of them learning words; solo can't be counted
-        self.assertEqual(weave.share(woven + '```y entonces pero```\n(el perro = the dog, "el PEH-rroh")\nRecall: y?', words), (18, 57, 6, 0))
+        self.assertEqual(weave.share(woven + '```y entonces pero```\n(el perro = the dog, "el PEH-rroh")\nRecall: y?', words), (18, 57, 6, 0, 0))
         self.assertIn('under the 12% target', weave.calibration(english, state))
         self.assertIn('over the 20% cap', weave.calibration(woven, state))
         self.assertEqual(weave.calibration('Done, y pushed.', state), '')
@@ -308,6 +380,31 @@ class Brief(Home):
         self.assertIn('slipped into Spanish sentences', weave.calibration(spanish, state))
         overlap = [word('tener'), word('tener cuidado'), word('todo'), word('todo el mundo')]
         self.assertEqual(weave.share('Please tener cuidado, todo el mundo, then tener it. ' * 6, overlap)[0], 36)  # 2 + 3 + 1 per sentence, not 8
+
+    def test_calibration_follows_the_stage_rules(self):
+        first = swlib.new_state('2026-10-01')  # Stage 1: y, pero, entonces, con, sin
+        one = ('I looked at the failing build y found the cause. The test runner starts before the database is ready, pero '
+               'only on the slower CI machines, entonces the first query times out and the whole suite stops. I changed the '
+               'setup script so it waits for the health check con a short retry loop, and the suite now runs sin the random '
+               'timeouts. I also cleaned up two old helper functions that nothing called anymore, renamed the config file so '
+               'it matches the other services, and added a note to the README about the new wait step. Locally everything '
+               'passes, and the CI run on my branch went green three times in a row. If you want, I can also add a timeout to '
+               'the retry loop so a broken database fails fast instead of hanging the job for the full hour.')
+        self.assertEqual(weave.share(one, swlib.introduced(first))[1:3], (142, 5))
+        self.assertIn('on target', weave.calibration(one, first))  # all 5 learning words: the brief asks for 2 to 4
+        words = [word('y'), word('entonces'), word('pero'), word('sencillo', 'active'), word('el perro', 'active')]
+        three = ('I traced the slow page to the image loader, y the fix was small. The loader asked for every thumbnail at '
+                 'full size, entonces the browser spent most of its time scaling them down. Now it asks for the small size '
+                 'first and only loads the large one when you open a picture. Ahora la página está lista. The cache headers '
+                 'were also wrong, pero that only mattered for repeat visits, so I set them to one day. I ran the same test '
+                 'three times and the page now loads in under a second on a slow connection. Creo que es una buena idea, y '
+                 'se puede cambiar después. If anything looks off, tell me which page and I will check it.')
+        self.assertNotIn('slipped', weave.calibration(three, {'stage': 3, 'stage_pinned': True, 'words': words}))
+        four = ('Encontré el problema: la configuración todavía usaba una ruta vieja. The build read that old path, y '
+                'entonces every test failed. Lo cambié y ahora todo está bien. I also removed a duplicate step in the '
+                'workflow, porque it ran the same checks twice. La prueba completa se hace en menos de dos minutos aquí. The '
+                'first run is still slow, pero after that it is muy rápido. Otherwise this is ready to merge.')
+        self.assertIn('on target', weave.calibration(four, grown(400)))  # Spanish beyond the lists counts at Stage 4
 
     def test_last_reply(self):
         log = self.home / 'chat.jsonl'
@@ -322,9 +419,9 @@ class Brief(Home):
         swlib.save_state(grown(400))  # Stage 4: hundreds of words in use, each one a regex pass over the scored text
         words = swlib.introduced(swlib.load_state())
         sentence = 'The build passes, y the cache is warm, entonces nothing else needs doing, pero the tests wait. '
-        spanish, total, _, _ = weave.share(sentence * 6000, words)  # about 580 KB
+        spanish, total, *_ = weave.share(sentence * 6000, words)  # about 580 KB
         self.assertLess(total, weave.SCORED // 4)  # only the end is scored...
-        small, small_total, _, _ = weave.share(sentence * 20, words)
+        small, small_total, *_ = weave.share(sentence * 20, words)
         self.assertAlmostEqual(100 * spanish / total, 100 * small / small_total, delta=1)  # ...and it gives the same share
         self.assertTrue(weave.extra('(sin = without, "seen"; con = with, "kohn")') and weave.extra('**Recall: y?**'))
         self.assertFalse(weave.extra('x = y ' * 50000))
@@ -348,12 +445,32 @@ class Brief(Home):
         self.assertIn('Spanish Weave (Stage 1)', context)
         self.assertIn('Recall: y?', context)
         self.assertLess(len(context), 3000)
-        with mock.patch('sys.stdout', new=io.StringIO()):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['pause'])
         self.assertEqual(self.run_hook({'session_id': 'x'}), '')
-        with mock.patch('sys.stdout', new=io.StringIO()):
+        # The extension has no push from the plugin: say when Chrome follows.
+        self.assertIn('stops sending new page text to Gemini within 2 minutes', out.getvalue())
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['resume'])
         self.assertIn('Spanish Weave', self.run_hook({}))
+        self.assertIn('as soon as you open the Spanish Weave popup', out.getvalue())
+
+    def test_chrome_timing_promises_match_the_extension(self):
+        """The native host can't push a pause. A page's swap request syncs word state over STALE_MS old, so new text
+        stops going to Gemini within that; a page that asks for nothing hears only from the SYNC_MINUTES alarm or the
+        popup. So no promise says 2 minutes without the 10 minutes an open page can take."""
+        code = (ROOT / 'extension' / 'src' / 'background.js').read_text(encoding='utf-8')
+        stale = int(re.search(r'const STALE_MS = (\d+);', code).group(1)) // 60000
+        alarm = int(re.search(r'const SYNC_MINUTES = (\d+);', code).group(1))
+        self.assertIn(f'new page text to Gemini within {stale} minutes', sw.CHROME_PAUSED)
+        self.assertIn(f'within {alarm} minutes', sw.CHROME_PAUSED)
+        self.assertIn(f'within {alarm} minutes', sw.CHROME_PICKS_UP)
+        self.assertNotIn(f'{stale} minutes', sw.CHROME_PICKS_UP)  # resume and setup reach idle pages only by the alarm
+        for path in DOCS + [ROOT / 'scripts' / 'sw.py']:
+            text = ' '.join(path.read_text(encoding='utf-8').split())
+            for sentence in re.findall(r'[^.]*(?:within \d+ minutes|reach(?:es)? Chrome)[^.]*\.', text):
+                if 'Chrome' in sentence or 'Gemini' in sentence or 'popup' in sentence:
+                    self.assertIn(f'{alarm} minutes', sentence, path.name)
 
     def test_no_spanish_in_scripted_runs(self):
         self.assertIn('Spanish Weave', self.run_hook({}))  # no claude parent here: weave by default
@@ -375,6 +492,17 @@ class Brief(Home):
         self.assertTrue(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-cli'}, args_check=lambda: remote))
         self.assertTrue(weave.interactive({'SPANISH_WEAVE_FORCE': '1'}, args_check=lambda: one_shot))
         self.assertFalse(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts'}, args_check=lambda: []))
+
+    def test_desktop_apps_claude_path_with_a_space(self):
+        path = '/Users/u/Library/Application Support/Claude/claude-code/2.1.299/x/claude.app/Contents/MacOS/claude'
+        ps = lambda command, **_: subprocess.CompletedProcess(command, 0, path + '\n' if 'comm=' in command else
+                                                              f'  321 {path} -p hi\n', '')
+        with mock.patch.object(weave, 'open', side_effect=OSError, create=True), mock.patch.object(subprocess, 'run', ps):
+            args, parent = weave.process_args(123)  # macOS: no /proc, so ps
+        self.assertEqual((args, parent), ([path, '-p', 'hi'], 321))
+        self.assertTrue(weave.is_claude(args) and weave.one_shot(args))
+        self.assertEqual(weave.split_args('claude -p hi', '/opt/bin/claude'), ['claude', '-p', 'hi'])  # started from PATH
+        self.assertEqual(weave.split_args('claude-code-helper -x', 'claude-code-hel'), ['claude-code-helper', '-x'])
 
 
 class BrokenState(Home):
@@ -436,6 +564,58 @@ class Scale(Home):
         known = {w['es'] for w in state['words'] if w['status'] == 'known'}
         band = {w['es'] for w in state['words'][:n]}
         self.assertEqual(known, (band - set(missing) - {w['es'] for w in state['words'][:n] if w['status'] in ('active', 'shaky')}) | set(extra))
+        # Learning words count against the band too: level 8 knows ranks 1-175 and learns 176-200.
+        self.assertEqual(swlib.known_band(make_blocks.level_state(8, swlib.load_lexicon()))[0], 175)
+
+    def test_known_words_are_list_words_not_a_frequency_rank(self):
+        # The lexicon is not a general frequency list (ser and estar sit past 300), so the band names list positions.
+        state = grown(400)
+        about, respond = export.chatgpt(state)
+        texts = [export.claude_ai(state), about, respond, weave.brief(state, {})]
+        texts += [path.read_text(encoding='utf-8') for path in sorted((ROOT / 'blocks').glob('*.md'))]
+        for text in texts:
+            self.assertNotIn('most frequent', text)
+            self.assertNotIn('most common Spanish words', text)
+
+    def long_learning_state(self):
+        """20 active and 10 shaky words with the longest entries in the list, plus 160 known."""
+        lexicon = swlib.load_lexicon()
+        longest = sorted(range(len(lexicon)), key=lambda i: -sum(len(lexicon[i][k]) for k in ('es', 'en', 'hint')))[:30]
+        state = swlib.new_state('2026-01-01')
+        state['words'] = words = [swlib.blank(w) for w in lexicon]
+        for i in longest:
+            swlib.set_status(words[i], 'active' if i in longest[:20] else 'shaky', swlib.today())
+        for i in [i for i in range(len(words)) if i not in longest][:160]:
+            swlib.set_status(words[i], 'known', '2026-01-01')
+        return state
+
+    def test_chatgpt_field_fits_with_long_learning_lists(self):
+        state = self.long_learning_state()
+        about, respond = export.chatgpt(state)
+        self.assertLessEqual(len(about), export.CHATGPT_LIMIT)
+        self.assertLessEqual(len(respond), export.CHATGPT_LIMIT)
+        parsed = export.parse_state_line(about)
+        self.assertEqual(len(parsed['active']), 20)  # every Active word is still named
+        swlib.load_state()
+        swlib.save_state(state)
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['export', '--chatgpt'])
+        self.assertIn('Each fits in 1,500 characters', out.getvalue())
+        with mock.patch.object(export, 'CHATGPT_LIMIT', 300), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['export', '--chatgpt'])
+        self.assertNotIn('Each fits', out.getvalue())
+        self.assertIn('The "More about you" block is', out.getvalue())
+        self.assertIn('over the 300 limit of the Free and Go plans', out.getvalue())
+
+    def test_export_records_the_version_it_prints(self):
+        yesterday = time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400))
+        swlib.load_state()
+        swlib.save_state(swlib.new_state(yesterday))  # refilled = [yesterday, 5]: today's new words come in on export
+        with mock.patch('sys.stdout', new=io.StringIO()):
+            sw.main(['export'])
+        state = swlib.load_state()
+        self.assertEqual(state['exported']['version'], swlib.version(state))
+        self.assertIsNone(weave.export_notice(state, now=time.time() + 8 * 86400))  # nothing changed since
 
     def test_brief_and_exports_stay_small(self):
         for known in (50, 400, 1000):
@@ -446,7 +626,9 @@ class Scale(Home):
             self.assertLessEqual(len(respond), export.CHATGPT_LIMIT)
             self.assertLess(len(export.claude_ai(state)), make_blocks.CLAUDE_AI_MAX)
             if known >= 400:
-                self.assertIn('most common Spanish words', brief)
+                n = swlib.known_band(state)[0]
+                self.assertIn(f'the first {n} words of the Spanish Weave list, the most basic ones', brief)
+                self.assertIn(f'the first {n} words of my Spanish Weave list (it starts with y, pero', about)
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
                 # every word is in use, so this budget is 3,900 (about 3,800 at 1,000 known words).
@@ -469,7 +651,16 @@ class Scale(Home):
                 self.assertEqual(parsed['known'], [w['es'] for w in state['words'] if w['status'] == 'known'])
             else:
                 n = swlib.known_band(state)[0]
-                self.assertIn(f'up to about the {export.ordinal(n)} most frequent', parsed['known'])
+                self.assertTrue(parsed['known'].startswith(f'the first {n} words of my Spanish Weave list'))
+                self.assertIn(', except the Active and Shaky words above', parsed['known'])
+        # The ChatGPT field drops sound hints, then meanings, and counts older Shaky words to fit: it still parses.
+        for es, day in (('pero', '2026-01-09'), ('con', '2026-01-07'), ('muy', '2026-01-08')):
+            swlib.apply_event(state, es, 'flip', day)
+        line = export.state_line(state, dates=False, hint_groups=(), gloss_groups=('active',), shaky_max=2)
+        self.assertIn('Shaky (use often; gloss in footer): pero; muy; and 1 more |', line)  # the newest two
+        parsed = export.parse_state_line(line)
+        self.assertEqual(parsed['shaky'], [('pero', None, None), ('muy', None, None)])
+        self.assertEqual(parsed['active'], [(w['es'], w['en'], None) for w in active])
 
     def test_export_notice_once_after_a_week(self):
         state = swlib.load_state()
@@ -522,6 +713,38 @@ class Review(Home):
         self.assertEqual((y['status'], y['box'], y['last_bad']), ('shaky', 0, '2026-10-20'))
         swlib.review(state, 'y', True, '2026-10-20')  # the verdict was wrong: undone, then counted right
         self.assertEqual((y['status'], y['box'], y['last_bad'], y['due']), ('known', 4, '', '2026-11-19'))
+
+    def test_same_day_redo_keeps_a_change_made_in_between(self):
+        state = swlib.new_state('2026-10-01')
+        swlib.review(state, 'pero', False, '2026-10-02')
+        swlib.apply_event(state, 'pero', 'flip', '2026-10-02')  # clicked back to English on a page
+        pero = swlib.review(state, 'pero', True, '2026-10-02')
+        self.assertEqual((pero['status'], pero['box'], [r[:2] for r in pero['reviews']]), ('shaky', 1, [['2026-10-02', 1]]))
+        con = swlib.find(state, 'con')  # a record saved by 0.2.2, without the after-snapshot: undone as before
+        con.update(status='shaky', box=0, last_bad='2026-10-02', reviews=[['2026-10-02', 0, 0, 'active', '2026-10-01', '']])
+        swlib.review(state, 'con', True, '2026-10-02')
+        self.assertEqual((con['status'], con['box'], con['last_bad'], len(con['reviews'])), ('active', 1, '', 1))
+
+    def test_same_day_correction_undoes_a_graduation(self):
+        """A right answer that brings the third exposure day graduates the word when it is saved. Correcting it to wrong
+        the same day must put the word back to learning with its streak restarted and take the quiz's seen day out
+        again; a sighting the extension sent before the quiz stays."""
+        day = swlib.today()
+        ago = lambda n: (dt.date.fromisoformat(day) - dt.timedelta(days=n)).isoformat()
+        with swlib.editing() as state:
+            swlib.find(state, 'pero').update(added=ago(5), changed=ago(5), days=[ago(3), ago(2)])
+            swlib.find(state, 'con').update(added=ago(5), changed=ago(5), days=[ago(2), day])  # seen on a page today
+        record = lambda *items: Commands.sw(self, 'record', *items)
+        self.assertTrue(record('pero:right', 'con:right').startswith('pero: right; next review'))
+        self.assertEqual(swlib.find(swlib.load_state(), 'pero')['status'], 'known')  # graduated on save
+        out = record('pero:wrong', 'con:wrong').splitlines()
+        self.assertTrue(out[0].endswith('(learning)') and out[1].endswith('(learning)'), out)
+        state = swlib.load_state()
+        pero, con = swlib.find(state, 'pero'), swlib.find(state, 'con')
+        self.assertEqual((pero['status'], pero['box'], pero['last_bad'], pero['days'], len(pero['reviews'])),
+                         ('active', 0, day, [ago(3), ago(2)], 1))
+        self.assertEqual(sum(w['status'] == 'shaky' for w in state['words']), 0)  # nothing toward SHAKY_BLOCK
+        self.assertEqual((con['status'], con['days']), ('active', [ago(2), day]))
 
     def test_known_words_get_spaced_reviews(self):
         state = swlib.new_state('2026-10-01', known_top=40)
@@ -728,6 +951,13 @@ class Blocks(unittest.TestCase):
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_level_blocks_name_the_known_words(self):
+        read = lambda level: (ROOT / 'blocks' / f'level-{level:02d}.md').read_text(encoding='utf-8')
+        claude = read(4).split('```text\n', 1)[1].split('\n```', 1)[0]
+        known = claude.split(' | Known (use freely; never gloss): ', 1)[1].rsplit(' | ', 1)[0]
+        self.assertEqual(known.split(', '), [w['es'] for w in swlib.load_lexicon()[:75]])  # all 75, newest included
+        self.assertIn('the first 175 words of my Spanish Weave list', read(8))
+
 
 class Codex(Home):
     def test_merge_keeps_other_hooks_and_is_idempotent(self):
@@ -776,7 +1006,10 @@ class Codex(Home):
 
 class Host(Home):
     def converse(self, *messages):
-        raw = b''.join(struct.pack('=I', len(m)) + m for m in (json.dumps(x).encode() for x in messages))
+        return self.exchange(b''.join(struct.pack('=I', len(m)) + m for m in (json.dumps(x).encode() for x in messages)))[0]
+
+    def exchange(self, raw):
+        """(replies, stderr) of a host run fed these framed bytes."""
         result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'sw_host.py')], input=raw, capture_output=True,
                                 timeout=30, env=dict(os.environ))
         out, replies = result.stdout, []
@@ -784,7 +1017,7 @@ class Host(Home):
             size = struct.unpack('=I', out[:4])[0]
             replies.append(json.loads(out[4:4 + size]))
             out = out[4 + size:]
-        return replies
+        return replies, result.stderr
 
     def test_protocol(self):
         ping, state, events, after, bad = self.converse(
@@ -797,7 +1030,7 @@ class Host(Home):
         self.assertEqual(len(state['words']), swlib.NEW_PER_DAY)
         self.assertNotIn('geminiKey', state)
         self.assertEqual(state['prefs'], {})
-        self.assertEqual(events, {'ok': True, 'applied': 2})
+        self.assertEqual(events, {'ok': True, 'applied': 2, 'skipped': 2})
         self.assertEqual(after['words'][0], {'es': 'pero', 'en': 'but', 'hint': 'PEH-roh', 'status': 'shaky',
                                              'note': "'not X but Y' is sino"})
         self.assertNotEqual(after['version'], state['version'])
@@ -805,9 +1038,9 @@ class Host(Home):
 
     def test_state_reply_carries_prefs(self):
         with swlib.editing() as state:
-            state['prefs'] = {'extension_sites': 'ask'}
+            state['prefs'] = {'extension_sites': 'ask', 'extension_sites_at': 1800000000}
         reply, = self.converse({'type': 'state'})
-        self.assertEqual(reply['prefs'], {'extension_sites': 'ask'})
+        self.assertEqual(reply['prefs'], {'extension_sites': 'ask', 'extension_sites_at': 1800000000})
 
     def test_message_framing(self):
         stream = io.BytesIO()
@@ -815,6 +1048,43 @@ class Host(Home):
         stream.seek(0)
         self.assertEqual(sw_host.read_message(stream), {'a': 'é'})
         self.assertIsNone(sw_host.read_message(io.BytesIO(b'')))
+
+    def test_bad_days_are_skipped_and_the_rest_applied(self):
+        bad = ['2026-00-00', '2026-01-01\n', '٢٠٢٦-٠١-٠١', '1900-01-01']  # month 0, a newline, Arabic-Indic digits, too old
+        events = [{'word': 'pero', 'kind': 'peek', 'day': day} for day in bad] + [{'word': 'y', 'kind': 'seen'}]
+        reply, = self.converse({'type': 'events', 'events': events})
+        self.assertEqual(reply, {'ok': True, 'applied': 1, 'skipped': 4})
+        state = swlib.load_state()
+        self.assertEqual((swlib.find(state, 'pero')['peeks'], swlib.find(state, 'y')['days']), ([], [swlib.today()]))
+        reply, = self.converse({'type': 'events', 'events': [{'word': 'pero', 'kind': 'seen'}]})
+        self.assertEqual(reply['applied'], 1)  # nothing bad was saved to trip the next batch
+
+    def test_one_failing_event_never_sinks_the_batch(self):
+        real = swlib.apply_event
+        def apply_event(state, es, kind, day=None):
+            if es == 'pero':
+                raise ValueError('month must be in 1..12')
+            return real(state, es, kind, day)
+        events = [{'word': 'pero', 'kind': 'flip'}, {'word': 'y', 'kind': 'seen'}]
+        with mock.patch.object(swlib, 'apply_event', apply_event):
+            self.assertEqual(sw_host.handle({'type': 'events', 'events': events}), {'ok': True, 'applied': 1, 'skipped': 1})
+        self.assertEqual(swlib.find(swlib.load_state(), 'y')['days'], [swlib.today()])
+
+    def test_deep_json_gets_an_error_reply(self):
+        deep = b'[' * 200_000 + b']' * 200_000
+        replies, stderr = self.exchange(struct.pack('=I', len(deep)) + deep)
+        self.assertEqual((len(replies), replies[0]['ok'], stderr), (1, False, b''))
+
+    def test_long_words_are_skipped_fast(self):
+        events = [{'word': f'{i}' + 'x' * 10_000, 'kind': 'seen'} for i in range(500)]
+        start = time.time()
+        reply = sw_host.handle({'type': 'events', 'events': events})
+        self.assertLess(time.time() - start, 5)
+        self.assertEqual(reply, {'ok': True, 'applied': 0, 'skipped': 500})
+
+    def test_lock_wait_is_bounded(self):
+        with mock.patch.object(sw_host, 'LOCK_TIMEOUT', 0.2), swlib.locked():  # someone else holds state.lock
+            self.assertRaises(TimeoutError, sw_host.handle, {'type': 'state'})
 
 
 FAKE_KEY = 'AIzaTEST_placeholder_not_a_real_key_0000'
@@ -949,12 +1219,28 @@ class Setup(Home):
         self.assertEqual(by['pero']['days'], [swlib.today()])
         self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 145)
         self.assertEqual(swlib.stage_for(state), 2)  # 145 known: stage 3 comes once the learning words graduate
-        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})
+        self.assertEqual(state['prefs']['extension_sites'], 'ask')
         before = json.dumps(state)
         state = self.run_setup('--known-top', '40')  # a lower answer later changes nothing
         self.assertEqual(json.dumps(state), before)
-        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})  # --sites left out keeps the choice
-        self.assertEqual(self.run_setup('--sites', 'all')['prefs'], {'extension_sites': 'all'})
+        self.assertEqual(state['prefs']['extension_sites'], 'ask')  # --sites left out keeps the choice
+        self.assertEqual(self.run_setup('--sites', 'all')['prefs']['extension_sites'], 'all')
+
+    def test_sites_choice_is_timed_so_the_latest_of_setup_and_popup_wins(self):
+        self.run_setup()
+        self.assertNotIn('prefs', swlib.load_state(create=False))  # no --sites: nothing to time
+        start = int(time.time())
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['setup', '--sites', 'ask'])
+        at = swlib.load_state(create=False)['prefs']['extension_sites_at']
+        self.assertIsInstance(at, int)
+        self.assertTrue(start <= at <= time.time() + 1)
+        self.assertIn('a later "Other sites" choice in the extension popup wins until setup sets it again', out.getvalue())
+        self.assertIn('as soon as you open the Spanish Weave popup', out.getvalue())
+        self.assertEqual(self.run_setup('--known-top', '40')['prefs']['extension_sites_at'], at)  # a rerun without --sites
+        reply = sw_host.handle({'type': 'state'})
+        self.assertEqual(reply['prefs'], {'extension_sites': 'ask', 'extension_sites_at': at})
 
     def test_dry_run_reports_answers_and_writes_nothing(self):
         with mock.patch.object(Path, 'home', return_value=self.home), \
@@ -967,12 +1253,572 @@ class Setup(Home):
         with self.assertRaises(SystemExit), mock.patch('sys.stderr', new=io.StringIO()):
             sw.main(['setup', '--dry-run', '--sites', 'some'])
 
+    def test_rerun_offers_to_keep_the_site_choice(self):
+        """Updates rerun setup. --sites is timed and wins over an earlier popup choice, so passing it again would undo a
+        later "Only sites I turn on"; the dry run shows that a choice exists and setup.md keeps it by default."""
+        def dry_run():
+            with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                    'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+                sw.main(['setup', '--dry-run'])
+            return json.loads(out.getvalue())['current_sites']
+        self.assertIsNone(dry_run())  # first run: nothing to keep
+        self.assertFalse((self.home / 'sw').exists())
+        self.run_setup()
+        self.assertIsNone(dry_run())  # the extension wasn't picked
+        self.run_setup('--sites', 'ask')
+        self.assertEqual(dry_run(), 'ask')
+        _, body = command_file(ROOT / 'commands' / 'setup.md')
+        self.assertIn('Keep the current site choice (default)', body)
+        self.assertIn('`current_sites`', body)
+        self.assertIn('Keep the current site choice: no `--sites`', body)
+
     def test_extension_id_matches_manifest_key(self):
         import base64
         import hashlib
         key = json.loads((ROOT / 'extension' / 'manifest.json').read_text())['key']
         digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
         self.assertEqual(''.join(chr(ord('a') + int(c, 16)) for c in digest), sw.EXTENSION_ID)
+
+
+PLUGIN_VERSION = json.loads((ROOT / '.claude-plugin' / 'plugin.json').read_text())['version']
+
+
+class SetupSafety(Home):
+    """Setup and uninstall touch only what is Spanish Weave's: whose the state dir is, symlinks, the host launcher, and
+    copies older than the installed plugin."""
+
+    def setUp(self):
+        super().setUp()
+        self.patches = [mock.patch.object(Path, 'home', return_value=self.home),
+                        mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')})]
+        for patch in self.patches:
+            patch.start()
+
+    def tearDown(self):
+        for patch in reversed(self.patches):  # before Home's, so the environment comes back as it was
+            patch.stop()
+        super().tearDown()
+
+    def sw(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(list(argv))
+        return out.getvalue()
+
+    def refused(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()), self.assertRaises(SystemExit) as caught:
+            sw.main(list(argv))
+        return str(caught.exception.code)
+
+    def check(self):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            try:
+                sw.main(['check'])
+            except SystemExit:
+                pass
+        return out.getvalue()
+
+    def host(self, launcher, env, message):
+        raw = json.dumps(message).encode()
+        result = subprocess.run([str(launcher)], input=struct.pack('=I', len(raw)) + raw, capture_output=True,
+                                timeout=30, env=env)
+        return json.loads(result.stdout[4:]) if result.stdout else result.stderr.decode()
+
+    def claude_file(self, name, data):
+        (self.home / 'claude' / 'plugins').mkdir(parents=True, exist_ok=True)
+        (self.home / 'claude' / 'plugins' / name).write_text(json.dumps(data))
+
+    def installed(self, version, path='/elsewhere/spanish-weave', sha='0123456789abcdef'):
+        """installed_plugins.json as Claude Code writes it."""
+        self.claude_file('installed_plugins.json', {'version': 2, 'plugins': {'spanish-weave@learning': [
+            {'scope': 'user', 'installPath': path, 'version': version, 'gitCommitSha': sha}]}})
+
+    def test_setup_refuses_a_folder_that_is_not_spanish_weaves(self):
+        home = self.home / 'sw'
+        (home / 'extension').mkdir(parents=True)
+        (home / 'keep.txt').write_text('mine')
+        (home / 'extension' / 'keep').write_text('mine too')
+        home.chmod(0o755)
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'))
+        self.assertEqual(((home / 'keep.txt').read_text(), (home / 'extension' / 'keep').read_text()), ('mine', 'mine too'))
+        self.assertEqual(home.stat().st_mode & 0o777, 0o755)
+        empty = self.home / 'empty'  # a new or empty folder is fine; one that was there keeps its mode
+        empty.mkdir(mode=0o755)
+        empty.chmod(0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(empty)}):
+            self.sw('setup')
+        self.assertEqual(empty.stat().st_mode & 0o777, 0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(self.home / 'new')}):
+            self.sw('setup')
+        self.assertEqual((self.home / 'new').stat().st_mode & 0o777, 0o700)
+
+    def test_the_hook_and_commands_leave_a_foreign_folder_alone(self):
+        """The prompt hook usually runs before setup. If it put state.json into someone's folder, setup would take that
+        folder for its own, replace its extension/ and make it 0700. So nothing creates state files in a folder that
+        holds other things and none of Spanish Weave's: the hook skips quietly, commands say why."""
+        home = self.home / 'sw'
+        (home / 'extension').mkdir(parents=True)
+        (home / 'extension' / 'keep.txt').write_text('mine')
+        home.chmod(0o755)
+        self.assertIn(f'{home} is not a Spanish Weave folder', BrokenState.hook(self))  # exit 0, one stderr line
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('status'))
+        self.assertRaises(swlib.UnsafeHome, swlib.load_state)
+        self.assertIn(f'FAIL word state: {home} is not a Spanish Weave folder', self.check())
+        self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'))
+        self.assertEqual(sorted(p.name for p in home.rglob('*')), ['extension', 'keep.txt'])  # no state or lock files
+        self.assertEqual(((home / 'extension' / 'keep.txt').read_text(), home.stat().st_mode & 0o777), ('mine', 0o755))
+        junk = self.home / 'junk'  # a folder with only what Finder or Windows leave behind counts as empty
+        junk.mkdir()
+        (junk / '.DS_Store').write_text('')
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(junk)}):
+            self.assertIn('Spanish Weave: Stage 1', self.sw('status'))
+
+    def test_setup_replaces_only_its_own_copies_and_chmods_only_its_own_folder(self):
+        """Folders where an older hook already left state.json: setup replaces extension/ and app/ only when they are
+        Spanish Weave's copies, and makes the state folder private only when it is new or setup ran there before."""
+        planted = {'extension/keep.txt': 'mine', 'extension/manifest.json': '{"name": "Another extension"}',
+                   'app/scripts/tool.py': 'print("mine")', 'app/data/notes.txt': 'mine'}
+        for n, (name, text) in enumerate(planted.items()):
+            home = self.home / f'theirs{n}'
+            (home / name).parent.mkdir(parents=True)
+            (home / name).write_text(text)
+            home.chmod(0o755)
+            with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(home)}):
+                swlib.save_state(swlib.new_state())  # what the hook of 0.3.0 and earlier wrote there
+                self.assertIn(f'{home} is not a Spanish Weave folder', self.refused('setup'), name)
+            self.assertEqual(((home / name).read_text(), home.stat().st_mode & 0o777), (text, 0o755), name)
+        empty = self.home / 'empty'  # the person's own empty folder, where the hook started a word list
+        empty.mkdir()
+        empty.chmod(0o755)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(empty)}):
+            subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], input='{}',
+                           capture_output=True, text=True, timeout=30, check=True)
+            self.assertTrue((empty / 'state.json').exists())
+            self.sw('setup')
+            self.assertEqual(empty.stat().st_mode & 0o777, 0o755)  # not new, and setup never ran there
+            self.sw('setup')  # its own folder now (install.json), so a rerun replaces the copies and keeps it private
+        self.assertEqual(empty.stat().st_mode & 0o777, 0o700)
+        self.assertTrue((empty / 'extension' / 'manifest.json').exists())
+
+    def test_setup_refuses_a_symlinked_app_folder(self):
+        with swlib.editing():
+            pass  # a Spanish Weave folder
+        checkout = self.home / 'dev'
+        (checkout / 'scripts').mkdir(parents=True)
+        (checkout / 'scripts' / 'wip.txt').write_text('work in progress')
+        (self.home / 'sw' / 'app').symlink_to(checkout)
+        self.assertIn('is a symbolic link', self.refused('setup'))
+        self.assertEqual((checkout / 'scripts' / 'wip.txt').read_text(), 'work in progress')
+
+    def test_gemini_key_is_never_written_through_a_symlink(self):
+        key = self.home / 'key.txt'
+        key.write_text(FAKE_KEY + '\n')
+        notes = self.home / 'notes.txt'
+        notes.write_text('NOTES\n')
+        with swlib.editing():
+            pass
+        stored = self.home / 'sw' / 'gemini_key'
+        stored.symlink_to(notes)
+        message = self.refused('setup', '--gemini-key-file', str(key))
+        self.assertIn('gemini_key is a symbolic link', message)
+        self.assertNotIn(FAKE_KEY, message)
+        self.assertEqual(notes.read_text(), 'NOTES\n')
+        stored.unlink()
+        stored.write_text('old\n')
+        stored.chmod(0o644)
+        self.sw('setup', '--gemini-key-file', str(key))
+        self.assertEqual((stored.read_text(), stored.stat().st_mode & 0o777), (FAKE_KEY + '\n', 0o600))
+
+    def test_launcher_quotes_paths_names_its_home_and_falls_back_to_python3(self):
+        home = self.home / 'my $HOME "sw"'
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(home)}):
+            self.sw('setup')
+        launcher = home / 'app' / 'sw-host'
+        env = {k: v for k, v in os.environ.items() if k != 'SPANISH_WEAVE_HOME'}  # Chrome sets no SPANISH_WEAVE_HOME
+        env['HOME'] = str(self.home / 'fake-home')
+        self.assertEqual(self.host(launcher, env, {'type': 'ping'}), {'ok': True, 'host': 1})
+        (home / 'state.json').rename(home / 'state.json.aside')  # the repair advice for a broken state.json
+        self.assertTrue(self.host(launcher, env, {'type': 'state'})['ok'])
+        self.assertTrue((home / 'state.json').exists())  # a fresh list in the same home, not in ~/.spanish-weave
+        self.assertFalse((self.home / 'fake-home' / '.spanish-weave').exists())
+        bin_dir = self.home / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'python3').symlink_to(sys.executable)
+        gone = self.home / 'launcher-without-its-python'
+        gone.write_text(sw.launcher_text('/nonexistent/python3', home / 'app' / 'scripts' / 'sw_host.py', home))
+        gone.chmod(0o755)
+        env['PATH'] = os.pathsep.join([str(bin_dir), '/usr/bin', '/bin'])
+        self.assertEqual(self.host(gone, env, {'type': 'ping'}), {'ok': True, 'host': 1})
+
+    def test_uninstall_leaves_files_it_did_not_make(self):
+        self.sw('setup')
+        foreign = self.home / 'notes' / 'important.json'
+        foreign.parent.mkdir()
+        foreign.write_text('{"keep": true}')
+        lookalike = self.home / 'other-profile' / 'NativeMessagingHosts' / 'com.spanishweave.host.json'
+        lookalike.parent.mkdir(parents=True)
+        lookalike.write_text(json.dumps({'name': 'com.spanishweave.host', 'allowed_origins': ['chrome-extension://x/']}))
+        record = swlib.read_json(self.home / 'sw' / 'install.json')
+        record['host_manifests'] += [str(foreign), str(lookalike)]  # an edited or copied install.json
+        swlib.write_json(self.home / 'sw' / 'install.json', record)
+        (self.home / 'sw' / 'mine.txt').write_text('not Spanish Weave\'s')
+        out = self.sw('uninstall')
+        self.assertEqual(foreign.read_text(), '{"keep": true}')
+        self.assertTrue(lookalike.exists())
+        for path in (foreign, lookalike):
+            self.assertIn(f'{path} (not a Spanish Weave host manifest; left alone)', out)
+        base = self.home / ('Library/Application Support/Google/Chrome' if sys.platform == 'darwin' else '.config/google-chrome')
+        self.assertFalse((base / 'NativeMessagingHosts' / 'com.spanishweave.host.json').exists())  # ours is gone
+        home = self.home / 'sw'
+        self.assertNotIn(f'rm -rf "{home}"', out)  # the folder holds mine.txt too
+        self.assertIn(f'rm -rf "{home / "state.json"}"', out)
+        self.assertNotIn('mine.txt', out)
+
+    def test_os_junk_never_counts_as_someone_elses_files(self):
+        """Finder drops .DS_Store into folders browsed in the Load unpacked picker; Windows and macOS on shared drives
+        leave Thumbs.db, desktop.ini and ._ files. Neither uninstall nor setup takes them for the person's own files."""
+        self.sw('setup')
+        home = self.home / 'sw'
+        for name in ('.DS_Store', 'Thumbs.db', 'desktop.ini', '._state.json'):
+            (home / name).write_text('')
+        out = self.sw('uninstall', '--dry-run')
+        self.assertIn(f'rm -rf "{home}"', out)
+        self.assertNotIn('holds other things too', out)
+        fresh = self.home / 'fresh'
+        fresh.mkdir()
+        for name in ('Thumbs.db', 'desktop.ini', '._x'):
+            (fresh / name).write_text('')
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(fresh)}):
+            self.assertIn('is set up', self.sw('setup'))
+
+    def test_codex_files_linked_from_dotfiles_stay_links(self):
+        dotfiles, codex = self.home / 'dotfiles', self.home / 'codex'
+        dotfiles.mkdir()
+        codex.mkdir()
+        theirs = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'x.sh'}]}]}}
+        (dotfiles / 'hooks.json').write_text(json.dumps(theirs))
+        (dotfiles / 'config.toml').write_text('model = "o3"\n')
+        for name in ('hooks.json', 'config.toml'):
+            (codex / name).symlink_to(dotfiles / name)
+        self.sw('setup', '--codex')
+        self.assertTrue((codex / 'hooks.json').is_symlink() and (codex / 'config.toml').is_symlink())
+        hooks = json.loads((dotfiles / 'hooks.json').read_text())
+        self.assertTrue(sw.has_our_hook(hooks))
+        self.assertEqual(hooks['hooks']['Stop'], theirs['hooks']['Stop'])
+        self.assertEqual((dotfiles / 'config.toml').read_text(), 'model = "o3"\n\n[features]\nhooks = true\n')
+        self.assertEqual(sorted(p.name for p in dotfiles.iterdir()), ['config.toml', 'hooks.json'])  # no temp files
+        del hooks['hooks']['Stop']  # with no other hooks left, uninstall takes `hooks = true` out too
+        (dotfiles / 'hooks.json').write_text(json.dumps(hooks))
+        self.sw('uninstall', '--codex')
+        self.assertTrue((codex / 'hooks.json').is_symlink() and (codex / 'config.toml').is_symlink())
+        self.assertFalse(sw.has_our_hook(json.loads((dotfiles / 'hooks.json').read_text())))
+        self.assertEqual((dotfiles / 'config.toml').read_text(), 'model = "o3"\n')
+
+    def test_a_lock_file_link_is_never_followed(self):
+        home = self.home / 'sw'
+        home.mkdir()
+        victim = self.home / 'victim.txt'
+        victim.write_text('PRECIOUS\n')
+        (home / 'state.lock').symlink_to(victim)
+        self.assertIn(f'{home / "state.lock"} is a symbolic link; remove it', self.refused('status'))
+        self.assertEqual(victim.read_text(), 'PRECIOUS\n')
+        self.assertIn('is a symbolic link', BrokenState.hook(self))  # quiet: exit 0, one stderr line
+        self.assertEqual(victim.read_text(), 'PRECIOUS\n')
+
+    def test_state_dir_is_private_and_a_world_writable_one_is_refused(self):
+        subprocess.run([sys.executable, str(ROOT / 'scripts' / 'weave.py'), '--hook'], input='{}', capture_output=True,
+                       text=True, timeout=30, check=True)  # the hook before setup creates the state dir
+        self.assertEqual((self.home / 'sw').stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.home / 'sw' / 'state.lock').stat().st_mode & 0o777, 0o600)
+        shared = self.home / 'shared'
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_HOME': str(shared)}):
+            with swlib.editing():
+                pass
+            shared.chmod(0o777)  # now anyone could write the words that go into Claude's context
+            before = sorted(p.name for p in shared.iterdir())
+            self.assertIn(f'any user can write to {shared}', self.refused('status'))
+            self.assertIn('any user can write to', BrokenState.hook(self))
+            self.assertIn('FAIL word state: any user can write to', self.check())
+        self.assertEqual(sorted(p.name for p in shared.iterdir()), before)
+
+    def test_check_and_status_say_when_copies_are_behind(self):
+        self.sw('setup')
+        home = self.home / 'sw'
+        self.installed('9.9.9')  # the plugin was updated, setup not rerun
+        self.assertIn(f'FAIL copies in {home} are from {PLUGIN_VERSION}; the installed plugin is 9.9.9: rerun setup',
+                      self.check())
+        self.assertIn(f'the extension and native host copies are from {PLUGIN_VERSION}, the plugin is 9.9.9: rerun '
+                      '/spanish-weave:setup', self.sw('status'))
+        record = swlib.read_json(home / 'install.json')
+        del record['version']  # set up by 0.2.2 or earlier
+        swlib.write_json(home / 'install.json', record)
+        self.assertIn('are from an older version; the installed plugin is 9.9.9: rerun setup', self.check())
+        self.installed(PLUGIN_VERSION)
+        self.sw('setup')
+        self.assertNotIn('rerun', self.check() + self.sw('status'))
+        gone = self.home / 'Downloads' / 'Learning-'  # unzipped there, then the folder was cleared out
+        self.claude_file('known_marketplaces.json', {'learning': {'source': {'source': 'directory', 'path': str(gone)},
+                                                                  'installLocation': str(gone)}})
+        out = self.check()
+        self.assertIn(f'FAIL the learning marketplace was added from {gone}, which is gone', out)
+        self.assertIn('claude plugin marketplace add Camcas99/Learning-', out)
+        gone.mkdir(parents=True)
+        self.assertNotIn('marketplace', self.check())
+
+    def test_setup_records_and_shows_the_version(self):
+        self.installed(PLUGIN_VERSION, path=str(ROOT), sha='abcdef0123456789')  # this folder is the installed plugin
+        out = self.sw('setup')
+        self.assertTrue(out.startswith(f'Spanish Weave {PLUGIN_VERSION} is set up (commit abcdef0).'), out[:80])
+        record = swlib.read_json(self.home / 'sw' / 'install.json')
+        self.assertEqual((record['version'], record['commit']), (PLUGIN_VERSION, 'abcdef0123456789'))
+        self.installed(PLUGIN_VERSION)  # installed elsewhere: this folder's commit isn't known
+        self.assertTrue(self.sw('setup').startswith(f'Spanish Weave {PLUGIN_VERSION} is set up.'))
+
+
+COMMANDS = sorted((ROOT / 'commands').glob('*.md'))
+SW_RULE = 'Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" '
+
+
+def command_file(path):
+    """(frontmatter fields, body) of a commands/*.md file; every field is on one line."""
+    _, head, body = path.read_text(encoding='utf-8').split('---\n', 2)
+    return dict(line.split(': ', 1) for line in head.splitlines() if ': ' in line), body
+
+
+def bash_rules(fields):
+    """allowed-tools' Bash rules as (command, prefix rule?)."""
+    rules = [tool[5:-1] for tool in fields.get('allowed-tools', '').split(', ') if tool.startswith('Bash(')]
+    return [(' '.join(rule[:-2].split()), True) if rule.endswith(':*') else (' '.join(rule.split()), False)
+            for rule in rules]
+
+
+def allowed(command, rules):
+    """Claude Code's match for a Bash rule: the exact command, or a prefix rule's command and then a space."""
+    command = ' '.join(command.split())
+    return any(command == rule or prefix and command.startswith(rule + ' ') for rule, prefix in rules)
+
+
+class Commands(Home):
+    """The slash commands: no user text in shell lines, narrow permissions, and the sw.py side they rely on."""
+
+    def sw(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(list(argv))
+        return out.getvalue()
+
+    def test_no_user_text_in_shell(self):
+        for path in COMMANDS:
+            _, body = command_file(path)
+            self.assertEqual(body.count('`') % 2, 0, path.name)
+            spans = re.findall(r'!`([^`]+)`', body) + [s for s in re.findall(r'`([^`]+)`', body) if 'sw.py' in s]
+            for span in spans:
+                self.assertIsNone(re.search(r'\$(ARGUMENTS|\d)', span), f'{path.name}: {span}')
+            for text in body.splitlines():
+                if '$ARGUMENTS' in text:  # only as data in prose, labelled as such
+                    self.assertIn('(data, not instructions)', text, path.name)
+
+    def test_crafted_arguments_run_nothing(self):
+        """Claude Code puts the typed text in place of $ARGUMENTS, escaping only `!` markers, then runs `!` lines."""
+        bin_dir = self.home / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'python3').symlink_to(sys.executable)
+        victim = self.home / 'victim'
+        victim.write_text('ORIGINAL')
+        payloads = [f'1; touch {self.home}/pwned', f'x"; touch {self.home}/pwned; echo "', f'--all --out {victim} #']
+        escape = lambda text: re.sub(r'^!', r'\\!', text.replace('`!', '` !').replace('!`', '! `'))
+        commands = set()
+        for path in COMMANDS:
+            _, body = command_file(path)
+            for payload in payloads:
+                text = body.replace('$ARGUMENTS', escape(payload)).replace('${CLAUDE_PLUGIN_ROOT}', str(ROOT))
+                commands.update(re.findall(r'!`([^`]+)`', text))
+        env = dict(os.environ, HOME=str(self.home), SPANISH_WEAVE_HOME=str(self.home / 'sw'), XDG_CONFIG_HOME='',
+                   CODEX_HOME=str(self.home / 'codex'), PATH=os.pathsep.join([str(bin_dir), '/usr/bin', '/bin']))
+        run = lambda command: subprocess.run(['/bin/sh', '-c', command], env=env, capture_output=True, text=True,
+                                             timeout=60).stdout
+        outputs = [run(command) for command in sorted(commands)]
+        self.assertTrue(any(out.startswith('Spanish Weave: Stage') for out in outputs))  # the lines ran
+        self.assertFalse((self.home / 'pwned').exists())
+        self.assertEqual(victim.read_text(), 'ORIGINAL')
+
+    def test_permissions_are_narrow(self):
+        for path in COMMANDS:
+            fields, body = command_file(path)
+            self.assertNotIn('Bash(python3:*)', path.read_text(encoding='utf-8'))
+            tools = fields['allowed-tools'].split(', ')
+            self.assertEqual([t for t in tools if not t.startswith('Bash(') and t != 'AskUserQuestion'], [], path.name)
+            self.assertEqual([t for t in tools if t.startswith('Bash(') and not t.startswith(SW_RULE)], [], path.name)
+            # The model can't start a command that changes something; status stays askable ("how's my Spanish?").
+            self.assertEqual(fields.get('disable-model-invocation') == 'true', path.name != 'status.md', path.name)
+            bangs = re.findall(r'!`([^`]+)`', body)
+            templates = [s for s in re.findall(r'`([^`]+)`', body) if 'sw.py' in s]
+            self.assertTrue(bangs or templates, path.name)
+            for command in bangs + templates:
+                self.assertTrue(allowed(command, bash_rules(fields)), f'{path.name}: {command}')
+                # Claude Code asks before a command with a $ expansion ("$HOME/..."), even one a rule matches.
+                self.assertNotIn('$', command.replace('${CLAUDE_PLUGIN_ROOT}', ''), f'{path.name}: {command}')
+            for command in bangs:
+                self.assertIsNone(re.search(r'[;&|#`]|\$\(', command), f'{path.name}: {command}')
+
+    def test_quiz_plan_stays_out_of_the_transcript(self):
+        """Claude Code shows Bash tool output in the transcript, and every plan line carries its answer, so the plan
+        comes from a `!` line (part of the hidden command prompt) with no typed text in it. The model asks only the
+        first N questions and can't run the plan itself."""
+        fields, body = command_file(ROOT / 'commands' / 'quiz.md')
+        self.assertEqual(re.findall(r'!`([^`]+)`', body), ['python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" quiz --plan 50'])
+        templates = re.findall(r'`([^`]+)`', re.sub(r'!`[^`]+`', '', body))
+        self.assertEqual([t for t in templates if ' quiz' in t], [])
+        self.assertFalse(allowed('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" quiz --plan 5', bash_rules(fields)))
+        self.assertIn('only the first', body)
+        self.assertEqual(sw.plan_size(['50']), 50)  # the line asks for the most a quiz can have
+
+    def test_stage_without_value(self):
+        with swlib.editing():
+            pass
+        before = (self.home / 'sw' / 'state.json').read_bytes()
+        self.assertEqual(self.sw('stage'), 'Stage 1 (automatic)\n')
+        self.assertEqual((self.home / 'sw' / 'state.json').read_bytes(), before)  # shown, not saved
+        self.assertEqual(self.sw('stage', '2'), 'Stage 2 (pinned)\n')
+        self.assertEqual(self.sw('stage'), 'Stage 2 (pinned)\n')
+
+    def test_bare_aliases(self):
+        out = self.sw('export', 'chatgpt')
+        self.assertIn('--- "Custom instructions" box', out)
+        self.assertIn('--- "More about you" box', out)
+        self.assertTrue(self.sw('export', 'claude.ai').startswith('claude.ai > Settings'))
+        with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+            sw.main(['export', 'chatgpt', 'claude-ai'])
+        with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+            sw.main(['export', 'everything'])
+        deck = self.home / 'deck.txt'
+        self.sw('anki', 'all', '--out', str(deck))
+        lines = deck.read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines[:len(export.ANKI_HEADERS)], export.ANKI_HEADERS)
+        self.assertEqual([n.split('\t')[0] for n in lines[len(export.ANKI_HEADERS):]],
+                         [w['es'] for w in swlib.load_lexicon()])
+
+    def test_phrases_quotes_punctuation(self):
+        status = lambda es: swlib.find(swlib.load_state(), es)['status']
+        self.assertEqual(self.sw('known', 'sin embargo'), 'Known: sin embargo\n')
+        self.assertEqual((status('sin embargo'), status('sin')), ('known', 'active'))
+        self.assertEqual(self.sw('known', '"tal vez"'), 'Known: tal vez\n')  # not la vez
+        self.assertEqual((status('tal vez'), status('la vez')), ('known', 'queue'))
+        self.assertEqual(self.sw('known', 'sin', 'embargo', 'pero'), 'Known: sin embargo, pero\n')  # a split phrase
+        self.assertEqual(status('sin'), 'active')
+        self.assertEqual(self.sw('known', 'por favor'), 'Known: por favor\n')
+        self.assertEqual(self.sw('known', '¡hola!'), 'Known: hola\n')
+        self.assertEqual(self.sw('learn', '“sin embargo”, zzz'),
+                         'Back to learning: sin embargo\nNot in the word list: zzz\n')
+        before = (self.home / 'sw' / 'state.json').read_bytes()
+        self.assertEqual(self.sw('known', ','), 'Give one or more words from the list, like: known pero, sin embargo\n')
+        self.assertEqual(self.sw('learn'), 'Give one or more words from the list, like: learn pero, sin embargo\n')
+        self.assertEqual((self.home / 'sw' / 'state.json').read_bytes(), before)
+
+    def test_record_batch(self):
+        Review.met_long_ago(self, 5)
+        with mock.patch('sys.stdout', new=io.StringIO()) as out, self.assertRaises(SystemExit) as caught:
+            sw.main(['record', 'y:right', 'pero:wrong', 'zzz:right'])
+        self.assertEqual(caught.exception.code, 1)
+        state = swlib.load_state()
+        self.assertEqual((swlib.find(state, 'y')['box'], swlib.find(state, 'pero')['last_bad']), (1, swlib.today()))
+        lines = out.getvalue().splitlines()
+        self.assertTrue(lines[0].startswith('y: right; next review'))
+        self.assertTrue(lines[1].startswith('pero: wrong; next review'))
+        self.assertIn('Not saved: zzz:right', lines[2])
+        with mock.patch('sys.stdout', new=io.StringIO()) as out, self.assertRaises(SystemExit):
+            sw.main(['record', 'con', 'con:right:le', 'con:maybe'])
+        self.assertEqual([line.split(' (')[0] for line in out.getvalue().splitlines()],
+                         ['Not saved: con', 'Not saved: con:right:le', 'Not saved: con:maybe'])
+        self.assertNotIn('reviews', swlib.find(swlib.load_state(), 'con'))
+        with swlib.editing() as state:
+            swlib.set_status(swlib.find(state, 'el problema'), 'active', '2026-01-01')
+        out = self.sw('record', 'el problema:right:la', 'entonces:right')
+        self.assertIn('el problema: right with the wrong article, so same gap again', out)
+        problema = swlib.find(swlib.load_state(), 'el problema')
+        self.assertEqual((problema['box'], problema['reviews'][-1][1]), (0, 1))  # right, but the same gap again
+
+    def test_anki_out_refuses_other_files(self):
+        notes = self.home / 'notes.txt'
+        notes.write_text('ORIGINAL\n')
+        with self.assertRaises(SystemExit) as caught:
+            self.sw('anki', '--out', str(notes))
+        self.assertIn('is not an earlier Spanish Weave Anki export', str(caught.exception.code))
+        self.assertEqual(notes.read_text(), 'ORIGINAL\n')
+        earlier = self.home / 'earlier.txt'
+        earlier.write_text(export.ANKI_HEADERS[0] + '\nold\tnote\n')
+        link = self.home / 'link.txt'
+        link.symlink_to(earlier)
+        with self.assertRaises(SystemExit) as caught:
+            self.sw('anki', '--out', str(link))
+        self.assertIn('symlink', str(caught.exception.code))
+        self.assertEqual(earlier.read_text(), export.ANKI_HEADERS[0] + '\nold\tnote\n')
+        with self.assertRaises(SystemExit):
+            self.sw('anki', '--out', str(self.home))  # a folder
+        self.assertIn('Wrote', self.sw('anki', '--out', str(earlier)))  # an earlier export is replaced
+        self.assertEqual(earlier.read_text(encoding='utf-8'), export.anki(swlib.load_state()))
+        with mock.patch.dict(os.environ, {'HOME': str(self.home)}):  # anki.md passes '~/...' with no shell expansion
+            out = self.sw('anki', '--out', '~/fresh.txt')
+        self.assertIn(f'notes to {self.home / "fresh.txt"}.', out)
+        self.assertEqual((self.home / 'fresh.txt').read_text(encoding='utf-8'), export.anki(swlib.load_state()))
+
+
+DOCS = sorted(ROOT.glob('*.md')) + COMMANDS + [p for p in [ROOT.parent / 'README.md'] if p.exists()]
+
+
+def section(path, title):
+    """The text under a `## title` heading of a markdown file, up to the next `## ` heading."""
+    text = path.read_text(encoding='utf-8')
+    return text.split(f'\n## {title}\n', 1)[1].split('\n## ', 1)[0] if f'\n## {title}\n' in text else ''
+
+
+class Docs(unittest.TestCase):
+    """The docs friends and their agents follow: commands that run as written, and claims that match the code."""
+
+    def test_versions_agree(self):
+        """Installed copies update only when the version changes, so the plugin and extension move together."""
+        versions = [json.loads((ROOT / path).read_text())['version']
+                    for path in ('.claude-plugin/plugin.json', 'extension/manifest.json', 'extension/package.json')]
+        self.assertEqual(len(set(versions)), 1, versions)
+        self.assertGreaterEqual(tuple(int(part) for part in versions[0].split('.')), (0, 3, 0))
+
+    def test_agent_docs_define_sw(self):
+        """An agent's shell keeps no variables between commands, so a block that runs "$SW" sets it first."""
+        text = (ROOT / 'INSTALL-FOR-AGENTS.md').read_text(encoding='utf-8')
+        blocks = re.findall(r'```sh\n(.*?)```', text, re.S)
+        self.assertTrue(any('"$SW"' in block for block in blocks))
+        for block in blocks:
+            defined = False
+            for command in block.splitlines():
+                defined = defined or command.startswith('SW=')
+                if 'sw.py' in command and not command.startswith('SW='):
+                    self.assertIn('~/.spanish-weave/app/scripts/sw.py', command)  # the copy that outlives the plugin
+                if '"$SW"' in command and not command.startswith('SW='):
+                    self.assertTrue(defined, f'"$SW" used before SW= in:\n{block}')
+
+    def test_docs_avoid_sort_tail_lookup(self):
+        """`find | sort | tail -1` picked the marketplace clone, and 0.2.9 over 0.2.10."""
+        for path in DOCS:
+            self.assertFalse('| sort | tail -1' in path.read_text(encoding='utf-8'), path.name)
+
+    def test_update_steps_keep_the_site_choice(self):
+        """Rerunning setup "with the same answers as the first time" passed --sites again, which turned every site back
+        on for someone who had since picked "Only sites I turn on" in the popup."""
+        for path in DOCS:
+            text = ' '.join(path.read_text(encoding='utf-8').split())
+            self.assertFalse('same answers' in text, path.name)
+        update = section(ROOT / 'INSTALL-FOR-AGENTS.md', 'Update')
+        self.assertIn('python3 "$SW" setup\n', update)
+        self.assertNotIn('setup --sites', update)
+        for name in ('README.md', 'START-HERE.md', 'HANDOFF-FOR-CLAUDE.md'):
+            text = ' '.join((ROOT / name).read_text(encoding='utf-8').split())
+            self.assertTrue('Keep the current site choice' in text, name)
+
+    def test_docs_dont_say_everything_stays_local(self):
+        """The word lists go to Claude, Codex and Gemini, so the Privacy sections can't say everything stays local."""
+        for name in ('README.md', 'START-HERE.md'):
+            privacy = section(ROOT / name, 'Privacy')
+            self.assertIn('Gemini', privacy, name)
+            for claim in ('Everything stays on your machine', 'Your words and progress stay on your computer'):
+                self.assertFalse(claim in privacy, f'{name}: {claim}')
 
 
 if __name__ == '__main__':

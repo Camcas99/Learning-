@@ -4,6 +4,7 @@
 import { flatten, applySwaps, revert, toggle, isSwap, swapWord, showGender, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
+import { localDay } from './hostsource.js';
 import { selector, readable, textRoot } from './page.js';
 import { speak } from './speech.js';
 
@@ -40,7 +41,7 @@ const say = (span) => speak(span.getAttribute('data-es')); // only the visible S
 function record(span, event) {
   const word = swapWord(span);
   if (!word || !on()) return;
-  const id = new Date().toISOString().slice(0, 10) + ':' + event + ':' + word;
+  const id = localDay() + ':' + event + ':' + word; // the local day, as the worker and the plugin count
   const daily = event === 'seen' || event === 'peek';
   if (daily && seen.has(id)) return;
   if (daily) seen.add(id);
@@ -69,9 +70,12 @@ function disarmTip(e) {
   const span = swapFor(e);
   if (span && !span.contains(e.relatedTarget)) hideTip();
 }
+// On screen isn't enough: a page can hide swaps with CSS (opacity 0, visibility hidden) while they stay in place.
+const showing = (span) => typeof span.checkVisibility !== 'function' ||
+  span.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 function seenVisible() {
   if (document.visibilityState === 'hidden') return;
-  for (const span of visibleWords) if (span.isConnected) record(span, 'seen');
+  for (const span of visibleWords) if (span.isConnected && showing(span)) record(span, 'seen');
 }
 function paint(el, key) {
   if (!on() || keys.get(el) !== key || !readable(el, location.href)) return;
@@ -190,10 +194,12 @@ function stop() {
 function update(next, retry = false) {
   if (!next?.settings || !next.revision) return;
   if (!retry && next.revision === config?.revision) {
-    // Display settings keep the revision: take them as they are, and switch gender cues in place, no model calls.
+    // Same swaps: take the new config as it is and switch gender cues in place. On/off, site choices and a pause
+    // stop or start the page; start() does nothing when already running, and restarts repaint from the cache.
     const regender = next.settings.genderColors !== config.settings.genderColors;
     config = next;
     if (regender) showGender(document.documentElement, config.settings.genderColors);
+    if (on()) start(); else stop();
     return;
   }
   stop(); config = next; start();

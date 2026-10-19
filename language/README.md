@@ -36,9 +36,11 @@ https://github.com/Camcas99/Learning-/blob/main/language/spanish-weave/START-HER
 Their Claude installs it with `claude plugin marketplace add Camcas99/Learning-`,
 `claude plugin install spanish-weave@learning` and then `/spanish-weave:setup`. To update later:
 `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`, then restart
-Claude Code and run `/spanish-weave:setup` again with the same answers (it refreshes the extension and native host
-copies in `~/.spanish-weave` and keeps their progress), then click the reload arrow on Spanish Weave in
-`chrome://extensions`. To download every file instead: `git clone https://github.com/Camcas99/Learning-.git`.
+Claude Code and run `/spanish-weave:setup` again, keeping "Keep the current site choice" for the websites question
+(it refreshes the extension and native host copies in `~/.spanish-weave` and keeps their progress), then click the
+reload arrow on Spanish Weave in `chrome://extensions`. `python3 ~/.spanish-weave/app/scripts/sw.py check` (or `/spanish-weave:status`) says when those
+copies are behind the plugin. To download every file instead: `git clone https://github.com/Camcas99/Learning-.git`
+(keep the clone somewhere permanent if a marketplace is added from it).
 
 ## Start here
 

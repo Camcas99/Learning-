@@ -301,6 +301,8 @@ const ZERO_SPANISH = [
   /\b(invest\w*|stock market|crypto|bitcoin|mortgage|loan|taxes|salary|bank account|financial advice)\b/i,
   /\b(911|emergency|evacuat\w*|shooting|wildfire|earthquake|hurricane|tornado|active shooter)\b/i,
   /\b(driving|drunk driv\w*|car crash|dui|speed limit|seat ?belt)\b/i,
+  // Bank and patient-portal pages. Not bare "patient", "transaction" or "test results": common in coding prose.
+  /\b(account balance|available balance|current balance|savings account|checking account|routing number|account number|credit card|debit card|wire transfer|direct deposit|bank statement|patient portal|medical records?|health records?|insurance|copays?|deductibles?|appointments?)\b/i,
 ];
 
 export function isZeroSpanish(text) {

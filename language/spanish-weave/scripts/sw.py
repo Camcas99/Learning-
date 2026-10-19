@@ -2,45 +2,60 @@
 """Spanish Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
   sw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--known-top N] [--sites all|ask] [--dry-run]
-                                                     install the state dir, extension copy and native host;
+                                                     install the state dir, extension copy and native host; the
+                                                     state dir (SPANISH_WEAVE_HOME) must be yours and new, empty or
+                                                     an earlier Spanish Weave one, or setup refuses it;
                                                      --user-data-dir also registers the host for a browser run
                                                      with that --user-data-dir (Chromium looks there);
                                                      --known-top marks the top N lexicon words known unless
                                                      already introduced (40: some basics, 150: simple Spanish);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
-  sw.py status                                       stage, word counts, learning words
-  sw.py known WORD...                                mark words as known
+  sw.py status                                       stage, word counts, learning words, and a line when setup's
+                                                     copies are behind the installed plugin
+  sw.py known WORD...                                mark words as known; listed phrases too (known sin embargo,
+                                                     pero), and quotes and ¡!¿? are fine
   sw.py learn WORD...                                put words back in the learning set (shaky)
-  sw.py stage N|auto                                 pin the stage (1-4) or let it follow known words
+  sw.py stage [N|auto]                               pin the stage (1-4) or let it follow known words; with no
+                                                     value, show it
   sw.py pause | resume                               stop or restart Spanish in chat and on websites
   sw.py refresh                                      rescan chat transcripts and apply the promotion rules
   sw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   sw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
+                                                     (the flags work without dashes too: export chatgpt)
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
-  sw.py check                                        verify the state, extension folder and native host
+  sw.py check                                        verify the state, extension folder and native host, that
+                                                     setup's copies match the installed plugin's version, and that
+                                                     a local folder the marketplace was added from is still there
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
                                                      N questions with answers instead, default 5, for Claude to ask)
   sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
                                                      it wasn't the listed one; a noun whose ending doesn't give
                                                      its gender away then stays in its box)
+  sw.py record WORD:right|wrong[:A]...               record several quiz answers in one save, each as review does
+                                                     (A: the --article); exits 1 if any was not saved
   sw.py placement [--items] [--answers NUMS] [--apply]
                                                      2-minute placement test (Yes/No vocabulary test); NUMS like
                                                      "1, 4, 9-12"
-  sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated)
+  sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated; all works
+                                                     without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
-                                                     remove the native host manifests (and the Codex hook and the
-                                                     `hooks = true` setup added), then list what is left
+                                                     remove the native host manifests (only Spanish Weave's; and
+                                                     the Codex hook and the `hooks = true` setup added), then list
+                                                     what is left
 """
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
@@ -49,6 +64,15 @@ import placement  # noqa: E402
 
 HOST_NAME = 'com.spanishweave.host'
 EXTENSION_ID = 'papkhjkhjagpimlholdmecddkhhhcfje'  # fixed by the "key" in extension/manifest.json
+ORIGIN = f'chrome-extension://{EXTENSION_ID}/'
+# The native host can't push changes. The extension syncs the word state when a page asks for swaps and its copy is
+# over 2 minutes old, when the popup opens, and every 10 minutes (STALE_MS and SYNC_MINUTES in background.js). A page
+# that asks for nothing (all painted, or stopped by a pause) hears only from the last two.
+CHROME_PICKS_UP = 'Chrome picks this up within 10 minutes, or as soon as you open the Spanish Weave popup.'
+CHROME_PAUSED = ('Chrome stops sending new page text to Gemini within 2 minutes; Spanish already on an open page goes '
+                 'when you reload it after that, when you open the Spanish Weave popup, or within 10 minutes.')
+PLUGIN_KEY = 'spanish-weave@learning'  # the plugin's name in Claude Code: plugin@marketplace
+REPO = 'Camcas99/Learning-'  # the GitHub repo the marketplace comes from
 
 
 def host_dirs(extra=()):
@@ -200,8 +224,8 @@ def setup_codex(dry_run):
     for path in (hooks_path, config_path):
         if first and path.exists() and not backup_of(path).exists():
             shutil.copy2(path, backup_of(path))
-    swlib.write_json(hooks_path, data)
-    config_path.write_text(config)
+    swlib.write_json(hooks_path, data)  # both writes keep a symlinked file a link
+    swlib.write_text(config_path, config)
     print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
     print('  Human step: start `codex` once; at "Hooks need review" pick "Trust all and continue" (or review first).')
     print('  Codex never runs a new hook before that. `codex exec` runs stay Spanish-free either way.')
@@ -224,6 +248,107 @@ def read_key_file(arg):
     return key
 
 
+def installed_entries():
+    """Claude Code's install records for the plugin (version, installPath, gitCommitSha), from
+    <config>/plugins/installed_plugins.json; [] when it isn't installed (or runs from --plugin-dir)."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'installed_plugins.json', {})
+    plugins = data.get('plugins') if isinstance(data, dict) else None
+    entries = plugins.get(PLUGIN_KEY) if isinstance(plugins, dict) else None
+    entries = [entries] if isinstance(entries, dict) else entries if isinstance(entries, list) else []
+    return [e for e in entries if isinstance(e, dict)]
+
+
+def installed_plugin():
+    return next(iter(installed_entries()), None)
+
+
+def marketplace_entry():
+    """known_marketplaces.json's entry for the marketplace the plugin comes from, or None."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'known_marketplaces.json', {})
+    entry = data.get(PLUGIN_KEY.split('@')[1]) if isinstance(data, dict) else None
+    return entry if isinstance(entry, dict) else None
+
+
+def plugin_version():
+    """This copy's version from .claude-plugin/plugin.json, or None (the copies in <home>/app have no plugin.json)."""
+    data = swlib.read_json(swlib.PLUGIN_ROOT / '.claude-plugin' / 'plugin.json', {})
+    version = data.get('version') if isinstance(data, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def copies_behind(home):
+    """(version of setup's copies in home or None, the installed plugin's version) when they differ, else None. The
+    extension, native host and Codex hook run from those copies, so a plugin update reaches them only through setup."""
+    plugin = (installed_plugin() or {}).get('version')
+    have = install_record().get('version')
+    return (have, plugin) if plugin and (home / 'app').exists() and have != plugin else None
+
+
+# Everything Spanish Weave keeps in its state dir: uninstall offers `rm -rf` on the dir only when nothing else is in it
+# (OS junk like .DS_Store aside).
+SW_NAMES = swlib.OWN_FILES | {'app', 'extension'}
+
+
+def own_copy(home, name):
+    """True when home/name (extension or app), which setup replaces whole, is missing, empty or Spanish Weave's own
+    copy: the extension's manifest names it, or app holds sw.py (or, after an interrupted setup, only the word list)."""
+    path = home / name
+    if not path.exists():
+        return True
+    if not path.is_dir():
+        return False
+    if not [p for p in path.iterdir() if not swlib.os_junk(p.name)]:
+        return True
+    if name == 'extension':
+        return swlib.own_extension(home)
+    return swlib.own_app(home) or (path / 'data' / 'lexicon.csv').is_file()
+
+
+def check_home(home):
+    """Exits (one line naming the folder, never the key) when setup could damage the state dir: it is not a folder or
+    not the user's own, it holds other things and no Spanish Weave files, a folder setup replaces (app, extension
+    and those in app) is a symlink or leads outside it, or app or extension is there and isn't Spanish Weave's copy
+    (state.json alone proves nothing: the prompt hook of 0.3.0 and earlier wrote it into any folder)."""
+    if not home.exists() and not home.is_symlink():
+        return
+    if not home.is_dir():
+        sys.exit(f'{home} is not a folder; set SPANISH_WEAVE_HOME to a new or empty folder.')
+    swlib.check_owner(home)
+    not_ours = f'{home} is not a Spanish Weave folder; pick a new or empty one (SPANISH_WEAVE_HOME).'
+    if swlib.foreign(home):
+        sys.exit(not_ours)
+    inside = home.resolve()
+    for name in ('app', 'extension', 'app/scripts', 'app/data', 'app/sw-host'):
+        path = home / name
+        if path.is_symlink() or path.exists() and inside not in path.resolve().parents:
+            sys.exit(f'{path} is a symbolic link or leads outside {home}; remove it, then rerun setup.')
+    if not (own_copy(home, 'extension') and own_copy(home, 'app')):
+        sys.exit(not_ours)
+
+
+def write_key(path, key):
+    """Stores the Gemini key 0600 from the first byte, and never through a symlink (it could point anywhere)."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    except OSError as error:
+        if error.errno == errno.ELOOP or path.is_symlink():
+            sys.exit('gemini_key is a symbolic link; remove it, then rerun setup.')
+        raise
+    with os.fdopen(fd, 'w') as file:
+        os.fchmod(fd, 0o600)  # an older key file may be 0644
+        file.write(key + '\n')
+
+
+def launcher_text(python, script, home):
+    """The native host launcher. Chrome starts it without SPANISH_WEAVE_HOME, so it names the state dir itself; the
+    paths are shell-quoted; and if the Python that ran setup is gone (a Homebrew cleanup, a deleted venv), python3 on
+    PATH takes over."""
+    python, script, home = (shlex.quote(str(x)) for x in (python, script, home))
+    return (f'#!/bin/sh\nSPANISH_WEAVE_HOME={home}; export SPANISH_WEAVE_HOME\n'
+            f'if [ -x {python} ]; then exec {python} {script} "$@"; fi\n'
+            f'exec /usr/bin/env python3 {script} "$@"\n')
+
+
 def setup(args):
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
@@ -233,49 +358,64 @@ def setup(args):
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
     key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
     if args.dry_run:
+        # current_sites: the site choice an earlier setup saved, so a rerun can offer to keep it (no --sites).
+        state = swlib.read_json(home / 'state.json', {})
+        prefs = state.get('prefs') if isinstance(state, dict) else None
+        current = prefs.get('extension_sites') if isinstance(prefs, dict) else None
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
-                              known_top=args.known_top, sites=args.sites), indent=1))
+                              known_top=args.known_top, sites=args.sites,
+                              current_sites=current if current in ('all', 'ask') else None), indent=1))
         if args.codex:
             setup_codex(True)
         return
-    home.mkdir(parents=True, exist_ok=True)
-    os.chmod(home, 0o700)
+    check_home(home)
+    existed = home.exists()
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Never a folder of someone's that setup was only pointed at; state.json proves nothing, the hook may have made it.
+    if not existed or (home / INSTALL).exists():
+        os.chmod(home, 0o700)
+    if key:
+        write_key(home / 'gemini_key', key)
     # Stable copies: the plugin cache path changes on every update, Chrome needs fixed paths.
     for name, ignore in (('extension', shutil.ignore_patterns('test', 'node_modules', 'package.json', 'bun.lock')),
                          ('app/scripts', shutil.ignore_patterns('__pycache__')), ('app/data', None)):
         source = root / ('extension' if name == 'extension' else name.split('/')[1])
         target = home / name
         if target.exists():
-            shutil.rmtree(target)
+            shutil.rmtree(target)  # check_home made sure it is Spanish Weave's own copy
         shutil.copytree(source, target, ignore=ignore)
     launcher = home / 'app' / 'sw-host'
-    launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "sw_host.py"}" "$@"\n')
+    swlib.write_text(launcher, launcher_text(sys.executable, home / 'app' / 'scripts' / 'sw_host.py', home))
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'Spanish Weave word state', 'path': str(launcher), 'type': 'stdio',
-                'allowed_origins': [f'chrome-extension://{EXTENSION_ID}/']}
+                'allowed_origins': [ORIGIN]}
     for directory in host_dirs(args.user_data_dir):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
-    remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])))
-    if key:
-        path = home / 'gemini_key'
-        path.write_text(key + '\n')
-        path.chmod(0o600)
+    # The version of the copies, for check and status; the commit when this is the installed plugin's own folder.
+    version = plugin_version() or install_record().get('version')
+    commit = next((e.get('gitCommitSha') for e in installed_entries() if isinstance(e.get('installPath'), str)
+                   and Path(e['installPath']).expanduser().resolve() == root), None)
+    remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])),
+             version=version, commit=commit)
     with swlib.locked():
         if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
             swlib.save_state(swlib.new_state(known_top=args.known_top))
     with swlib.editing() as state:  # later runs: adds new lexicon words, seeds only words not yet introduced
         swlib.seed_known(state, args.known_top)
-        if args.sites:
-            state.setdefault('prefs', {})['extension_sites'] = args.sites
+        if args.sites:  # timed, so the extension can tell whether this or a popup choice came last
+            state.setdefault('prefs', {}).update(extension_sites=args.sites, extension_sites_at=int(time.time()))
     if args.codex:
         setup_codex(False)
-    print('Spanish Weave is set up.')
+    print(f'Spanish Weave{f" {version}" if version else ""} is set up'
+          + (f' (commit {commit[:7]}).' if isinstance(commit, str) and commit else '.'))
     print(f'  word state:  {home / "state.json"} (Stage {swlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
-    print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
+    print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}'
+          ' (a later "Other sites" choice in the extension popup wins until setup sets it again)')
+    print(f'               {CHROME_PICKS_UP}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
     print('Human steps left (Chrome blocks scripts from doing these):')
@@ -317,16 +457,34 @@ def check(_args):
 
     try:
         state = swlib.load_state(create=False)
+        if state is None:
+            swlib.check_ours(home)  # someone else's folder says so, not "run setup" (setup would refuse it)
         report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {swlib.stage_for(state)})' if state
                                                                             else ': not there yet; run setup'))
     except swlib.StateError as error:
         report(False, 'word state: ' + state_fix(error).replace('\n', '\n     '))
+    except swlib.UnsafeHome as error:
+        report(False, f'word state: {error}')
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
+    behind = copies_behind(home)
+    if behind:
+        report(False, f'copies in {home} are from {behind[0] or "an older version"}; the installed plugin is '
+                      f'{behind[1]}: rerun setup')
+    market = marketplace_entry() or {}
+    source = market.get('source') if isinstance(market.get('source'), dict) else {}
+    local = source.get('source') in ('directory', 'local')  # a GitHub marketplace has its own copy, kept by Claude Code
+    folder = (source.get('path') or market.get('installLocation')) if local else None
+    if isinstance(folder, str) and not Path(folder).expanduser().exists():
+        name = PLUGIN_KEY.split('@')[1]
+        report(False, f'the {name} marketplace was added from {folder}, which is gone, so Claude Code can\'t load the '
+                      'plugin (no Spanish in chat). Add it again from GitHub:\n'
+                      f'       claude plugin marketplace remove {name}\n'
+                      f'       claude plugin marketplace add {REPO}\n'
+                      f'       claude plugin install {PLUGIN_KEY}')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         manifest = swlib.read_json(path)
-        report(bool(manifest) and manifest.get('allowed_origins') == [f'chrome-extension://{EXTENSION_ID}/'],
-               f'native host manifest {path}')
+        report(bool(manifest) and manifest.get('allowed_origins') == [ORIGIN], f'native host manifest {path}')
     launcher = home / 'app' / 'sw-host'
     try:
         message = json.dumps({'type': 'ping'}).encode()
@@ -348,6 +506,13 @@ def check(_args):
         sys.exit(1)
 
 
+def is_host_manifest(path):
+    """True for our native host manifest: that file name, our host name and only our extension allowed."""
+    data = swlib.read_json(path)
+    return (path.name == f'{HOST_NAME}.json' and isinstance(data, dict) and data.get('name') == HOST_NAME
+            and data.get('allowed_origins') == [ORIGIN])
+
+
 def other_codex_hooks(data, config):
     """True when Codex has hooks besides ours (in hooks.json, or as hooks tables in config.toml)."""
     groups = [g for gs in (data.get('hooks') or {}).values() if isinstance(gs, list) for g in gs if isinstance(g, dict)]
@@ -356,7 +521,8 @@ def other_codex_hooks(data, config):
 
 
 def uninstall(args):
-    """Removes what setup put outside the state dir, then prints what is left and how to remove each piece."""
+    """Removes what setup put outside the state dir (a listed host manifest only if it is ours), then prints what is
+    left and how to remove each piece: the state dir with one rm -rf only when nothing else is in it."""
     verb = 'would remove' if args.dry_run else 'removed'
     home, codex, record, left = swlib.home(), swlib.codex_home(), install_record(), []
     me = f'python3 "{Path(__file__).resolve()}"'
@@ -390,7 +556,7 @@ def uninstall(args):
             rest = disable_codex_hooks(config)
             print(f'{verb} `{line.strip()}` from [features] in {config_path}' + ('' if rest else ' (and the file, now empty)'))
             if not args.dry_run and rest:
-                config_path.write_text(rest)
+                swlib.write_text(config_path, rest)
             elif not args.dry_run:
                 config_path.unlink()
             record.pop('codex_hooks_added', None)
@@ -398,7 +564,7 @@ def uninstall(args):
             print(f'{"would restore" if args.dry_run else "restored"} `{before.strip()}` (from before setup) in [features] '
                   f'in {config_path}')
             if not args.dry_run:
-                config_path.write_text(enable_codex_hooks(config, before.strip()))
+                swlib.write_text(config_path, enable_codex_hooks(config, before.strip()))
             record.pop('codex_hooks_added', None)
         else:
             why = 'other Codex hooks use it' if others else 'it was there before setup' if not added else 'changed since setup'
@@ -407,15 +573,20 @@ def uninstall(args):
     manifests = [Path(m) for m in dict.fromkeys([str(d / f'{HOST_NAME}.json') for d in host_dirs(args.user_data_dir)]
                                                 + (record.get('host_manifests') or []))]
     for path in manifests:
-        if path.exists():
-            print(f'{verb} {path}')
-            if not args.dry_run:
-                try:
-                    path.unlink()
-                except OSError as error:
-                    left.append(f'{path} (could not remove it: {error.strerror})')
+        if not path.exists():
+            continue
+        if not is_host_manifest(path):  # install.json may have been edited or copied from another machine
+            left.append(f'{path} (not a Spanish Weave host manifest; left alone)')
+            continue
+        print(f'{verb} {path}')
+        if not args.dry_run:
+            try:
+                path.unlink()
+            except OSError as error:
+                left.append(f'{path} (could not remove it: {error.strerror})')
     if not args.dry_run and (home / INSTALL).exists():
-        swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests if m.exists()]))
+        swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests
+                                                                       if m.exists() and is_host_manifest(m)]))
     backups = [p for p in (hooks_path, config_path) if backup_of(p).exists()]
     print('Left in place:')
     print('  - the Claude Code plugin, if installed; its hook keeps weaving until it is gone. Remove it before the state '
@@ -428,9 +599,16 @@ def uninstall(args):
     for path in backups:
         print(f'  - {backup_of(path)}: your {path.name} from before setup first changed it; once you no longer need it:\n'
               f'      rm "{backup_of(path)}"')
-    if home.exists():
+    names = sorted(p.name for p in home.iterdir() if not swlib.os_junk(p.name)) if home.is_dir() else None
+    ours = [name for name in names or [] if name in SW_NAMES]
+    if names is not None and len(ours) == len(names):
         print(f'  - {home}: your word progress, the extension folder, the native host and any stored Gemini key:\n'
               f'      rm -rf "{home}"')
+    elif ours:  # rm -rf on the folder would take the other things with it
+        print(f'  - your word progress, the extension folder, the native host and any stored Gemini key, in {home}; '
+              'it holds other things too, so delete only these:')
+        for name in ours:
+            print(f'      rm -rf "{home / name}"')
 
 
 def status(_args):
@@ -460,35 +638,68 @@ def status(_args):
     due = len(swlib.due_reviews(state, limit=len(state['words'])))
     print(f'  {due} word{"s" if due != 1 else ""} due for review: /spanish-weave:quiz or sw.py quiz' if due else
           f'  {nothing_due(state)[0].lower()}{nothing_due(state)[1:]}')
+    behind = copies_behind(swlib.home())
+    if behind:
+        print(f'  the extension and native host copies are from {behind[0] or "an older version"}, the plugin is '
+              f'{behind[1]}: rerun /spanish-weave:setup')
+
+
+QUOTES = '"“”«»\'‘’'
+LONGEST_PHRASE = 5  # tokens; the longest listed phrases have 4
+
+
+def word_groups(words):
+    """known/learn arguments as token lists, one per comma-separated group: the arguments joined (a shell may have
+    split a phrase), quotes dropped, and Spanish punctuation taken off each token: '"tal vez", ¡hola!' ->
+    [['tal', 'vez'], ['hola']]."""
+    text = ' '.join(words).translate({ord(c): None for c in QUOTES})
+    groups = [[t for t in (t.strip('¡!¿?.;:()') for t in group.split()) if t] for group in text.split(',')]
+    return [group for group in groups if group]
 
 
 def mark(kind):
     def run(args):
+        groups = word_groups(args.words)
+        if not groups:
+            print(f'Give one or more words from the list, like: {args.command} pero, sin embargo')
+            return
         missing, done = [], []
         with swlib.editing() as state:
-            for chunk in (c for arg in args.words for c in arg.split(',')):
-                chunk = chunk.strip()
-                # "tal vez" is one word; "y pero" is two.
-                for word in [chunk] if swlib.find(state, chunk) or ' ' not in chunk else chunk.split():
-                    found = swlib.find(state, word)
-                    if found and swlib.apply_event(state, word, kind):
+            for tokens in groups:
+                i = 0
+                while i < len(tokens):
+                    # Longest listed phrase first: "sin embargo pero" is sin embargo and pero, not sin.
+                    for n in range(min(LONGEST_PHRASE, len(tokens) - i), 0, -1):
+                        phrase = ' '.join(tokens[i:i + n])
+                        found = swlib.find(state, phrase)
+                        if found:
+                            break
+                    if found and swlib.apply_event(state, phrase, kind):
                         done.append(found['es'])  # the list's spelling, accents included: "tambien" -> también
                     else:
-                        missing.append(word)
+                        missing.append(phrase)
+                    i += n
         if done:
-            print(f'{"Known" if kind == "known" else "Back to learning"}: {", ".join(done)}')
+            print(f'{"Known" if kind == "known" else "Back to learning"}: {", ".join(dict.fromkeys(done))}')
         if missing:
-            print(f'Not in the word list: {", ".join(missing)}')
+            print(f'Not in the word list: {", ".join(dict.fromkeys(missing))}')
     return run
 
 
+def stage_line(state):
+    return f'Stage {swlib.stage_for(state)}{" (pinned)" if state.get("stage_pinned") else " (automatic)"}'
+
+
 def stage(args):
+    if args.value is None:  # only shows it, so nothing is saved
+        print(stage_line(swlib.load_state()))
+        return
     with swlib.editing() as state:
         if args.value == 'auto':
             state['stage_pinned'] = False
         else:
             state['stage'], state['stage_pinned'] = int(args.value), True
-    print(f'Stage {swlib.stage_for(state)}{" (pinned)" if state["stage_pinned"] else " (automatic)"}')
+    print(stage_line(state))
 
 
 def pause(value):
@@ -496,18 +707,24 @@ def pause(value):
         with swlib.editing() as state:
             state['paused'] = value
         print('Spanish Weave paused: no Spanish in chat or on websites until you resume.' if value else 'Spanish Weave resumed.')
+        print(CHROME_PAUSED if value else CHROME_PICKS_UP)
     return run
 
 
 def export_cmd(args):
     with swlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
+        swlib.promote(state)  # today's refill first, so the stored version is the one printed below
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
         about, respond = export.chatgpt(state)
+        limit = export.CHATGPT_LIMIT
+        over = [f'The {box} block is {len(text):,} characters, over the {limit:,} limit of the Free and Go plans '
+                '(paid plans allow 5,000).'
+                for box, text in (('"Custom instructions"', respond), ('"More about you"', about)) if len(text) > limit]
+        fits = ' '.join(over) or f'Each fits in {limit:,} characters, the Free and Go limit (paid plans allow 5,000).'
         print('ChatGPT > Settings > Personalization (phone app: Settings > Customize ChatGPT; turn on "Enable '
-              'customization" if it is off). Paste each block in place of what is in its box. Each fits in '
-              f'{export.CHATGPT_LIMIT:,} characters, the Free and Go limit (paid plans allow 5,000).\n')
+              f'customization" if it is off). Paste each block in place of what is in its box. {fits}\n')
         print(f'--- "Custom instructions" box (older layout: "How would you like ChatGPT to respond?") '
               f'({len(respond)} characters) ---\n{respond}\n')
         print(f'--- "More about you" box, under About you (older layout: "What would you like ChatGPT to know about '
@@ -636,16 +853,51 @@ def quiz(args):
             print(f'{n}. {way}: {question(word, way)} | answer: {answer_line(word)}')
 
 
-def review_cmd(args):
-    with swlib.editing() as state:
-        found = swlib.find(state, args.word)
-        hold = bool(found and args.result == 'right' and swlib.gender_slip(found['es'], args.article))
-        word = swlib.review(state, args.word, args.result == 'right', hold=hold)
-    if word is None:
-        sys.exit(f'Not a word you are learning or know: {args.word}')
+def record_answer(state, es, result, article=None):
+    """Records one quiz answer. Returns (the word, or None when it isn't being learned or known; whether the gender
+    hold applied)."""
+    found = swlib.find(state, es)
+    hold = bool(found and result == 'right' and swlib.gender_slip(found['es'], article))
+    return swlib.review(state, es, result == 'right', hold=hold), hold
+
+
+def recorded(word, result, hold):
+    """The line for a recorded answer; called after the save, so it shows the status promotion left."""
     status = {'active': 'learning', 'shaky': 'shaky', 'known': 'known'}[word['status']]
     slip = f' with the wrong article, so same gap again (it\'s {word["es"]})' if hold else ''
-    print(f'{word["es"]}: {args.result}{slip}; next review {word["due"]} ({status})')
+    return f'{word["es"]}: {result}{slip}; next review {word["due"]} ({status})'
+
+
+def review_cmd(args):
+    with swlib.editing() as state:
+        word, hold = record_answer(state, args.word, args.result, args.article)
+    if word is None:
+        sys.exit(f'Not a word you are learning or know: {args.word}')
+    print(recorded(word, args.result, hold))
+
+
+ITEM = re.compile(r'([^:]+):(right|wrong)(?::([^:]+))?')
+
+
+def record_cmd(args):
+    """A whole quiz's answers (WORD:right|wrong[:ARTICLE]) in one command and one save, so the quiz needs one
+    permission at the end instead of one per answer. Each is recorded as review records it."""
+    lines = []
+    with swlib.editing() as state:
+        for item in args.items:
+            m = ITEM.fullmatch(item.strip())
+            if not m:
+                lines.append(f'Not saved: {item} (expected WORD:right or WORD:wrong, with an optional :ARTICLE)')
+            elif m.group(3) and m.group(3) not in swlib.GENDER_OF:
+                lines.append(f'Not saved: {item} (the article can be {", ".join(sorted(swlib.GENDER_OF))})')
+            else:
+                word, hold = record_answer(state, m.group(1), m.group(2), m.group(3))
+                lines.append((word, m.group(2), hold) if word else
+                             f'Not saved: {item} (not a word you are learning or know)')
+    for line in lines:  # after the save, like review's line
+        print(line if isinstance(line, str) else recorded(*line))
+    if any(isinstance(line, str) for line in lines):
+        sys.exit(1)
 
 
 def item_numbers(text, last):
@@ -713,13 +965,37 @@ def placement_cmd(args):
               'weeks, and any you miss go back to learning.')
 
 
+def write_anki(path, text):
+    """Writes an Anki export to path (~ is expanded here, so the slash command needs no shell expansion), which may be
+    new or an earlier export but nothing else: a symlink, a folder or device, or any other file is left alone, so a
+    mistyped or planted --out can't overwrite it. Returns the full path."""
+    path = Path(path).expanduser()
+    keep = (f'Left {path} alone: it is there and is not an earlier Spanish Weave Anki export. Move it, then run this '
+            'again.')
+    if path.is_symlink():
+        sys.exit(f'Left {path} alone: it is a symlink, so it could point at another file.')
+    if path.exists() and not path.is_file():
+        sys.exit(keep)
+    try:
+        if path.exists():
+            with open(path, encoding='utf-8', errors='replace') as file:
+                if file.readline(200).rstrip('\r\n') != export.ANKI_HEADERS[0]:
+                    sys.exit(keep)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o644)
+        with os.fdopen(fd, 'w', encoding='utf-8') as file:
+            file.write(text)
+    except OSError as error:
+        sys.exit(f'Could not write {path}: {error.strerror or error.__class__.__name__}.')
+    return path
+
+
 def anki_cmd(args):
     with swlib.editing() as state:
         pass
     text = export.anki(state, every=args.all)
     if args.out:
-        Path(args.out).expanduser().write_text(text, encoding='utf-8')
-        print(f'Wrote {text.count(chr(10)) - len(export.ANKI_HEADERS)} notes to {args.out}. In Anki: File > Import, '
+        path = write_anki(args.out, text)
+        print(f'Wrote {text.count(chr(10)) - len(export.ANKI_HEADERS)} notes to {path}. In Anki: File > Import, '
               'pick the file (the deck, note type and tags are set by the file).')
     else:
         print(text, end='')
@@ -743,6 +1019,16 @@ def positive(text):
     return int(text)
 
 
+def bare(*words):
+    """argparse type for an option typed without its dashes (export chatgpt, anki all), as slash commands invite.
+    choices= would do, but on Python 3.9 it rejects an empty nargs='*' list."""
+    def check(text):
+        if text not in words:
+            raise argparse.ArgumentTypeError(f'expected {" or ".join(words)}, not {text}')
+        return text
+    return check
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Spanish Weave', formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=__doc__)
@@ -764,10 +1050,10 @@ def main(argv=None):
     sub.add_parser('check').set_defaults(run=check)
     for name, kind in (('known', 'known'), ('learn', 'asked')):
         p = sub.add_parser(name)
-        p.add_argument('words', nargs='+')
+        p.add_argument('words', nargs='*')
         p.set_defaults(run=mark(kind))
     p = sub.add_parser('stage')
-    p.add_argument('value', choices=['1', '2', '3', '4', 'auto'])
+    p.add_argument('value', nargs='?', choices=['1', '2', '3', '4', 'auto'], help='leave out to show the stage')
     p.set_defaults(run=stage)
     sub.add_parser('pause').set_defaults(run=pause(True))
     sub.add_parser('resume').set_defaults(run=pause(False))
@@ -777,7 +1063,10 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
+                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
     p.set_defaults(run=export_cmd)
+    exporter = p
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     p = sub.add_parser('quiz')
     p.add_argument('-n', type=positive, default=10, help='most words to ask')
@@ -788,6 +1077,9 @@ def main(argv=None):
     p.add_argument('result', choices=['right', 'wrong'])
     p.add_argument('--article', choices=sorted(swlib.GENDER_OF), help='the el/la/un/una the learner used, if not the listed one')
     p.set_defaults(run=review_cmd)
+    p = sub.add_parser('record')
+    p.add_argument('items', nargs='+', metavar='WORD:right|wrong[:ARTICLE]')
+    p.set_defaults(run=record_cmd)
     p = sub.add_parser('placement')
     p.add_argument('--items', action='store_true', help='print the numbered test instead of asking')
     p.add_argument('--answers', metavar='NUMS', help='the item numbers you know, e.g. "1, 4, 9-12"')
@@ -795,16 +1087,23 @@ def main(argv=None):
     p.set_defaults(run=placement_cmd)
     p = sub.add_parser('anki')
     p.add_argument('--all', action='store_true', help='every listed word, not only the ones you have met')
-    p.add_argument('--out', metavar='FILE')
+    p.add_argument('--out', metavar='FILE', help='a new file or an earlier export; nothing else is overwritten')
+    p.add_argument('extra', nargs='*', metavar='all', help='the same as --all', type=bare('all'))
     p.set_defaults(run=anki_cmd)
     p = sub.add_parser('output')
     p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
     args = parser.parse_args(argv)
+    for word in getattr(args, 'extra', []):  # chatgpt -> --chatgpt, claude.ai -> --claude-ai, all -> --all
+        setattr(args, re.sub(r'[-.]', '_', word), True)
+    if args.command == 'export' and args.chatgpt and args.claude_ai:
+        exporter.error('argument --chatgpt: not allowed with argument --claude-ai')
     try:
         args.run(args)
     except swlib.StateError as error:
         sys.exit(f'Spanish Weave: {state_fix(error)}')
+    except swlib.UnsafeHome as error:
+        sys.exit(f'Spanish Weave: {error}.')
 
 
 if __name__ == '__main__':

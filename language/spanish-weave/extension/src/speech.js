@@ -4,13 +4,13 @@ export const RATE = 0.9; // a touch slower than normal speech, for a learner
 const LATAM = ['es-mx', 'es-us', 'es-419'];
 const tag = (voice) => String(voice?.lang || '').replace(/_/g, '-').toLowerCase(); // Android says es_MX
 
-// Latin American Spanish first (es-MX, es-US, es-419), then any Spanish voice; null when none is installed.
+// Latin American Spanish first (es-MX, es-US, es-419), then any Spanish voice; null when none is installed. Within
+// each, a voice on this device comes before an online one (Chrome's "Google" voices send the word to Google).
 export function pickVoice(voices = []) {
-  for (const lang of LATAM) {
-    const hit = voices.find((v) => tag(v) === lang);
-    if (hit) return hit;
-  }
-  return voices.find((v) => /^es(-|$)/.test(tag(v))) || null;
+  const local = voices.filter((v) => v?.localService === true);
+  const latam = (list) => LATAM.map((lang) => list.find((v) => tag(v) === lang)).find(Boolean);
+  const spanish = (list) => list.find((v) => /^es(-|$)/.test(tag(v)));
+  return latam(local) || latam(voices) || spanish(local) || spanish(voices) || null;
 }
 
 // Speaks one word; false when the browser has no speech API. The window has one shared speech queue, so a new word
