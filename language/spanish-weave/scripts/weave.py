@@ -155,7 +155,7 @@ def band_line(state):
     defaults = ('Default swaps (write the Spanish every time the English word has that meaning): '
                 + '; '.join(f'{w["en"]} → {w["es"]}' for w in swaps) + '\n') if swaps else ''
     cut = lambda xs: ', '.join(xs[:swlib.EXCEPTIONS_MAX]) + (f' and {len(xs) - swlib.EXCEPTIONS_MAX} more' if len(xs) > swlib.EXCEPTIONS_MAX else '')
-    return defaults + (f'Known (use freely, never gloss): roughly the {n} most common Spanish words and phrases'
+    return defaults + (f'Known (use freely, never gloss): the first {n} words of the Spanish Weave list, the most basic ones'
             + (f', except these not learned yet: {cut(missing)}' if missing else '')
             + (f'; also known: {cut(extra)}' if extra else '') + '.')
 

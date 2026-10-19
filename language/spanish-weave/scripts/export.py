@@ -11,6 +11,8 @@ import swlib
 
 CHATGPT_LIMIT = 1500   # characters per ChatGPT custom-instructions field (Free and Go; paid plans allow 5,000)
 KNOWN_LIST_MAX = swlib.COLLAPSE_AT  # above this many known words, the state line names a rank band instead
+RECENT_NAMED = 40      # in the band, the claude.ai block also names this many of the newest known words
+LEARNING = ('active', 'shaky')
 STAGE_SHAPES = {1: '', 2: '', 3: ' plus one short, fully Spanish sentence in five, in the explanation around any steps',
                 4: ' plus two in five, English for complex or technical ideas'}
 
@@ -101,73 +103,111 @@ def md(day):
     return f'{int(day[5:7])}/{int(day[8:10])}' if day else ''
 
 
-def ordinal(n):
-    return f'{n}{"th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")}'
+def named(xs, most):
+    """Up to `most` of xs by name and a count of the rest ("a, b and 3 more"), or only the count ("5 words")."""
+    shown = ', '.join(xs[:most])
+    rest = len(xs) - len(xs[:most])
+    return (shown + (f' and {rest} more' if rest else '')) if shown else f'{rest} words'
 
 
-def band_text(state, exceptions=swlib.EXCEPTIONS_MAX):
-    """Known words as a frequency band plus exceptions; claude.ai and ChatGPT can't see the list, so it reads as
-    "common Spanish words up to about the N-th most frequent"."""
+def band_text(state, exceptions=swlib.EXCEPTIONS_MAX, recent=RECENT_NAMED):
+    """Known words as a stretch of the Spanish Weave list plus exceptions. The list is not a general frequency rank
+    (ser and estar sit past 300), and claude.ai and ChatGPT can't see it, so this names the words it starts with and
+    the newest known ones (the highest ranks in the band): "the first N words of my Spanish Weave list (...)"."""
+    words = state['words']
     n, missing, extra = swlib.known_band(state)
-    cut = lambda xs: ', '.join(xs[:exceptions]) + (f' and {len(xs) - exceptions} more' if len(xs) > exceptions else '')
-    return (f'common Spanish words up to about the {ordinal(n)} most frequent'
-            + (f', except (not learned yet): {cut(missing)}' if missing else '')
-            + (f'; also: {cut(extra)}' if extra else ''))
+    newest = [w['es'] for w in reversed(words[:n]) if w['status'] == 'known'][:recent]
+    learning = any(w['status'] in LEARNING for w in words[:n])
+    return (f'the first {n} words of my Spanish Weave list (it starts with {", ".join(w["es"] for w in words[:4])}'
+            + (f'; the newest: {", ".join(newest)}' if newest else '') + ')'
+            + (', except the Active and Shaky words above' if learning else '')
+            + (f'{", and" if learning else ", except"} these not learned yet: {named(missing, exceptions)}' if missing else '')
+            + (f'; also: {named(extra, exceptions)}' if extra else ''))
 
 
-def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=swlib.EXCEPTIONS_MAX, tail=None):
-    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format."""
+def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=swlib.EXCEPTIONS_MAX, tail=None,
+               recent=RECENT_NAMED, hint_groups=LEARNING, gloss_groups=LEARNING, shaky_max=None):
+    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format.
+
+    To fit a small box (ChatGPT): known_max, recent and exceptions name fewer known words; Active or Shaky entries
+    left out of hint_groups lose the sound hint, and those left out of gloss_groups show only the Spanish; shaky_max
+    keeps the newest shaky words and counts the rest."""
     words = state['words']
     by_added = lambda xs: sorted(xs, key=lambda w: w['added'])
     active = by_added([w for w in words if w['status'] == 'active'])
     shaky = by_added([w for w in words if w['status'] == 'shaky'])
     known = [w for w in words if w['status'] == 'known']
-    entry = lambda w, d: f'{w["es"]} = {w["en"]}, "{w["hint"]}"' + (f' ({md(d)})' if dates else '')
-    listing = lambda xs: '; '.join(xs) or 'none'
-    known_text = (band_text(state, exceptions) if len(known) > known_max
-                  else ', '.join(w['es'] for w in known[:known_max]) or 'none')
-    if 0 <= known_max < len(known) <= KNOWN_LIST_MAX:  # trimmed listing (ChatGPT)
-        shown = ', '.join(w['es'] for w in known[:known_max])
-        known_text = (f'{shown} and {len(known) - known_max} more of the most common Spanish words' if shown
-                      else f'the {len(known)} most common Spanish words')
+    hidden = max(0, len(shaky) - shaky_max) if shaky_max is not None else 0
+    if hidden:
+        kept = {id(w) for w in sorted(shaky, key=lambda w: w['changed'])[hidden:]}
+        shaky = [w for w in shaky if id(w) in kept]
+
+    def entry(w, group, day):
+        text = (w['es'] if group not in gloss_groups
+                else f'{w["es"]} = {w["en"]}' + (f', "{w["hint"]}"' if group in hint_groups else ''))
+        return text + (f' ({md(day)})' if dates else '')
+
+    def listing(xs, more=0):
+        return '; '.join(xs + ([f'and {more} more' if xs else f'{more} words'] if more else [])) or 'none'
+
+    if len(known) <= known_max:
+        known_text = ', '.join(w['es'] for w in known) or 'none'
+    elif len(known) > KNOWN_LIST_MAX:
+        known_text = band_text(state, exceptions, recent)
+    else:  # trimmed listing (ChatGPT): the newest known words by name, newest first, and a count of the rest
+        shown = ', '.join(w['es'] for w in reversed(known[len(known) - known_max:]))
+        known_text = (f'{shown} and {len(known) - known_max} earlier, more basic words from my Spanish Weave list' if shown
+                      else f'{len(known)} basic words from the start of my Spanish Weave list')
     stamp = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() if now is None else now))
     return (f'Spanish weave state{" (re-export about weekly)" if tail is None else ""} — Stage: {swlib.stage_for(state)}'
-            f' | Active (use most; gloss in footer): {listing([entry(w, w["added"]) for w in active])}'
-            f' | Shaky (use often; gloss in footer): {listing([entry(w, w["changed"]) for w in shaky])}'
+            f' | Active (use most; gloss in footer): {listing([entry(w, "active", w["added"]) for w in active])}'
+            f' | Shaky (use often; gloss in footer): {listing([entry(w, "shaky", w["changed"]) for w in shaky], hidden)}'
             f' | Known (use freely; never gloss): {known_text}'
             f' | {tail or "Synced: " + stamp}')
 
 
 def parse_state_line(line):
-    """Inverse of state_line, for checking round trips: {stage, active, shaky, known, synced}."""
+    """Inverse of state_line, for checking round trips: {stage, active, shaky, known, synced}. Active and Shaky
+    entries are (es, en, hint), with None for a part the line left out; a band or trimmed Known list stays text."""
     sections = line.split(' | ')
     out = {'stage': int(re.search(r'Stage: (\d)', sections[0]).group(1))}
-    entry = re.compile(r'^(.+?) = (.+), "([^"]*)"(?: \((\d+/\d+)\))?$')
+    entry = re.compile(r'^(.+?)(?: = (.+?))?(?:, "([^"]*)")?(?: \((\d+/\d+)\))?$')
+    count = re.compile(r'^(?:and \d+ more|\d+ words)$')
     for section in sections[1:]:
         name, _, body = section.partition(': ')
         name = name.split(' ')[0].lower()
         if name in ('active', 'shaky'):
-            out[name] = [] if body == 'none' else [entry.match(e).groups()[:3] for e in body.split('; ')]
+            out[name] = [] if body == 'none' else [entry.match(e).groups()[:3] for e in body.split('; ')
+                                                   if not count.match(e)]
         elif name == 'known':
-            out['known'] = [] if body == 'none' else body if body.startswith('common Spanish words') else body.split(', ')
+            out['known'] = ([] if body == 'none' else body
+                            if body.startswith('the first ') or body.endswith(' my Spanish Weave list') else body.split(', '))
         elif name == 'synced':
             out['synced'] = body
     return out
 
 
-def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX):
+def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX, recent=RECENT_NAMED):
     """Instructions for claude.ai (Settings > "Instructions for Claude"): the rules, then the state line."""
-    return rules() + '\n\n' + state_line(state, now, tail=tail, known_max=known_max)
+    return rules() + '\n\n' + state_line(state, now, tail=tail, known_max=known_max, recent=recent)
 
 
-def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):
-    """Two ChatGPT custom-instructions fields, each within limit: (about you: the state line without dates, known
-    words trimmed to fit; how to respond: the short rules)."""
+def chatgpt(state, now=None, limit=None, tail=None):
+    """Two ChatGPT custom-instructions fields: (about you: the state line without dates; how to respond: the short
+    rules). The state line takes the first of these that fits the limit, each step keeping the ones before it:
+    fewer known words named; no sound hints for Shaky, then Active words; no meanings for Shaky, then Active words;
+    fewer Shaky words, newest kept. When even the last doesn't fit, it is returned anyway and the caller says so."""
+    limit = CHATGPT_LIMIT if limit is None else limit
     known = sum(w['status'] == 'known' for w in state['words'])
+    shaky = sum(w['status'] == 'shaky' for w in state['words'])
     if known > KNOWN_LIST_MAX:
-        tries = [dict(exceptions=e) for e in range(swlib.EXCEPTIONS_MAX, -1, -5)]
+        tries = [dict(recent=r, exceptions=e) for r in (30, 20, 10, 0) for e in range(swlib.EXCEPTIONS_MAX, -1, -5)]
     else:
         tries = [dict(known_max=k) for k in list(range(known, 0, -10)) + [0]]
+    least = tries[-1]
+    tries += [dict(least, hint_groups=groups) for groups in (('active',), ())]
+    tries += [dict(least, hint_groups=(), gloss_groups=groups) for groups in (('active',), ())]
+    tries += [dict(least, hint_groups=(), gloss_groups=(), shaky_max=n) for n in range(shaky - 1, -1, -1)]
     for kwargs in tries:
         line = state_line(state, now, dates=False, tail=tail, **kwargs)
         if len(line) <= limit:

@@ -684,12 +684,17 @@ def pause(value):
 def export_cmd(args):
     with swlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
+        swlib.promote(state)  # today's refill first, so the stored version is the one printed below
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
         about, respond = export.chatgpt(state)
+        limit = export.CHATGPT_LIMIT
+        over = [f'The {box} block is {len(text):,} characters, over the {limit:,} limit of the Free and Go plans '
+                '(paid plans allow 5,000).'
+                for box, text in (('"Custom instructions"', respond), ('"More about you"', about)) if len(text) > limit]
+        fits = ' '.join(over) or f'Each fits in {limit:,} characters, the Free and Go limit (paid plans allow 5,000).'
         print('ChatGPT > Settings > Personalization (phone app: Settings > Customize ChatGPT; turn on "Enable '
-              'customization" if it is off). Paste each block in place of what is in its box. Each fits in '
-              f'{export.CHATGPT_LIMIT:,} characters, the Free and Go limit (paid plans allow 5,000).\n')
+              f'customization" if it is off). Paste each block in place of what is in its box. {fits}\n')
         print(f'--- "Custom instructions" box (older layout: "How would you like ChatGPT to respond?") '
               f'({len(respond)} characters) ---\n{respond}\n')
         print(f'--- "More about you" box, under About you (older layout: "What would you like ChatGPT to know about '

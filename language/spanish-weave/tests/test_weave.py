@@ -537,6 +537,58 @@ class Scale(Home):
         known = {w['es'] for w in state['words'] if w['status'] == 'known'}
         band = {w['es'] for w in state['words'][:n]}
         self.assertEqual(known, (band - set(missing) - {w['es'] for w in state['words'][:n] if w['status'] in ('active', 'shaky')}) | set(extra))
+        # Learning words count against the band too: level 8 knows ranks 1-175 and learns 176-200.
+        self.assertEqual(swlib.known_band(make_blocks.level_state(8, swlib.load_lexicon()))[0], 175)
+
+    def test_known_words_are_list_words_not_a_frequency_rank(self):
+        # The lexicon is not a general frequency list (ser and estar sit past 300), so the band names list positions.
+        state = grown(400)
+        about, respond = export.chatgpt(state)
+        texts = [export.claude_ai(state), about, respond, weave.brief(state, {})]
+        texts += [path.read_text(encoding='utf-8') for path in sorted((ROOT / 'blocks').glob('*.md'))]
+        for text in texts:
+            self.assertNotIn('most frequent', text)
+            self.assertNotIn('most common Spanish words', text)
+
+    def long_learning_state(self):
+        """20 active and 10 shaky words with the longest entries in the list, plus 160 known."""
+        lexicon = swlib.load_lexicon()
+        longest = sorted(range(len(lexicon)), key=lambda i: -sum(len(lexicon[i][k]) for k in ('es', 'en', 'hint')))[:30]
+        state = swlib.new_state('2026-01-01')
+        state['words'] = words = [swlib.blank(w) for w in lexicon]
+        for i in longest:
+            swlib.set_status(words[i], 'active' if i in longest[:20] else 'shaky', swlib.today())
+        for i in [i for i in range(len(words)) if i not in longest][:160]:
+            swlib.set_status(words[i], 'known', '2026-01-01')
+        return state
+
+    def test_chatgpt_field_fits_with_long_learning_lists(self):
+        state = self.long_learning_state()
+        about, respond = export.chatgpt(state)
+        self.assertLessEqual(len(about), export.CHATGPT_LIMIT)
+        self.assertLessEqual(len(respond), export.CHATGPT_LIMIT)
+        parsed = export.parse_state_line(about)
+        self.assertEqual(len(parsed['active']), 20)  # every Active word is still named
+        swlib.load_state()
+        swlib.save_state(state)
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['export', '--chatgpt'])
+        self.assertIn('Each fits in 1,500 characters', out.getvalue())
+        with mock.patch.object(export, 'CHATGPT_LIMIT', 300), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(['export', '--chatgpt'])
+        self.assertNotIn('Each fits', out.getvalue())
+        self.assertIn('The "More about you" block is', out.getvalue())
+        self.assertIn('over the 300 limit of the Free and Go plans', out.getvalue())
+
+    def test_export_records_the_version_it_prints(self):
+        yesterday = time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400))
+        swlib.load_state()
+        swlib.save_state(swlib.new_state(yesterday))  # refilled = [yesterday, 5]: today's new words come in on export
+        with mock.patch('sys.stdout', new=io.StringIO()):
+            sw.main(['export'])
+        state = swlib.load_state()
+        self.assertEqual(state['exported']['version'], swlib.version(state))
+        self.assertIsNone(weave.export_notice(state, now=time.time() + 8 * 86400))  # nothing changed since
 
     def test_brief_and_exports_stay_small(self):
         for known in (50, 400, 1000):
@@ -547,7 +599,9 @@ class Scale(Home):
             self.assertLessEqual(len(respond), export.CHATGPT_LIMIT)
             self.assertLess(len(export.claude_ai(state)), make_blocks.CLAUDE_AI_MAX)
             if known >= 400:
-                self.assertIn('most common Spanish words', brief)
+                n = swlib.known_band(state)[0]
+                self.assertIn(f'the first {n} words of the Spanish Weave list, the most basic ones', brief)
+                self.assertIn(f'the first {n} words of my Spanish Weave list (it starts with y, pero', about)
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
                 # every word is in use, so this budget is 3,900 (about 3,800 at 1,000 known words).
@@ -570,7 +624,16 @@ class Scale(Home):
                 self.assertEqual(parsed['known'], [w['es'] for w in state['words'] if w['status'] == 'known'])
             else:
                 n = swlib.known_band(state)[0]
-                self.assertIn(f'up to about the {export.ordinal(n)} most frequent', parsed['known'])
+                self.assertTrue(parsed['known'].startswith(f'the first {n} words of my Spanish Weave list'))
+                self.assertIn(', except the Active and Shaky words above', parsed['known'])
+        # The ChatGPT field drops sound hints, then meanings, and counts older Shaky words to fit: it still parses.
+        for es, day in (('pero', '2026-01-09'), ('con', '2026-01-07'), ('muy', '2026-01-08')):
+            swlib.apply_event(state, es, 'flip', day)
+        line = export.state_line(state, dates=False, hint_groups=(), gloss_groups=('active',), shaky_max=2)
+        self.assertIn('Shaky (use often; gloss in footer): pero; muy; and 1 more |', line)  # the newest two
+        parsed = export.parse_state_line(line)
+        self.assertEqual(parsed['shaky'], [('pero', None, None), ('muy', None, None)])
+        self.assertEqual(parsed['active'], [(w['es'], w['en'], None) for w in active])
 
     def test_export_notice_once_after_a_week(self):
         state = swlib.load_state()
@@ -839,6 +902,13 @@ class Blocks(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'make_blocks.py'), '--check'],
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_level_blocks_name_the_known_words(self):
+        read = lambda level: (ROOT / 'blocks' / f'level-{level:02d}.md').read_text(encoding='utf-8')
+        claude = read(4).split('```text\n', 1)[1].split('\n```', 1)[0]
+        known = claude.split(' | Known (use freely; never gloss): ', 1)[1].rsplit(' | ', 1)[0]
+        self.assertEqual(known.split(', '), [w['es'] for w in swlib.load_lexicon()[:75]])  # all 75, newest included
+        self.assertIn('the first 175 words of my Spanish Weave list', read(8))
 
 
 class Codex(Home):

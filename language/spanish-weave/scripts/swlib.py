@@ -481,16 +481,17 @@ def known_band(state):
 
     Returns (n, missing, extra): known = words ranked 1..n, except `missing` (ranked <= n but not yet introduced;
     learning words are listed separately anyway), plus `extra` (known words ranked > n). n minimizes the number
-    of exceptions; ties go to the larger band."""
+    of exceptions, counting learning words inside the band as exceptions too, so the band ends at the last known
+    rank rather than running over the words being learned; ties go to the larger band."""
     words = state['words']
     known_after = sum(w['status'] == 'known' for w in words)
-    queue_before = 0
+    unknown_before = 0
     best = (known_after, 0)
     for rank, w in enumerate(words, 1):
         known_after -= w['status'] == 'known'
-        queue_before += w['status'] == 'queue'
-        if queue_before + known_after <= best[0]:
-            best = (queue_before + known_after, rank)
+        unknown_before += w['status'] != 'known'
+        if unknown_before + known_after <= best[0]:
+            best = (unknown_before + known_after, rank)
     n = best[1]
     missing = [w['es'] for w in words[:n] if w['status'] == 'queue']
     extra = [w['es'] for w in words[n:] if w['status'] == 'known']
