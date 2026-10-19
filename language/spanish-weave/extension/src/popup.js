@@ -86,7 +86,7 @@ async function inject() {
   if (!tab?.id || !host) return;
   try {
     await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['src/content.css'] });
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/content-loader.js'] });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/content.bundle.js'] });
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
 }
 

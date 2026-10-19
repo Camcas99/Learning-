@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Spanish Weave",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Swaps a few English words for Latin American Spanish on any website in Chrome, at your Spanish Weave level.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv39DuVJRU+dsN3/rs8XiFEz+6rppSGwYDeTohU5WChs4nwA1an9uO3mbrqCQb/8FRlFYDHGk1L9tdPOAM24eSSZpQhVawEnIf0so0E5ItQ5yB/Ny4d7iEL9KgpUQoGANNWsBp4G1YlU/64Ugfr/MY/SR39bInP4O4n9rpubwdh59G5SaSOVZQ1QnTeX5YjHuRseayqPKYNhIo9wRliNQZaRyxhF6XtTKe7BMECsfD733SBM/35IyzUgG5KlOgWWHE3aIXzKrFXbvvlKXmg4j5YWDDC959VEnUzDQ7hZMOGvJCvEbIoJ8GsNNJsoRZ31uCy5daGj0465NfrP5Jpq0xQIDAQAB",
   "permissions": ["storage", "alarms", "nativeMessaging", "scripting", "activeTab"],
@@ -11,13 +11,10 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*", "https://www.instagram.com/*", "https://instagram.com/*"],
-      "js": ["src/content-loader.js"],
+      "js": ["src/content.bundle.js"],
       "css": ["src/content.css"],
       "run_at": "document_idle"
     }
-  ],
-  "web_accessible_resources": [
-    { "resources": ["src/*.js"], "matches": ["http://*/*", "https://*/*"] }
   ],
   "action": { "default_popup": "src/popup.html", "default_title": "Spanish Weave" }
 }

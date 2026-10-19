@@ -218,7 +218,7 @@ function registerSites() {
       if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: ['weave-sites'] });
       return;
     }
-    const script = { id: 'weave-sites', matches, js: ['src/content-loader.js'], css: ['src/content.css'], runAt: 'document_idle',
+    const script = { id: 'weave-sites', matches, js: ['src/content.bundle.js'], css: ['src/content.css'], runAt: 'document_idle',
       excludeMatches: manifestSites() };
     if (existing.length) await chrome.scripting.updateContentScripts([script]);
     else await chrome.scripting.registerContentScripts([script]);

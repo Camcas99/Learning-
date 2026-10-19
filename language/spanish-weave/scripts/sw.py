@@ -198,6 +198,46 @@ def backup_of(path):
     return path.with_name(path.name + '.before-spanish-weave')
 
 
+def without_ours(data):
+    """hooks.json data with our handler taken out, and the UserPromptSubmit list and the hooks table too once empty."""
+    data, hooks = dict(data), dict(data.get('hooks') or {})
+    groups = [{**g, 'hooks': [h for h in g.get('hooks', []) if not is_ours(h)]}
+              for g in hooks.get('UserPromptSubmit') or [] if isinstance(g, dict)]
+    hooks['UserPromptSubmit'] = [g for g in groups if g['hooks']]
+    hooks = {k: v for k, v in hooks.items() if k != 'UserPromptSubmit' or v}
+    if hooks:
+        data['hooks'] = hooks
+    else:
+        data.pop('hooks', None)
+    return data
+
+
+def stale_backups(codex):
+    """True when the hooks.json backup holds our own hook. 0.2.0 backed both files up again on every setup --codex,
+    so after a second run its backups were copies of setup's own edits (our hook, `hooks = true`), not the user's
+    files; the user's originals were overwritten."""
+    return has_our_hook(swlib.read_json(backup_of(codex / 'hooks.json'), {}))
+
+
+def clean_stale_backups(codex, verb, dry_run):
+    """Takes setup's edits back out of 0.2.0's rerun backups (see stale_backups), so restoring one can't bring back
+    a hook pointing at a deleted weave.py; a backup with nothing else in it is setup's own file and goes."""
+    def fix(path, rest, write):
+        if not rest:
+            print(f'{verb} {path} (0.2.0 copied setup\'s own changes into it; nothing of yours is in it)')
+            if not dry_run:
+                path.unlink()
+        else:
+            print(f'{verb} Spanish Weave\'s changes from {path} (0.2.0 copied them in on a second setup)')
+            if not dry_run:
+                write(path, rest)
+    hooks_backup, config_backup = backup_of(codex / 'hooks.json'), backup_of(codex / 'config.toml')
+    fix(hooks_backup, without_ours(swlib.read_json(hooks_backup, {}) or {}), swlib.write_json)
+    text = config_backup.read_text() if config_backup.exists() else ''
+    if disable_codex_hooks(text) != text or config_backup.exists() and not text.strip():
+        fix(config_backup, disable_codex_hooks(text).strip() and disable_codex_hooks(text), swlib.write_text)
+
+
 def codex_flag_added(config_path, first):
     """Whether `hooks = true` in config.toml is setup's: setup backs config.toml up before it first changes it, so
     the backup (else, before a first setup, the file itself) shows what was there before."""
@@ -389,7 +429,11 @@ def setup(args):
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'Spanish Weave word state', 'path': str(launcher), 'type': 'stdio',
                 'allowed_origins': [ORIGIN]}
+    made = dict(install_record().get('host_dirs_made') or {})
     for directory in host_dirs(args.user_data_dir):
+        missing = [d for d in (directory, *directory.parents) if not d.exists()]
+        if missing:  # every browser gets the manifest, installed yet or not; uninstall takes these folders out again
+            made[str(directory)] = str(missing[-1])
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
     # The version of the copies, for check and status; the commit when this is the installed plugin's own folder.
@@ -397,7 +441,7 @@ def setup(args):
     commit = next((e.get('gitCommitSha') for e in installed_entries() if isinstance(e.get('installPath'), str)
                    and Path(e['installPath']).expanduser().resolve() == root), None)
     remember(host_manifests=list(dict.fromkeys((install_record().get('host_manifests') or []) + info['host_manifests'])),
-             version=version, commit=commit)
+             host_dirs_made=made, version=version, commit=commit)
     with swlib.locked():
         if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
             swlib.save_state(swlib.new_state(known_top=args.known_top))
@@ -530,13 +574,16 @@ def uninstall(args):
     data = swlib.read_json(hooks_path, {})
     data = data if isinstance(data, dict) else {}
     config = config_path.read_text() if config_path.exists() else ''
+    stale = args.codex and stale_backups(codex)  # setup's own copies: the flag was setup's, and no file is the original
+    if stale:
+        clean_stale_backups(codex, verb, args.dry_run)
     if has_our_hook(data) and not args.codex:
         left.append(f'the Codex chat hook in {hooks_path}:\n      {me} uninstall --codex')
     elif has_our_hook(data):
-        groups = data['hooks']['UserPromptSubmit']
-        kept = [{**g, 'hooks': [h for h in g.get('hooks', []) if not is_ours(h)]} for g in groups]
-        data['hooks']['UserPromptSubmit'] = [g for g in kept if g['hooks']]
-        if not backup_of(hooks_path).exists() and set(data) == {'hooks'} and not other_codex_hooks(data, ''):
+        data = without_ours(data)
+        original = backup_of(hooks_path).exists() and not (stale and not without_ours(
+            swlib.read_json(backup_of(hooks_path), {}) or {}))  # (a dry run hasn't cleaned the stale copy yet)
+        if not original and set(data) <= {'hooks'} and not other_codex_hooks(data, ''):
             print(f'{verb} {hooks_path} (setup made it; nothing else is in it)')
             if not args.dry_run:
                 hooks_path.unlink()
@@ -549,6 +596,7 @@ def uninstall(args):
         added = record.get('codex_hooks_added')
         if added is None:  # set up before 0.2.1, which kept no install.json
             added = codex_flag_added(config_path, first=False)
+        added = added or stale  # 0.2.2 read it from a stale backup, which always has setup's `hooks = true`
         others = other_codex_hooks(data, config)
         backup = backup_of(config_path)
         before = None if added or not backup.exists() else hooks_line(backup.read_text())  # setup may have flipped it on
@@ -584,9 +632,22 @@ def uninstall(args):
                 path.unlink()
             except OSError as error:
                 left.append(f'{path} (could not remove it: {error.strerror})')
+    made = record.get('host_dirs_made') if isinstance(record.get('host_dirs_made'), dict) else {}
+    for directory, top in made.items():  # folders setup made for a browser: out again if nothing else went in
+        directory, top = Path(directory), Path(top)
+        for folder in (directory, *directory.parents):
+            if (top not in (folder, *folder.parents) or not folder.is_dir() or
+                    any(p for p in folder.iterdir() if not (args.dry_run and p.name == f'{HOST_NAME}.json'))):
+                break
+            print(f'{verb} the empty folder {folder} (setup made it)')
+            if not args.dry_run:
+                folder.rmdir()
+            if folder == top or args.dry_run:
+                break
     if not args.dry_run and (home / INSTALL).exists():
         swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests
-                                                                       if m.exists() and is_host_manifest(m)]))
+                                                                       if m.exists() and is_host_manifest(m)],
+                                              host_dirs_made={d: t for d, t in made.items() if Path(d).exists()}))
     backups = [p for p in (hooks_path, config_path) if backup_of(p).exists()]
     print('Left in place:')
     print('  - the Claude Code plugin, if installed; its hook keeps weaving until it is gone. Remove it before the state '

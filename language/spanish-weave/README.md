@@ -397,6 +397,7 @@ tests/            python tests, live model checks, extension end-to-end check
 python3 -m unittest discover -s tests            # hook, rules, hints, quiz, placement, notes, exports, host, setup, docs
 python3 scripts/hints.py --check                 # every hint in the word list matches the rules
 python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
+python3 scripts/bundle_content.py                # rebuild extension/src/content.bundle.js after changing content.js or its imports
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/sw-eval    # live check via claude -p, isolated from your own config
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/sw-eval   # simulate claude.ai with a block

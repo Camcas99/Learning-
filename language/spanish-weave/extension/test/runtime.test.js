@@ -110,11 +110,16 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(statics).toContain('https://www.instagram.com/*');
     expect(registered.at(-1).matches).toEqual(['https://*/*', 'http://*/*']);
     expect(registered.at(-1).excludeMatches).toEqual(statics);
+    // No file is web accessible, so a website can't fetch one to learn the extension is installed.
+    expect(manifest.web_accessible_resources).toBeUndefined();
+    expect([...manifest.content_scripts.map((c) => c.js), registered.at(-1).js]).toEqual([['src/content.bundle.js'], ['src/content.bundle.js']]);
 
     // Route worker broadcasts to the content module without pretending they came from a page.
     const beforeContent = messageListeners.length;
     win.document.body.innerHTML = '<main><p id="reading">I enjoy cats and dogs every single day.</p><form><p>Private typing and secrets should stay exactly here.</p></form><p contenteditable="true">Private words and typing must never leave this editor.</p><p id="nested">Keep these and other words <span contenteditable="true">private typed text</span> here.</p><p>My doctor says medication and rest are important.</p><p lang="es">Hola y gracias por este día tan bonito aquí.</p></main>';
-    await import('../src/content.js');
+    // The shipped content script: the bundle of content.js and its imports, run as the classic script Chrome injects.
+    (0, eval)(readFileSync(new URL('../src/content.bundle.js', import.meta.url), 'utf8'));
+    (0, eval)(readFileSync(new URL('../src/content.bundle.js', import.meta.url), 'utf8')); // injected again: runs once
     contentListeners.push(...messageListeners.splice(beforeContent));
     await wait();
     expect(modelCalls).toBe(1);
@@ -303,6 +308,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(pageReplies.some((r) => r.includes('"hasKey":true'))).toBe(true);
     expect(local.modelCalls.count).toBe(modelCalls); // every Gemini request counts toward the daily cap
   } finally {
+    delete globalThis.spanishWeaveLoaded;
     if (release) release();
     await win.happyDOM.close();
     Object.assign(globalThis, originalGlobals);

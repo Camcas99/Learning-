@@ -1052,6 +1052,11 @@ class Blocks(unittest.TestCase):
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_content_bundle_is_current(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'bundle_content.py'), '--check'],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_level_blocks_name_the_known_words(self):
         read = lambda level: (ROOT / 'blocks' / f'level-{level:02d}.md').read_text(encoding='utf-8')
         claude = read(4).split('```text\n', 1)[1].split('\n```', 1)[0]
@@ -1253,6 +1258,9 @@ class Setup(Home):
         codex = self.home / 'codex'
         codex.mkdir()
         (codex / 'config.toml').write_text('model = "o3"\n')
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}):
+            chrome, chromium = sw.host_dirs()
+        chrome.parent.mkdir(parents=True)  # Chrome is installed, Chromium isn't
         self.run_setup('--codex', '--user-data-dir', str(self.home / 'profile'))
         self.run_setup('--codex')  # a rerun keeps the first backup and the recorded --user-data-dir manifest
         manifests = [Path(m) for m in sw.install_record()['host_manifests']]
@@ -1271,6 +1279,9 @@ class Setup(Home):
             self.assertIn(item, left)
         self.assertNotIn('NativeMessagingHosts', left)
         self.assertTrue((self.home / 'sw' / 'state.json').exists())  # the word progress stays until they delete it
+        # Folders setup made for the host go again; Chrome's own folder stays.
+        self.assertEqual([chrome.exists(), chrome.parent.exists(), chromium.parent.exists()], [False, True, False])
+        self.assertFalse((self.home / 'profile').exists())
 
     def test_uninstall_keeps_what_was_there(self):
         codex = self.home / 'codex'
@@ -1282,7 +1293,7 @@ class Setup(Home):
         out = self.uninstall()  # without --codex the hook stays, and the list says how to remove it
         self.assertIn('uninstall --codex', out.split('Left in place:')[1])
         out = self.uninstall('--codex')
-        self.assertEqual(json.loads((codex / 'hooks.json').read_text())['hooks'], dict(theirs['hooks'], UserPromptSubmit=[]))
+        self.assertEqual(json.loads((codex / 'hooks.json').read_text()), theirs)  # no empty UserPromptSubmit list left
         self.assertIn('(other Codex hooks use it; before setup it was `hooks = false`); kept', out)
         (codex / 'hooks.json').write_text('{}')  # no other hooks left: what was there before comes back
         self.run_setup('--codex')
@@ -1298,6 +1309,33 @@ class Setup(Home):
         out = self.uninstall('--codex', '--user-data-dir', str(self.home / 'profile'))
         self.assertIn(f'removed {self.home.resolve() / "profile"}', out)  # an unrecorded --user-data-dir manifest, named again
         self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')  # the backup shows the flag was setup's
+
+    def test_uninstall_after_two_setups_on_020(self):
+        """0.2.0 backed both Codex files up again on every setup --codex, so a second run's backups were setup's own
+        edits, and 0.2.2 then recorded the `hooks = true` it found there as the user's."""
+        codex = self.home / 'codex'
+        codex.mkdir()
+        theirs = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'x.sh'}]}]}}
+        for own_hooks in (False, True):
+            for path in codex.iterdir():
+                path.unlink()
+            if own_hooks:
+                (codex / 'hooks.json').write_text(json.dumps(theirs))
+            (codex / 'config.toml').write_text('model = "o3"\n')
+            self.run_setup('--codex')  # 0.2.0's first run: our hook and `hooks = true` in place
+            for name in ('hooks.json', 'config.toml'):  # its second run: both backed up again, over the first backups
+                (codex / f'{name}.before-spanish-weave').write_bytes((codex / name).read_bytes())
+            sw.remember(codex_hooks_added=False)
+            out = self.uninstall('--codex')
+            self.assertNotIn('it was there before setup', out)
+            hooks, backup = codex / 'hooks.json', codex / 'hooks.json.before-spanish-weave'
+            if own_hooks:  # their hooks stay, in the file and in its backup, without ours; other hooks need the flag
+                self.assertEqual([json.loads(hooks.read_text()), json.loads(backup.read_text())], [theirs, theirs])
+                self.assertIn('(other Codex hooks use it); kept', out)
+            else:  # both were setup's own: gone, and the flag is taken out of config.toml and its backup
+                self.assertFalse(hooks.exists() or backup.exists(), out)
+                self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')
+            self.assertEqual((codex / 'config.toml.before-spanish-weave').read_text(), 'model = "o3"\n')
 
     def test_known_top_seeds_before_first_learning_words(self):
         state = self.run_setup('--known-top', '40')
