@@ -11,7 +11,9 @@ New here? Read [START-HERE.md](START-HERE.md). Claude sessions picking this up: 
 [HANDOFF-FOR-CLAUDE.md](HANDOFF-FOR-CLAUDE.md).
 
 Adapted from [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver (MIT license): same
-design and code, with a new Spanish word list, sound hints, grammar rules and prompts.
+design and code, with a new Spanish word list, sound hints, grammar rules and prompts. Version 0.3.2 also ports
+later French Weave improvements: wider default-off sites, a sensitive-title guard, no swaps inside contractions or
+ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses.
 
 ## Set up
 
@@ -40,10 +42,10 @@ Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Cla
 extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the
 question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the
 default. Rerunning setup (`/spanish-weave:setup`) asks again, with "Keep the current site choice" as the default for
-the websites question, and never resets your progress. Words you're already learning keep their status, so if
-Spanish Weave had already handed you its first 5 learning words (the plugin's prompt hook does this on your first
-prompt), or you rerun setup with a higher answer, you can start one stage lower until those words graduate, after
-about 3 days of seeing them.
+the websites question, and never resets your progress. Words you've made progress on keep their status, so if you
+rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3 days of
+seeing them. The first learning words the plugin hands out on your first prompt don't count against you: if you
+haven't seen them yet, setup marks them known along with the rest.
 
 Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (Google requires you to be 18 or older), as a file path or pasted into the extension popup.
@@ -358,8 +360,12 @@ What Spanish Weave keeps, and what it sends:
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites
 (Gmail, Outlook, iCloud Mail, Yahoo Mail, Proton Mail, WhatsApp Web, Messenger, Telegram, Slack, Discord, Teams,
-claude.ai, ChatGPT, Gemini, Copilot and others) and local or intranet addresses (localhost, private IPs, names
-without a dot, and .local, .lan, .corp, .internal and similar), which start off. Instagram direct messages
+claude.ai, ChatGPT, Gemini, Copilot and others), Google Docs, Drive and Calendar, password managers, big banks and
+payment, brokerage and credit sites, health portals, government sites (.gov, .mil, .gob.mx and similar), any site
+whose name contains bank, creditunion, mychart or patient, and local or intranet addresses (localhost, private IPs,
+names without a dot, and .local, .lan, .corp, .internal and similar), which start off. A listed site covers its
+subdomains, and a page whose title is about money, health, legal matters or safety gets no swaps and sends nothing
+to Gemini. Instagram direct messages
 (instagram.com/direct) and X messages are never read, and on any site pages under paths like /messages, /inbox,
 /chat, /account or /settings are skipped. Banking and health sites stay on unless you turn them off: passages about
 balances, cards, insurance or appointments are skipped, but other text on those pages isn't, so turn them off in the

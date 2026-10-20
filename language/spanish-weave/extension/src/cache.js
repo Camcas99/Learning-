@@ -1,15 +1,19 @@
 // Decision cache: key -> swaps. Storage adapter is injected (chrome.storage.local in the extension).
 const PREFIX = 'c:';
+// A passage's cached swaps are reused for at most this long, then asked for again, so nothing cached outlives a few
+// days (from French Weave by Jackie Oliver, MIT).
+export const CACHE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-export function createCache(storage, { max = 5000, pruneBy = 1000, pruneEvery = 100 } = {}) {
+export function createCache(storage, { max = 5000, pruneBy = 1000, pruneEvery = 100, maxAgeMs = CACHE_MAX_AGE_MS, now = Date.now } = {}) {
   let sinceCheck = 0;
   const cache = {
     async getMany(keys) {
       const obj = await storage.get(keys.map((k) => PREFIX + k));
       const out = {};
+      const oldest = now() - maxAgeMs;
       for (const k of keys) {
         const v = obj[PREFIX + k];
-        if (v && Array.isArray(v.s)) out[k] = v.s;
+        if (v && Array.isArray(v.s) && (v.t || 0) > oldest) out[k] = v.s; // older: a miss, replaced by the next answer
       }
       return out;
     },
@@ -17,7 +21,7 @@ export function createCache(storage, { max = 5000, pruneBy = 1000, pruneEvery = 
       const keys = Object.keys(entries);
       if (!keys.length) return;
       const obj = {};
-      const t = Date.now();
+      const t = now();
       for (const k of keys) obj[PREFIX + k] = { s: entries[k], t };
       await storage.set(obj);
       sinceCheck += keys.length;

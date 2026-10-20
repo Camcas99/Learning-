@@ -1,7 +1,9 @@
 import { isZeroSpanish, wordCount } from './levels.js';
 import { flatten } from './text.js';
 
-export const TWEET = '[data-testid="tweetText"]';
+// Logged-in X marks post text with data-testid="tweetText"; logged-out X has no test ids, and the post text is the
+// innermost dir="auto" block inside the article (from French Weave by Jackie Oliver, MIT).
+export const TWEET = '[data-testid="tweetText"],article div[dir="auto"]:not(:has(div[dir="auto"]))';
 // Instagram captions, comments and profile bios. A caption span can hold more span[dir=auto] inside it.
 export const INSTAGRAM = 'h1[dir="auto"],span[dir="auto"]';
 export const PROSE = 'p,li,blockquote,h1,h2,h3,h4,article,main';

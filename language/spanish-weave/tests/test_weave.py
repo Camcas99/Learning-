@@ -907,7 +907,7 @@ class Placement(Home):
             sw.main(['placement', '--answers', first_two_bands, '--apply'])
         self.assertIn('about 250 of the', out.getvalue())
         state = swlib.load_state()
-        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:250]), 245)  # the 5 learning words stay
+        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:250]), 250)  # untouched words picked today count
         self.assertEqual(swlib.stage_for(state), 3)
 
     def test_command_refuses_guessing_and_reads_ranges(self):
@@ -1356,8 +1356,9 @@ class Setup(Home):
         self.assertEqual(by['y']['status'], 'shaky')
         self.assertEqual(by['pero']['status'], 'active')
         self.assertEqual(by['pero']['days'], [swlib.today()])
-        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 145)
-        self.assertEqual(swlib.stage_for(state), 2)  # 145 known: stage 3 comes once the learning words graduate
+        # y and pero have progress and keep it; entonces, con and sin were picked today untouched, so they are seeded too.
+        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 148)
+        self.assertEqual(swlib.stage_for(state), 2)  # 148 known: stage 3 comes once y and pero graduate
         self.assertEqual(state['prefs']['extension_sites'], 'ask')
         before = json.dumps(state)
         state = self.run_setup('--known-top', '40')  # a lower answer later changes nothing
@@ -1962,3 +1963,52 @@ class Docs(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UpstreamPorts(unittest.TestCase):
+    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2."""
+
+    def test_new_sense_guards_appear_with_their_words(self):
+        import weave
+        texts = dict((words, text) for words, text in weave.GUARDS)
+        self.assertIn('"here\'s"', texts[('aquí',)])
+        self.assertIn('never "just"', texts[('ya',)])
+        self.assertIn('never for the verb "like"', texts[('como',)])
+
+    def test_glosses_cover_the_common_senses(self):
+        import csv
+        rows = {row[0]: row[1] for row in csv.reader(open(ROOT / 'data' / 'lexicon.csv', encoding='utf-8'))}
+        self.assertIn('happen', rows['pasar'])
+        self.assertIn('email', rows['el correo'])
+        self.assertIn('loud', rows['fuerte'])
+        self.assertIn('quickly', rows['rápido'])
+
+
+class SeedAfterHook(unittest.TestCase):
+    """--known-top N gives N known even when the prompt hook created the state first (after French Weave, MIT)."""
+
+    def test_known_top_after_a_prompt_already_created_the_state(self):
+        day = swlib.today()
+        state = swlib.new_state()
+        swlib.refill(state, day)
+        self.assertEqual(sum(w['status'] == 'active' for w in state['words']), 5)
+        swlib.seed_known(state, 40, day)
+        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:40]), 40)
+        self.assertEqual(state['refilled'][1], 0)  # today's allowance is back, so refill can pick 5 new words
+        swlib.refill(state, day)
+        self.assertEqual(sum(w['status'] == 'active' for w in state['words']), 5)
+
+    def test_words_with_progress_are_never_seeded(self):
+        day = swlib.today()
+        state = swlib.new_state()
+        swlib.refill(state, day)
+        swlib.apply_event(state, 'pero', 'seen', day)
+        swlib.seed_known(state, 40, day)
+        self.assertEqual({w['es']: w['status'] for w in state['words']}['pero'], 'active')
+
+    def test_new_gemini_key_format_is_accepted(self):
+        import sw
+        self.assertTrue(sw.KEY_SHAPE.match('AQ.' + 'A' * 40))
+        self.assertTrue(sw.KEY_SHAPE.match('AIza' + 'b' * 35))
+        self.assertFalse(sw.KEY_SHAPE.match('AQ.short'))
+        self.assertFalse(sw.KEY_SHAPE.match('not a key at all, has spaces and is long enough'))

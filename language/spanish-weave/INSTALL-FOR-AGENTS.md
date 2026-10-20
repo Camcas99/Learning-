@@ -54,7 +54,7 @@ Questions:
 
 Steps 1 and 2 below don't depend on the answers: if you can keep working while the person answers, do them now;
 otherwise do them right after. Never ask for the key in chat, and never print it. If an answer looks like a key
-rather than a file path (for example it starts with `AIza`), don't pass it to setup or repeat it; tell the person to
+rather than a file path (for example it starts with `AIza` or `AQ.`), don't pass it to setup or repeat it; tell the person to
 paste it into the extension popup instead.
 
 How the answers map to setup (step 3) and the hand-over (step 5):
@@ -73,9 +73,9 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 `--known-top N` marks as known those of the N most common words in `data/lexicon.csv` that aren't introduced yet;
 words already learning or known keep their status, so a rerun never resets or lowers anyone's progress. On a new
 word state that gives exactly N known (Stage 2 at 40, Stage 3 at 150). But the plugin's prompt hook creates the
-state, with 5 learning words, on the first prompt after the plugin loads, so when the state already exists the
-count can come out up to 5 short (35 is still Stage 1, 145 is Stage 2) until those words graduate. Report the stage
-setup prints.
+state, with 5 learning words, on the first prompt after the plugin loads; when the state already exists, the
+words it picked that day with no progress yet count as not introduced, so the count still comes out right. Report the
+stage setup prints.
 
 ## 1. Check prerequisites
 

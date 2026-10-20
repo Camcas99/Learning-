@@ -32,12 +32,11 @@ default option first with "(default)" in its label. Leave Codex CLI out of quest
    paste the key itself here.
 
 Skipped questions get the default. Never ask for the key in chat, and never print it. If the answer to question 4
-looks like a key rather than a file path (for example it starts with `AIza`), don't run setup with it, don't repeat
+looks like a key rather than a file path (for example it starts with `AIza` or `AQ.`), don't run setup with it, don't repeat
 it, and tell them to paste it into the extension popup instead. Then run
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" setup` with these flags and no others:
 - question 1: `--known-top 0`, `--known-top 40` or `--known-top 150` (placement test: `--known-top 0`, then the test).
-  The prompt hook has usually created the word state already, so the count can come out up to 5 short and the
-  stage one lower until those words graduate; report the stage setup prints.
+  Report the stage setup prints.
 - Codex CLI picked: `--codex`
 - Chrome extension picked: `--sites all` or `--sites ask` (Keep the current site choice: no `--sites`, since a new
   one would override a later popup choice), and `--gemini-key-file '<path>'` if they gave a file

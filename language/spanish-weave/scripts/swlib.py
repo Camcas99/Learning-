@@ -251,11 +251,24 @@ def new_state(day=None, lexicon=None, known_top=0):
     return state
 
 
+def untouched_today(word, day):
+    """A learning word refill picked today that has no progress yet: no sighting, slip, peek or quiz answer."""
+    return (word['status'] == 'active' and word.get('added') == day and not word.get('days') and
+            not word.get('assumed') and not word.get('peeks') and not word.get('last_bad') and not word.get('box') and
+            not word.get('reviews'))
+
+
 def seed_known(state, n, day=None):
-    """Marks the top n lexicon words known if they aren't introduced yet (queue). Words already learning, shaky or
-    known keep their status, so seeding never resets progress. Returns how many words changed."""
+    """Marks the top n lexicon words known if they aren't introduced yet (queue), or were picked today by refill and have
+    no progress yet (the prompt hook usually creates the state just before setup runs). Words with any progress keep
+    their status, so seeding never resets progress. Today's new-word allowance is given back for the words taken from
+    the learning set, so refill can pick new ones. Returns how many words changed. (After French Weave, MIT.)"""
     day = day or today()
-    seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue']
+    seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue' or untouched_today(w, day)]
+    taken = sum(w['status'] == 'active' for w in seeded)
+    last_day, count = state.get('refilled') or ['', 0]
+    if taken and last_day == day:
+        state['refilled'] = [day, max(0, count - taken)]
     for i, w in enumerate(seeded):
         set_status(w, 'known', day)
         # A first check, spread out so a big seed doesn't come due all at once; a miss sends the word back to learning.
