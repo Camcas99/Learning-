@@ -176,8 +176,8 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    the Gemini key.
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
-   in one-shot `claude -p` or `codex exec` runs. Automated sessions the desktop app starts (scheduled tasks,
-   workflows) can't be told apart yet and get Spanish too; `/spanish-weave:pause` or `SPANISH_WEAVE_OFF=1` stops it.
+   in one-shot `claude -p` or `codex exec` runs, subagents, scheduled tasks or sessions another session starts
+   (Claude Code 2.1.281 or later). `/spanish-weave:pause` or `SPANISH_WEAVE_OFF=1` stops it anywhere else.
 5. Placement test, if they chose it: with the `SW=` line from step 3 first, run `python3 "$SW" placement --items`,
    show the intro and numbered list as printed in one code block, ask for the numbers of the words they know (never
    say which are made up), then run `python3 "$SW" placement --answers '<their numbers>' --apply` (only the digits,

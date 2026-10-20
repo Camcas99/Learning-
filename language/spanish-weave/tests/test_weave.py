@@ -34,6 +34,20 @@ def line(text, day='2026-10-09', sidechain=False):
                        'message': {'content': [{'type': 'text', 'text': text}]}})
 
 
+# How Claude Code 2.1.299 marks a prompt's source in a transcript (seen in real terminal and desktop sessions).
+TYPED = {'origin': {'kind': 'human'}, 'turnOrigin': 'human', 'promptSource': 'typed'}  # terminal
+TYPED_DESKTOP = {'origin': {'kind': 'human'}, 'promptSource': 'sdk'}  # desktop app, before turnOrigin was recorded
+FROM_SESSION = {'turnOrigin': 'sdk', 'promptSource': 'sdk'}  # the first prompt of a session another session started
+SCHEDULED = {'origin': {'kind': 'task-notification', 'subkind': 'scheduled-trigger', 'fireReason': 'scheduled'},
+             'turnOrigin': 'scheduled', 'promptSource': 'system'}
+NOTICE = {'origin': {'kind': 'task-notification'}, 'turnOrigin': 'task_notification', 'promptSource': 'system'}
+
+
+def prompt(text, day='2026-10-09', **marks):
+    return json.dumps({'type': 'user', 'isSidechain': False, 'timestamp': day + 'T11:00:00',
+                       'message': {'role': 'user', 'content': text}, **marks})
+
+
 def word(es, status='known'):
     return {'es': es, 'en': 'meaning', 'hint': 'hint', 'status': status, 'added': '2026-10-01', 'changed': '',
             'days': [], 'last_bad': ''}
@@ -945,9 +959,101 @@ class Output(Home):
         self.assertEqual(['In this reply' in r for r in replies], [False, False, False, False, True])
 
 
+class Unattended(Home):
+    """Sessions nobody reads as they run (started by another session or a scheduled task) get no Spanish after their
+    first prompt and count no exposure; notifications in a chat get the brief but are no turn."""
+
+    run_hook = Brief.run_hook
+
+    def test_prompt_kinds(self):
+        kind = lambda text='hi', **marks: swlib.prompt_kind(json.loads(prompt(text, **marks)))
+        self.assertEqual([kind(**TYPED), kind(**TYPED_DESKTOP)], ['typed', 'typed'])
+        self.assertEqual([kind(**FROM_SESSION), kind(**SCHEDULED), kind(**NOTICE)], ['auto'] * 3)
+        self.assertIsNone(kind())  # Claude Code before 2.1.161 marked nothing: no evidence either way
+        self.assertIsNone(kind(promptSource='sdk'))  # 2.1.161-2.1.260 desktop prompts, typed or not
+        self.assertIsNone(kind(origin={'kind': 'auto-continuation'}, promptSource='sdk'))
+        self.assertIsNone(kind([{'type': 'tool_result', 'tool_use_id': 't', 'content': 'ok'}], promptSource='sdk'))
+        self.assertIsNone(swlib.prompt_kind(dict(json.loads(prompt('Continue.', **FROM_SESSION)), isMeta=True)))
+        self.assertIsNone(swlib.prompt_kind(json.loads(line('assistant text'))))
+
+    def test_scan_counts_only_chats_the_user_typed_in(self):
+        root = self.home / 'projects'
+        (root / 'p').mkdir(parents=True)
+        def write(name, *lines):
+            with (root / 'p' / name).open('a') as file:
+                file.write(''.join(l + '\n' for l in lines))
+        write('typed.jsonl', prompt('fix it', **TYPED), line('Done, y the build passes.'))
+        write('desktop.jsonl', prompt('fix it', **TYPED_DESKTOP), line('Done, y it ships.'))
+        write('legacy.jsonl', prompt('fix it'), line('Old chat, y it counts.'))
+        write('child.jsonl', prompt('Background (from the session that started this one): go', **FROM_SESSION),
+              line('Report: y entonces it passes.'), prompt('<task-notification>', **NOTICE), line('Still y going.'))
+        write('scheduled.jsonl', prompt('<scheduled-task name="weekly">', **SCHEDULED), line('Refreshed, y entonces done.'))
+        index = swlib.scan(['y', 'entonces'], {}, root, start='2026-09-19')
+        self.assertEqual(index['words']['y']['n'], 3)  # typed, desktop and legacy chats only
+        self.assertEqual(index['words']['entonces']['n'], 0)
+        write('scheduled.jsonl', line('Later, entonces y again.', day='2026-10-10'))  # read from a saved offset
+        write('child.jsonl', prompt('thanks, also add tests', day='2026-10-10', **TYPED),
+              line('Sure, entonces tests next.', day='2026-10-10'))  # the user steps into the child session
+        index = swlib.scan(['y', 'entonces'], index, root, start='2026-09-19')
+        self.assertEqual(index['words']['entonces'], {'n': 1, 'days': ['2026-10-10']})
+        self.assertEqual(index['words']['y']['n'], 3)
+        self.assertEqual({Path(k).name: v for k, v in index['typed'].items()},
+                         {'typed.jsonl': True, 'desktop.jsonl': True, 'child.jsonl': True, 'scheduled.jsonl': False})
+
+    def test_hook_skips_sessions_nobody_reads(self):
+        reminder = '<system-reminder>\nThe user started this session without choosing a folder.\n</system-reminder>\n'
+        child = self.home / 'child.jsonl'
+        child.write_text(prompt(reminder + 'Background (from the session that started this one):\nfix it', **FROM_SESSION)
+                         + '\n' + line('Report: done, y the tests pass, entonces it ships.') + '\n')
+        skipped = [
+            {'session_id': 'c', 'transcript_path': str(child), 'prompt': 'Another Claude session sent a message:\n'
+                                                                       '<agent-message from="a1">go on</agent-message>'},
+            {'session_id': 'c', 'transcript_path': str(child), 'prompt': 'also do the docs'},
+            {'session_id': 's', 'prompt': reminder + '<scheduled-task name="weekly" file="/x/SKILL.md">\nThis is an '
+                                                     'automated run of a scheduled task.\n</scheduled-task>'},
+            {'session_id': 'k', 'prompt': reminder + 'Background (from the session that started this one):\nfix it'},
+            {'session_id': 'a', 'agent_id': 'a1', 'agent_type': 'general-purpose', 'prompt': 'look around'},
+        ]
+        for payload in skipped:
+            self.assertEqual(self.run_hook(payload), '', payload)
+        self.assertEqual(swlib.read_json(self.home / 'sw' / 'sessions.json', {}), {})  # and nothing counted
+        # The user types into the child session: Spanish from their next prompt on, and sessions.json remembers it.
+        with child.open('a') as file:
+            file.write(prompt('thanks, now the docs', **TYPED) + '\n' + line('On it.') + '\n')
+        self.assertIn('Spanish Weave (Stage 1)', self.run_hook({'session_id': 'c', 'transcript_path': str(child),
+                                                                'prompt': 'and the README'}))
+        self.assertTrue(swlib.read_json(self.home / 'sw' / 'sessions.json')['c']['typed'])
+        child.write_text(prompt('<task-notification>', **NOTICE) + '\n' + line('ok') + '\n')  # typed prompt out of reach
+        self.assertIn('Spanish Weave (Stage 1)', self.run_hook({'session_id': 'c', 'transcript_path': str(child),
+                                                                'prompt': 'one more thing'}))
+        self.assertIn('Spanish Weave (Stage 1)', self.run_hook({'session_id': 'n', 'prompt': 'a first typed prompt'}))
+
+    def test_notices_get_the_brief_but_no_turn(self):
+        log = self.home / 'chat.jsonl'
+        log.write_text(prompt('fix it', **TYPED) + '\n' + line('Done, y the build passes.') + '\n')
+        first = self.run_hook({'session_id': 't', 'transcript_path': str(log), 'prompt': 'and the tests'})
+        self.assertIn('Recall: y?', first)
+        for notice in ('<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>',
+                       '<system-reminder>\nLinked sessions now\n</system-reminder>\n<side-sessions-event>Done</side-sessions-event>',
+                       'Another Claude session sent a message:\n<agent-message from="a1">done</agent-message>'):
+            out = json.loads(self.run_hook({'session_id': 't', 'transcript_path': str(log), 'prompt': notice}))
+            context = out['hookSpecificOutput']['additionalContext']
+            self.assertIn('Spanish Weave (Stage 1)', context)
+            self.assertNotIn('Recall:', context)
+        self.assertEqual(swlib.read_json(self.home / 'sw' / 'sessions.json')['t']['n'], 1)
+        self.assertIsNone(weave.prompt_source('What does a <task-notification> tag mean?'))  # typed: only a lead counts
+        self.assertIsNone(weave.prompt_source('Can you explain <scheduled-task > tags?'))
+        self.assertIsNone(weave.prompt_source(None))
+
+
 class Blocks(unittest.TestCase):
     def test_blocks_are_current_and_fit(self):
         result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'make_blocks.py'), '--check'],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_content_bundle_is_current(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'bundle_content.py'), '--check'],
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -1152,6 +1258,9 @@ class Setup(Home):
         codex = self.home / 'codex'
         codex.mkdir()
         (codex / 'config.toml').write_text('model = "o3"\n')
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}):
+            chrome, chromium = sw.host_dirs()
+        chrome.parent.mkdir(parents=True)  # Chrome is installed, Chromium isn't
         self.run_setup('--codex', '--user-data-dir', str(self.home / 'profile'))
         self.run_setup('--codex')  # a rerun keeps the first backup and the recorded --user-data-dir manifest
         manifests = [Path(m) for m in sw.install_record()['host_manifests']]
@@ -1170,6 +1279,9 @@ class Setup(Home):
             self.assertIn(item, left)
         self.assertNotIn('NativeMessagingHosts', left)
         self.assertTrue((self.home / 'sw' / 'state.json').exists())  # the word progress stays until they delete it
+        # Folders setup made for the host go again; Chrome's own folder stays.
+        self.assertEqual([chrome.exists(), chrome.parent.exists(), chromium.parent.exists()], [False, True, False])
+        self.assertFalse((self.home / 'profile').exists())
 
     def test_uninstall_keeps_what_was_there(self):
         codex = self.home / 'codex'
@@ -1181,7 +1293,7 @@ class Setup(Home):
         out = self.uninstall()  # without --codex the hook stays, and the list says how to remove it
         self.assertIn('uninstall --codex', out.split('Left in place:')[1])
         out = self.uninstall('--codex')
-        self.assertEqual(json.loads((codex / 'hooks.json').read_text())['hooks'], dict(theirs['hooks'], UserPromptSubmit=[]))
+        self.assertEqual(json.loads((codex / 'hooks.json').read_text()), theirs)  # no empty UserPromptSubmit list left
         self.assertIn('(other Codex hooks use it; before setup it was `hooks = false`); kept', out)
         (codex / 'hooks.json').write_text('{}')  # no other hooks left: what was there before comes back
         self.run_setup('--codex')
@@ -1197,6 +1309,33 @@ class Setup(Home):
         out = self.uninstall('--codex', '--user-data-dir', str(self.home / 'profile'))
         self.assertIn(f'removed {self.home.resolve() / "profile"}', out)  # an unrecorded --user-data-dir manifest, named again
         self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')  # the backup shows the flag was setup's
+
+    def test_uninstall_after_two_setups_on_020(self):
+        """0.2.0 backed both Codex files up again on every setup --codex, so a second run's backups were setup's own
+        edits, and 0.2.2 then recorded the `hooks = true` it found there as the user's."""
+        codex = self.home / 'codex'
+        codex.mkdir()
+        theirs = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'x.sh'}]}]}}
+        for own_hooks in (False, True):
+            for path in codex.iterdir():
+                path.unlink()
+            if own_hooks:
+                (codex / 'hooks.json').write_text(json.dumps(theirs))
+            (codex / 'config.toml').write_text('model = "o3"\n')
+            self.run_setup('--codex')  # 0.2.0's first run: our hook and `hooks = true` in place
+            for name in ('hooks.json', 'config.toml'):  # its second run: both backed up again, over the first backups
+                (codex / f'{name}.before-spanish-weave').write_bytes((codex / name).read_bytes())
+            sw.remember(codex_hooks_added=False)
+            out = self.uninstall('--codex')
+            self.assertNotIn('it was there before setup', out)
+            hooks, backup = codex / 'hooks.json', codex / 'hooks.json.before-spanish-weave'
+            if own_hooks:  # their hooks stay, in the file and in its backup, without ours; other hooks need the flag
+                self.assertEqual([json.loads(hooks.read_text()), json.loads(backup.read_text())], [theirs, theirs])
+                self.assertIn('(other Codex hooks use it); kept', out)
+            else:  # both were setup's own: gone, and the flag is taken out of config.toml and its backup
+                self.assertFalse(hooks.exists() or backup.exists(), out)
+                self.assertEqual((codex / 'config.toml').read_text(), 'model = "o3"\n')
+            self.assertEqual((codex / 'config.toml.before-spanish-weave').read_text(), 'model = "o3"\n')
 
     def test_known_top_seeds_before_first_learning_words(self):
         state = self.run_setup('--known-top', '40')

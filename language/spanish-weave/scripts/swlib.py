@@ -785,14 +785,42 @@ class Lines:
                 yield raw.decode('utf-8', 'replace')
 
 
-def replies(lines):
-    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines."""
+def prompt_kind(item):
+    """'typed' for a prompt the user typed (in the terminal, desktop app, IDE or from a phone), 'auto' for one Claude
+    Code marks as coming from elsewhere: the session or scheduled task that started this one, a task notification, a
+    message from another session. None for anything else, including prompts Claude Code marked too little to tell.
+
+    Claude Code records origin {"kind": "human"} on typed prompts from 2.1.205, and turnOrigin on every prompt from
+    2.1.281 ("sdk" on the first prompt of a session another session started). Before that a desktop prompt carries
+    only promptSource "sdk", typed or not, so that alone is no evidence."""
+    content = (item.get('message') or {}).get('content') if isinstance(item.get('message'), dict) else None
+    if (item.get('type') != 'user' or item.get('isMeta') or item.get('isSidechain') or isinstance(content, list)
+            and any(isinstance(b, dict) and b.get('type') == 'tool_result' for b in content)):
+        return None
+    origin = (item.get('origin') or {}).get('kind') if isinstance(item.get('origin'), dict) else None
+    turn = item.get('turnOrigin')
+    if origin == 'human' or turn == 'human' or item.get('promptSource') == 'typed':
+        return 'typed'
+    if origin not in (None, 'auto-continuation') or turn is not None or item.get('promptSource') == 'system':
+        return 'auto'
+    return None
+
+
+def replies(lines, prompts=None):
+    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines. prompts, if
+    given, is called with each marked prompt's kind ('typed' or 'auto', see prompt_kind) in transcript order, before
+    the replies that follow it are yielded."""
     for line in lines:
-        if len(line) > 1_000_000 or '"assistant"' not in line:
+        if len(line) > 1_000_000 or '"assistant"' not in line and (prompts is None or '"user"' not in line):
             continue
         try:
             item = json.loads(line)
         except ValueError:
+            continue
+        if prompts is not None and isinstance(item, dict) and item.get('type') == 'user':
+            kind = prompt_kind(item)
+            if kind:
+                prompts(kind)
             continue
         day = local_day(item.get('timestamp'))
         if item.get('type') == 'assistant' and not item.get('isSidechain'):  # Claude Code
@@ -813,10 +841,15 @@ def local_day(stamp):
 
 
 def scan(words, index, roots=None, start='0000-00-00'):
-    """Fold new transcript lines into the exposure index (mutated and returned)."""
+    """Fold new transcript lines into the exposure index (mutated and returned).
+
+    Replies count only in chats the user typed in, from the first typed prompt on: a session that another session,
+    a scheduled task or the desktop app started runs unread, so its replies are no exposure (index['typed'] holds
+    each marked chat's state, see prompt_kind). Transcripts without prompt marks (older Claude Code, Codex) count."""
     roots = [Path(r) for r in ([roots] if isinstance(roots, (str, Path)) else roots)] if roots else transcript_roots()
     patterns = {es: pattern(es) for es in words if norm(es) not in UNMEASURABLE}
     counts, offsets, recent = index.setdefault('words', {}), index.setdefault('offsets', {}), index.setdefault('recent', {})
+    typed = index.setdefault('typed', {})
     for es in patterns:
         counts.setdefault(es, {'n': 0, 'days': []})
     since = time.mktime(time.strptime(start, '%Y-%m-%d')) if start > '0000' else 0
@@ -831,8 +864,12 @@ def scan(words, index, roots=None, start='0000-00-00'):
         except OSError:
             continue
         lines = Lines(path, offset)
-        for day, text in replies(lines):
-            if day < start or 'Spanish Weave' in text:
+        mark = [typed.get(name) if offset else None]  # None: no marked prompt yet; else whether one was typed
+
+        def note(kind):
+            mark[0] = mark[0] or kind == 'typed'
+        for day, text in replies(lines, note):
+            if mark[0] is False or day < start or 'Spanish Weave' in text:
                 continue
             digest = hashlib.sha1(text.encode()).hexdigest()[:16]
             if digest in recent:
@@ -846,9 +883,12 @@ def scan(words, index, roots=None, start='0000-00-00'):
                     if day not in entry['days']:
                         entry['days'] = sorted(entry['days'] + [day])[-60:]
         offsets[name] = lines.offset
+        if mark[0] is not None:
+            typed[name] = mark[0]
     cutoff = (dt.date.today() - dt.timedelta(days=DEDUPE_DAYS)).isoformat()
     index['recent'] = {k: v for k, v in recent.items() if v >= cutoff}
     index['offsets'] = {k: v for k, v in offsets.items() if os.path.exists(k)}
+    index['typed'] = {k: v for k, v in typed.items() if k in index['offsets']}
     index['updated'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     return index
 

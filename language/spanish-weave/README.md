@@ -103,7 +103,8 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
 - **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
   Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
   messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
-  on. Swaps are chosen by Gemini on your own key.
+  on. Swaps are chosen by Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more
+  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -317,11 +318,17 @@ because it's a guess: it never makes a word known on its own; a word still needs
 **Chats, not scripts.** The hook weaves in every chat surface (terminal, desktop, IDE, Remote Control,
 claude.ai/code, the Codex TUI) and stays silent only in one-shot scripted runs: `claude -p` without
 `--sdk-url`/`--input-format stream-json`, Agent SDK scripts (`CLAUDE_CODE_ENTRYPOINT` `sdk-ts` or `sdk-py`) and
-`codex exec`. Automated sessions the desktop app starts (scheduled tasks, workflows, child sessions) look the same
-as the chats you read, so they can't be told apart yet: they get Spanish too, and their replies count as exposure.
-Use `/spanish-weave:pause` while they run, or set `SPANISH_WEAVE_OFF=1` in their environment; that variable
-switches it off anywhere else too, and `SPANISH_WEAVE_FORCE=1` weaves in a script. Health, medication, legal, money,
-safety, emergency and driving topics get no Spanish at all.
+`codex exec`. Sessions nobody reads as they run get no Spanish either: subagents, scheduled tasks, and sessions
+another session starts in the desktop app (their first prompt is recognized, and from then on Claude Code's
+transcript shows no prompt you typed). Their replies count as no exposure: a chat counts from the first prompt you
+type in it, so a child session you step into counts from there, and gets Spanish from your second prompt on. A task
+notification or a message from another session in your own chat still gets Spanish but isn't a turn, so it brings no
+recall cue or "Your turn" line. Telling later turns apart needs Claude Code 2.1.281 or later, which records where
+every prompt came from; older versions weave and count more of them. A child session forked with the whole
+conversation copies your typed prompts, so it still weaves: `/spanish-weave:pause` covers that, or
+`SPANISH_WEAVE_OFF=1` in its environment; that variable switches it off anywhere else too, and
+`SPANISH_WEAVE_FORCE=1` weaves in a script. Health, medication, legal, money, safety, emergency and driving topics
+get no Spanish at all.
 
 The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level 2 rules.
 
@@ -332,8 +339,9 @@ What Spanish Weave keeps, and what it sends:
 - **Stored only on your machine**, in `~/.spanish-weave` (or `SPANISH_WEAVE_HOME`, which must be a new or empty
   folder, or an earlier Spanish Weave one, that you own; setup refuses any other, and the chat hook and commands
   write nothing into it): `state.json` (each word's status and dates, quiz answers and settings), `exposure.json`
-  (how often and on which days each word showed up in chat, the transcript paths it has read and short hashes of
-  recent replies), `sessions.json` (chat ids, turn counts and recall words used) and, if setup stored it,
+  (how often and on which days each word showed up in chat, the transcript paths it has read, whether you typed in
+  each, and short hashes of recent replies), `sessions.json` (chat ids, turn counts, recall words used and whether
+  you typed in the chat) and, if setup stored it,
   `gemini_key` (mode 600). The hook reads your local Claude Code and Codex transcripts to count exposure and never
   sends them anywhere.
 - **Sent with each prompt** to Anthropic through Claude Code, and to OpenAI through Codex: your word lists and stage
@@ -344,8 +352,8 @@ What Spanish Weave keeps, and what it sends:
   data terms apply.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
-- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key and a cache of
-  chosen swaps with a few words of page text around each. Removing the extension deletes them; deleting
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key, a cache of
+  chosen swaps with a few words of page text around each, and today's count of model calls for each site. Removing the extension deletes them; deleting
   `~/.spanish-weave` doesn't.
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites
@@ -389,6 +397,7 @@ tests/            python tests, live model checks, extension end-to-end check
 python3 -m unittest discover -s tests            # hook, rules, hints, quiz, placement, notes, exports, host, setup, docs
 python3 scripts/hints.py --check                 # every hint in the word list matches the rules
 python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
+python3 scripts/bundle_content.py                # rebuild extension/src/content.bundle.js after changing content.js or its imports
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/sw-eval    # live check via claude -p, isolated from your own config
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/sw-eval   # simulate claude.ai with a block

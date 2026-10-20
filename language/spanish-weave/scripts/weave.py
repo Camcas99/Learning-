@@ -20,6 +20,7 @@ STALE = 30 * 60  # refresh chat exposure in the background when the index is old
 STAGES = {1: (6, 10, 2), 2: (12, 20, 4), 3: (25, 35, 4), 4: (40, 55, 4)}
 LOT, SOME = (6, 30), (3, 10)  # chat exposure (distinct days, replies) for the "seen a lot" and "sometimes" tiers
 TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
+HEAD = 1_000_000  # bytes at the start of a transcript searched for the first prompt (see transcript)
 SHORT = 40  # replies with fewer prose words are too short to measure
 SCORED = 10_000  # characters of prose at the end of a reply that are scored: enough for the share, fast at any stage
 RECALL_EVERY = 3
@@ -160,16 +161,46 @@ def band_line(state):
             + (f'; also known: {cut(extra)}' if extra else '') + '.')
 
 
-def last_reply(path):
-    """Text of the latest main-thread assistant reply in a Claude Code transcript, or None."""
+def transcript(path):
+    """(text of the latest main-thread assistant reply or None, whether the user typed in this chat) from a Claude
+    Code transcript. The second is True once a typed prompt shows, False when every marked prompt came from elsewhere
+    (see swlib.prompt_kind), None when no prompt is marked (an older Claude Code, or Codex). Only the head, where the
+    first prompt is, and the last TAIL bytes are read."""
     with open(path, 'rb') as file:
         size = file.seek(0, 2)
-        file.seek(max(0, size - TAIL))
-        if size > TAIL:
+        file.seek(0)
+        if size > HEAD + TAIL:
+            raws = file.read(HEAD).split(b'\n')[:-1]  # without the cut line
+            file.seek(size - TAIL)
             file.readline()  # skip the cut line
-        lines = [raw.decode('utf-8', 'replace') for raw in file]
-    texts = [text for _, text in swlib.replies(lines) if text.strip()]
-    return texts[-1] if texts else None
+            raws += list(file)
+        else:
+            raws = list(file)
+    kinds = set()
+    texts = [text for _, text in swlib.replies([raw.decode('utf-8', 'replace') for raw in raws], kinds.add)
+             if text.strip()]
+    return (texts[-1] if texts else None), ('typed' in kinds if kinds else None)
+
+
+def last_reply(path):
+    """Text of the latest main-thread assistant reply in a Claude Code transcript, or None."""
+    return transcript(path)[0]
+
+
+# How a prompt the user didn't type starts (after the app's leading <system-reminder> blocks). 'start': the first
+# prompt of a scheduled task, or of a session another session started; nobody reads those replies as they come.
+# 'notice': a notification the app or another session sends into a chat; its reply is read, but it is no turn.
+PROMPT_STARTS = {'start': ('<scheduled-task ', 'Background (from the session that started this one):'),
+                 'notice': ('<task-notification>', '<side-sessions-event>', '<ci-monitor-event>', '<agent-message ',
+                            '<teammate-message ', 'Another Claude session sent a message:')}
+REMINDERS = re.compile(r'\s*(?:<system-reminder>.*?</system-reminder>\s*)*', re.S)
+
+
+def prompt_source(prompt):
+    """'start', 'notice' (see PROMPT_STARTS) or None for anything else, such as what the user typed."""
+    text = prompt if isinstance(prompt, str) else ''
+    text = text[REMINDERS.match(text).end():]
+    return next((name for name, starts in PROMPT_STARTS.items() if text.startswith(starts)), None)
 
 
 def extra(line):
@@ -226,8 +257,9 @@ def calibration(text, state):
             f'learning word{"" if learning == 1 else "s"}): {verdict}.')
 
 
-def next_recall(state, session):
-    """Every third turn in a chat (1st, 4th, ...): the recall word, shaky first, then active, not yet used here."""
+def next_recall(state, session, typed=False):
+    """Every third turn in a chat (1st, 4th, ...): the recall word, shaky first, then active, not yet used here.
+    typed records that the user typed in this chat (see session)."""
     if not session:
         return None
     path = swlib.home() / 'sessions.json'
@@ -236,6 +268,8 @@ def next_recall(state, session):
         entry = sessions.setdefault(session, {'n': 0, 'recalled': []})
         entry['n'] += 1
         entry['t'] = int(time.time())
+        if typed:
+            entry['typed'] = True
         pick = None
         if (entry['n'] - 1) % RECALL_EVERY == 0:
             fresh = lambda w: w['es'] not in entry['recalled']
@@ -252,9 +286,15 @@ def next_recall(state, session):
     return pick
 
 
-def turn(session):
-    """How many prompts this chat has had (next_recall counts them)."""
-    return ((swlib.read_json(swlib.home() / 'sessions.json', {}) or {}).get(session) or {}).get('n', 0) if session else 0
+def session(session_id):
+    """This chat's sessions.json entry: n, how many turns it has had (next_recall counts them), and typed, once the
+    user is known to have typed in it, which stays known when that prompt is too far back to read again."""
+    return ((swlib.read_json(swlib.home() / 'sessions.json', {}) or {}).get(session_id) or {}) if session_id else {}
+
+
+def turn(session_id):
+    """How many turns this chat has had."""
+    return session(session_id).get('n', 0)
 
 
 def split_args(text, comm):
@@ -374,6 +414,17 @@ def main(argv):
             data = {}
         if not interactive(data=data):
             return 0  # scripted run: no brief at all
+    source = prompt_source(data.get('prompt'))
+    reply = typed = None
+    if hook:
+        # Nobody reads these as they run: a subagent's prompt, the first prompt of a scheduled task or of a session
+        # another session started, and later turns of a chat whose transcript shows no typed prompt.
+        if data.get('agent_id') or source == 'start':
+            return 0
+        try:
+            reply, typed = transcript(data['transcript_path'])
+        except Exception:
+            pass  # no transcript yet (a first prompt) or unreadable: the brief alone still helps
     try:
         state = swlib.load_state()
     except Exception as error:  # never block a prompt because of Spanish; Claude Code shows no stderr on exit 0
@@ -382,15 +433,19 @@ def main(argv):
         return 0
     if state.get('paused'):
         return 0
-    recall = next_recall(state, data.get('session_id')) if hook else None
-    count = turn(data.get('session_id')) if hook else 0
+    if hook and not typed and session(data.get('session_id')).get('typed'):
+        typed = True
+    if typed is False:
+        return 0
+    counted = hook and source != 'notice'  # a notification gets the brief, but no recall cue or "Your turn"
+    recall = next_recall(state, data.get('session_id'), typed) if counted else None
+    count = turn(data.get('session_id')) if counted else 0
     text = brief(state, exposure(), recall, output=count > 0 and count % OUTPUT_EVERY == 0)
     if hook:
         try:
-            reply = last_reply(data['transcript_path'])
             text += calibration(reply, state) if reply else ''
         except Exception:
-            pass  # no transcript yet or unreadable: the brief alone still helps
+            pass
         out = {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}}
         try:
             notice = export_notice(state)

@@ -27,6 +27,14 @@ const failures = new Map(); // text key -> failed model attempts; retried with b
 const painted = new Set();
 const MAX_RETRIES = 3;
 const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
+// Text that keeps changing (a live ticker, a reply streaming in, a page fighting the swaps) would cost a model call per
+// version. After CHURN_MAX changes within CHURN_MS, an element waits until its text has held still for SETTLE_MS.
+const CHURN_MAX = 3;
+const CHURN_MS = 30000;
+const SETTLE_MS = 5000;
+const changes = new WeakMap(); // element -> times its text changed lately
+const settling = new WeakMap(); // element -> timer that looks at it again once it holds still
+const texts = new WeakMap(); // element -> the text last looked at, to tell a real change from a re-render
 let tipTimer = null;
 const send = (msg) => chrome.runtime.sendMessage(msg);
 const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
@@ -100,6 +108,7 @@ function consider(el) {
   const text = flatten(el).text;
   const key = `${config.revision}:${hashKey(text)}`;
   keys.set(el, key);
+  texts.set(el, text);
   if (memo.has(key)) { paint(el, key); return; }
   let p = pending.get(key);
   if (!p) { p = { text, els: new Set() }; pending.set(key, p); }
@@ -139,6 +148,20 @@ async function flush() {
   if (result?.stale) { update(await send({ type: 'config' })); return; }
   if ([...pending.keys()].some((k) => !inflight.has(k))) timer = setTimeout(flush, 50);
 }
+// An element whose text changed no longer waits for its old text's swaps; that text goes unasked if nothing else has it.
+function unqueue(el, key) {
+  const p = key && pending.get(key);
+  if (!p) return;
+  p.els.delete(el);
+  if (!p.els.size && !inflight.has(key)) pending.delete(key);
+}
+function restless(el) {
+  const now = Date.now();
+  const recent = (changes.get(el) || []).filter((t) => now - t < CHURN_MS);
+  recent.push(now);
+  changes.set(el, recent);
+  return recent.length > CHURN_MAX;
+}
 function track(root) {
   if (root.nodeType !== 1) return;
   const elements = root.matches(targets()) ? [root, ...root.querySelectorAll(targets())] : root.querySelectorAll(targets());
@@ -159,8 +182,18 @@ function mutations(records) {
   }
   for (const el of changed) {
     if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
+    unqueue(el, keys.get(el));
     keys.delete(el);
-    if (readable(el, location.href)) { near.unobserve(el); near.observe(el); }
+    if (!readable(el, location.href)) continue;
+    near.unobserve(el);
+    clearTimeout(settling.get(el));
+    const moved = texts.has(el) && flatten(el).text !== texts.get(el); // a re-render with the same text isn't a change
+    if (moved && restless(el)) {
+      settling.set(el, setTimeout(() => {
+        settling.delete(el);
+        if (observer && el.isConnected && tracked.has(el)) near.observe(el);
+      }, SETTLE_MS));
+    } else near.observe(el);
   }
   observer?.takeRecords();
   for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
