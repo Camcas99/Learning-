@@ -36,7 +36,7 @@ async function refresh() {
   $('siteName').textContent = host || 'This page (not a website)';
   $('grantSites').hidden = all || !s.newSitesEnabled;
   $('accessNote').textContent = s.newSitesEnabled
-    ? (all ? 'On for every site except the ones you turn off. Common webmail, messaging, AI chat and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
+    ? (all ? 'On for every site except the ones you turn off. Webmail, messaging, AI chat, banking, health, government and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
     : 'Off on sites until you turn them on here.';
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;

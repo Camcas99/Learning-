@@ -133,7 +133,7 @@ el perro,the dog,el PEH-rroh
 la escuela,school,lah es-KWEH-lah
 joven,young,HOH-ben
 bonito,pretty / nice,boh-NEE-toh
-fuerte,strong,FWEHR-teh
+fuerte,strong / loud,FWEHR-teh
 largo,long,LAHR-goh
 caliente,hot (to the touch),kah-LYEN-teh
 frío,cold,FREE-oh
@@ -149,7 +149,7 @@ pésimo,awful,PEH-see-moh
 excelente,excellent,ek-seh-LEN-teh
 diferente,different,dee-feh-REN-teh
 común,common,koh-MOON
-rápido,fast / quick,RRAH-pee-doh
+rápido,fast / quick / quickly,RRAH-pee-doh
 último,last,OOL-tee-moh
 próximo,next,PROHK-see-moh
 siguiente,following / next,see-GYEN-teh
@@ -357,7 +357,7 @@ la novia,the girlfriend,lah NOH-byah
 decir,to say / tell,deh-SEER
 el jefe,the boss,el HEH-feh
 preparado,prepared / ready,preh-pah-RAH-doh
-el cliente,the customer,el KLYEN-teh
+el cliente,the customer / client,el KLYEN-teh
 tomar,to take / drink,toh-MAHR
 el profesor,the teacher,el proh-feh-SOR
 dar,to give,dahr
@@ -385,7 +385,7 @@ gustar,to like (be pleasing to),goos-TAHR
 el siglo,the century,el SEE-gloh
 limpio,clean,LEEM-pyoh
 el verano,summer,el beh-RAH-noh
-pasar,to pass / spend (time),pah-SAHR
+pasar,to happen / pass / spend (time),pah-SAHR
 el invierno,winter,el een-BYEHR-noh
 quedarse,to stay,keh-DAHR-seh
 la primavera,spring,lah pree-mah-BEH-rah
@@ -394,7 +394,7 @@ el otoño,autumn / fall,el oh-TOH-nyoh
 salir,to go out / leave,sah-LEER
 el pasado,the past,el pah-SAH-doh
 el futuro,the future,el foo-TOO-roh
-entrar,to come in,en-TRAHR
+entrar,to come in / go in,en-TRAHR
 ligero,light (weight),lee-HEH-roh
 la fiesta,the party,lah FYES-tah
 el día siguiente,the next day,el DEE-ah see-GYEN-teh
@@ -870,7 +870,7 @@ el hospital,the hospital,el ohs-pee-TAHL
 gastar,to spend (money),gahs-TAHR
 el banco,the bank / bench,el BAHN-koh
 abierto,open,ah-BYEHR-toh
-el correo,the mail,el koh-RREH-oh
+el correo,the email / mail,el koh-RREH-oh
 pedir prestado,to borrow,peh-DEER pres-TAH-doh
 el parque,the park,el PAHR-keh
 el pueblo,the town / village,el PWEH-bloh
@@ -892,7 +892,7 @@ divertido,fun,dee-behr-TEE-doh
 la carrera,the race / career,lah kah-RREH-rah
 brillar,to shine,bree-YAHR
 el deporte,sport,el deh-POR-teh
-el partido,the match / game,el pahr-TEE-doh
+el partido,the match / game / party (political),el pahr-TEE-doh
 quemar,to burn,keh-MAHR
 aburrido,boring / bored,ah-boo-RREE-doh
 la pelota,the ball,lah peh-LOH-tah
@@ -1019,7 +1019,7 @@ el papel,the paper / role,el pah-PEL
 suceder,to happen,soo-seh-DEHR
 la hoja,the leaf / sheet,lah OH-hah
 inglés,English,een-GLES
-la clase,the class,lah KLAH-seh
+la clase,the class / kind,lah KLAH-seh
 preguntarse,to wonder,preh-goon-TAHR-seh
 la lección,the lesson,lah lek-SYOHN
 perderse,to get lost,pehr-DEHR-seh

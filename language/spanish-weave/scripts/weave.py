@@ -52,6 +52,9 @@ GUARDS = [
     (('más',), 'más means more, never and'),
     (('muy', 'mucho'), 'muy before an adjective or adverb, "very much" is mucho'),
     (('si', 'sí'), 'si is if, sí is yes'),
+    (('aquí',), 'aquí never for "here\'s"'),
+    (('ya',), 'ya means already, never "just"'),
+    (('como',), 'como never for the verb "like"'),
 ]
 
 

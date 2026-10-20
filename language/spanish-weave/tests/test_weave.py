@@ -1962,3 +1962,22 @@ class Docs(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UpstreamPorts(unittest.TestCase):
+    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2."""
+
+    def test_new_sense_guards_appear_with_their_words(self):
+        import weave
+        texts = dict((words, text) for words, text in weave.GUARDS)
+        self.assertIn('"here\'s"', texts[('aquí',)])
+        self.assertIn('never "just"', texts[('ya',)])
+        self.assertIn('never for the verb "like"', texts[('como',)])
+
+    def test_glosses_cover_the_common_senses(self):
+        import csv
+        rows = {row[0]: row[1] for row in csv.reader(open(ROOT / 'data' / 'lexicon.csv', encoding='utf-8'))}
+        self.assertIn('happen', rows['pasar'])
+        self.assertIn('email', rows['el correo'])
+        self.assertIn('loud', rows['fuerte'])
+        self.assertIn('quickly', rows['rápido'])

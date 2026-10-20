@@ -88,6 +88,9 @@ async function swaps(msg, sender) {
   if (!Array.isArray(msg.items) || msg.items.length > 8) throw new Error('Invalid text batch');
   const items = msg.items.filter((i) => i && typeof i.text === 'string' && i.text.length <= 2000 &&
     wordCount(i.text) >= 6 && !isZeroSpanish(i.text) && i.key === `${ctx.revision}:${hashKey(i.text)}`);
+  // Title guard: a page whose title is about money, health, legal matters, safety or driving stays English, and its
+  // text never goes to the model (from French Weave by Jackie Oliver, MIT).
+  if (isZeroSpanish(String(sender.tab?.title || ''))) return { results: Object.fromEntries(items.map((i) => [i.key, []])) };
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };

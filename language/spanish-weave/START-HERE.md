@@ -196,10 +196,13 @@ What's kept where, and what gets sent:
   page text around each, in Chrome's own storage. Removing the extension deletes them.
 
 Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, WhatsApp Web, Messenger, Slack,
-Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others) and local or work-network addresses start off.
-Instagram and X direct messages are never read. Banking and health sites stay on in the default every-site mode, so
-turn those off from the toolbar, or set "Other sites" in the extension's popup to "Only sites I turn on" (setup asks
-you this too; whichever you chose last wins). A pause stops new page text going to Gemini within 2 minutes; Spanish
+Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others), Google Docs and Drive, password managers, big banks,
+payment and brokerage sites, health portals, government sites, and local or work-network addresses start off, and so
+does any site whose name contains bank, creditunion, mychart or patient. Pages whose title is about money, health,
+legal matters or safety get no Spanish either. Instagram and X direct messages are never read. Smaller banks and
+other private sites can still be on in the default every-site mode, so turn those off from the toolbar, or set
+"Other sites" in the extension's popup to "Only sites I turn on" (setup asks you this too; whichever you chose last
+wins). A pause stops new page text going to Gemini within 2 minutes; Spanish
 already on an open page goes when you reload it after that, when you open the popup, or within 10 minutes. Resuming,
 or a setup rerun, reaches Chrome within 10 minutes, or as soon as you open the popup.
 

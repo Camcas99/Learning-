@@ -239,8 +239,12 @@ function indexFor(level, sharedWords) {
   return result;
 }
 
+// "I" is always capitalized in English, so it says nothing about the sentence: "I think" mid-sentence becomes
+// "creo que", not "Creo que" (from French Weave by Jackie Oliver, MIT).
+const PRONOUN_I = /^I(?!\p{L})/u;
+
 export function matchCase(es, original) {
-  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original)) {
+  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original) && !PRONOUN_I.test(original)) {
     return es.charAt(0).toUpperCase() + es.slice(1);
   }
   return es;
@@ -264,6 +268,9 @@ export function keepsMeaning(original, gloss) {
 // and that keep the English's meaning (keepsMeaning).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // Adds gn (noun gender) and n (usage note) when the word has them.
+// ALL-CAPS English (a heading, a shouted word, an acronym) stays English; "OK" is fine.
+export const allCaps = (o) => /\p{Lu}.*\p{Lu}/su.test(o) && !/\p{Ll}/u.test(o) && !/^O\.?K\.?$/.test(o);
+
 export function validateSwaps(level, swaps, sharedWords) {
   if (!Array.isArray(swaps)) return [];
   const idx = indexFor(level, sharedWords);
@@ -271,7 +278,7 @@ export function validateSwaps(level, swaps, sharedWords) {
   for (const s of swaps) {
     if (!s || typeof s.o !== 'string' || typeof s.es !== 'string') continue;
     const o = s.o.trim();
-    if (!o || !s.es.trim()) continue;
+    if (!o || !s.es.trim() || allCaps(o)) continue;
     const hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
     if (!hit || !keepsMeaning(o, hit.en)) continue;
     out.push({

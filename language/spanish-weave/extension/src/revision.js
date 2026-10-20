@@ -5,7 +5,7 @@ import { hashKey } from './hash.js';
 
 // Bump when cached swaps gain fields or the prompt's sense rules change, so old ones are refetched
 // (2: noun gender gn, usage note n; 3: sense rules for es, esto/eso, question words, sino).
-export const SWAP_FORMAT = 3;
+export const SWAP_FORMAT = 4;
 
 // extension: the extension's version, so an update that edits the bundled word list or notes refetches too.
 // words: the plugin's word-state version (statuses, glosses, hints and notes), when the native host is there.

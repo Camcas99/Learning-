@@ -57,7 +57,7 @@ describe('validateSwaps', () => {
   });
   test('matches capitalization of the original', () => {
     expect(validateSwaps(1, [{ o: 'And', es: 'y' }])[0].es).toBe('Y');
-    expect(validateSwaps(1, [{ o: 'AND', es: 'y' }])[0].es).toBe('y');
+    expect(validateSwaps(1, [{ o: 'AND', es: 'y' }])).toEqual([]); // ALL-CAPS English stays English (0.3.2)
     expect(validateSwaps(1, [{ o: 'Maybe', es: 'tal vez' }])[0].es).toBe('Tal vez');
     expect(matchCase('la idea', 'The idea')).toBe('La idea');
   });

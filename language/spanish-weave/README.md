@@ -11,7 +11,9 @@ New here? Read [START-HERE.md](START-HERE.md). Claude sessions picking this up: 
 [HANDOFF-FOR-CLAUDE.md](HANDOFF-FOR-CLAUDE.md).
 
 Adapted from [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver (MIT license): same
-design and code, with a new Spanish word list, sound hints, grammar rules and prompts.
+design and code, with a new Spanish word list, sound hints, grammar rules and prompts. Version 0.3.2 also ports
+later French Weave improvements: wider default-off sites, a sensitive-title guard, no swaps inside contractions or
+ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses.
 
 ## Set up
 
@@ -358,8 +360,12 @@ What Spanish Weave keeps, and what it sends:
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites
 (Gmail, Outlook, iCloud Mail, Yahoo Mail, Proton Mail, WhatsApp Web, Messenger, Telegram, Slack, Discord, Teams,
-claude.ai, ChatGPT, Gemini, Copilot and others) and local or intranet addresses (localhost, private IPs, names
-without a dot, and .local, .lan, .corp, .internal and similar), which start off. Instagram direct messages
+claude.ai, ChatGPT, Gemini, Copilot and others), Google Docs, Drive and Calendar, password managers, big banks and
+payment, brokerage and credit sites, health portals, government sites (.gov, .mil, .gob.mx and similar), any site
+whose name contains bank, creditunion, mychart or patient, and local or intranet addresses (localhost, private IPs,
+names without a dot, and .local, .lan, .corp, .internal and similar), which start off. A listed site covers its
+subdomains, and a page whose title is about money, health, legal matters or safety gets no swaps and sends nothing
+to Gemini. Instagram direct messages
 (instagram.com/direct) and X messages are never read, and on any site pages under paths like /messages, /inbox,
 /chat, /account or /settings are skipped. Banking and health sites stay on unless you turn them off: passages about
 balances, cards, insurance or appointments are skipped, but other text on those pages isn't, so turn them off in the
