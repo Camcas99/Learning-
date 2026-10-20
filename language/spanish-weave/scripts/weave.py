@@ -140,6 +140,8 @@ def brief(state, seen, recall=None, output=False):
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["es"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["es"]} = {recall["en"]}, "{recall["hint"]}"')
+    else:  # without this, models repeat the last recall cue on every turn (from French Weave by Jackie Oliver, MIT)
+        text += '\nNo recall cue in this reply: no "Recall:" lines, even if an earlier reply had one.'
     if (state.get('prefs') or {}).get('output_practice'):
         text += ('\nOutput practice is on: if the user\'s message answers your last "Your turn" line, open with one short line '
                  'of feedback (their Spanish, corrected if needed), then answer as usual.')

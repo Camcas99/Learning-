@@ -1,4 +1,4 @@
-// Preferences, stored under chrome.storage.local["settings"]. The Gemini key is stored apart from these, so
+// Preferences, stored under chrome.storage.local["settings"]. The Gemini and Claude keys are stored apart from these, so
 // the config pages get never carries it.
 export const DEFAULT_SETTINGS = {
   enabled: true,
@@ -22,7 +22,7 @@ export function cleanSettings(s = {}) {
   if (Number.isFinite(s.newSitesAt) && s.newSitesAt >= 0) d.newSitesAt = s.newSitesAt;
   if (typeof s.speak === 'boolean') d.speak = s.speak;
   if (typeof s.genderColors === 'boolean') d.genderColors = s.genderColors;
-  if (['gemini-3.8-flash', 'gemini-3.5-flash-lite'].includes(s.model)) d.model = s.model;
+  if (['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'claude-haiku-5-5'].includes(s.model)) d.model = s.model;
   if (Number.isInteger(s.levelOverride) && s.levelOverride >= 0 && s.levelOverride <= 4) d.levelOverride = s.levelOverride;
   for (const [host, enabled] of Object.entries(s.siteOverrides || {})) {
     if (/^(?=.{1,253}$)[a-z0-9]+(?:[a-z0-9.-]*[a-z0-9])?$/.test(host) && typeof enabled === 'boolean') d.siteOverrides[host] = enabled;

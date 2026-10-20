@@ -50,7 +50,7 @@ SEED_SPREAD = 28       # words seeded known (setup, placement) get a first check
 
 # Same spelling as an English word with another meaning, so Spanish use can't be told apart in English prose:
 # never counted. (Words English borrowed with the same meaning, like gratis or loco, still count.)
-UNMEASURABLE = {'solo', 'mayor', 'sensible'}
+UNMEASURABLE = {'solo', 'mayor', 'sensible', 'tan'}
 DETERMINER = (r"(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|estos|estas|ese|esa|esos|esas|mi|mis|tu|tus|su|sus"
               r"|nuestro|nuestra|nuestros|nuestras)\s+")
 ARTICLE = r"(?:el|la|los|las) "

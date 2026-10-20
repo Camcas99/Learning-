@@ -1,14 +1,16 @@
-// Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
+// Service worker: word state and the Gemini key from the Claude Code plugin (native host), a pasted Claude key, site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
 // Keys stay here; pages only get a config without them.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
+import { isClaude } from './anthropic.js';
+import { FALLBACK_MODEL } from './gemini.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess, swapSettings } from './settings.js';
 import { resolveLevel, exactEs, isZeroSpanish, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { swapRevision } from './revision.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { quotaError, countCall } from './quota.js';
+import { quotaError, countCall, spentToday, saveSpent, DAILY_KEY } from './quota.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -46,12 +48,15 @@ const ready = (async () => {
 // for those, and cached swaps stay good, so toggling them costs no model calls.
 async function context() {
   await ready;
-  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
+  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'claudeKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
   const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites, state?.sitesAt) };
   const level = resolveLevel(saved, state?.stage).effective;
-  const hasKey = !!(data.apiKey || data.hostKey);
+  // A key for the chosen model or its fallback (Claude Haiku falls back to Gemini).
+  const gemini = !!(data.apiKey || data.hostKey);
+  const keyFor = (m) => (isClaude(m) ? !!data.claudeKey : gemini);
+  const hasKey = keyFor(settings.model) || (!!FALLBACK_MODEL[settings.model] && keyFor(FALLBACK_MODEL[settings.model]));
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
   const revision = swapRevision({ extension: chrome.runtime.getManifest?.()?.version || '', epoch: data.epoch || '',
@@ -101,10 +106,16 @@ async function swaps(msg, sender) {
       const host = new URL(sender.url).host;
       const over = await quotaError(chromeStorage, host);
       if (over) throw new Error(over);
-      const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
+      const { wordState, apiKey, hostKey, claudeKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'claudeKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage, undefined, host); return fetch(...args); };
-      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
-        shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+      const daily = await spentToday(chromeStorage);
+      const loaded = new Map(daily);
+      try {
+        return await requestSwaps({ apiKey: apiKey || hostKey, claudeKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
+          shownToday: await shownToday(chromeStorage), cooldown, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+      } finally {
+        await locked(() => saveSpent(chromeStorage, daily, loaded));
+      }
     });
     // Turned off, paused or changed during the request: nothing is cached or painted.
     return await locked(async () => {
@@ -159,7 +170,8 @@ async function clearCache() {
   return { ok: true, removed };
 }
 
-// msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey.
+// msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey;
+// msg.claudeKey.
 async function save(msg) {
   await locked(async () => {
     const saved = await store.get('settings');
@@ -175,6 +187,13 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
+      patch[DAILY_KEY] = {}; // a new key has its own quota
+      cooldown.clear();
+    }
+    if (typeof msg.claudeKey === 'string') {
+      if (msg.claudeKey.length > 500) throw new Error('Key is too long');
+      patch.claudeKey = msg.claudeKey.trim();
+      cooldown.clear(); // a refused key waits an hour; a new one is tried at once
     }
     await store.set(patch);
   });
@@ -184,9 +203,9 @@ async function save(msg) {
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'claudeKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null };
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, claudeKey: !!data.claudeKey, modelStatus: data.modelStatus || null };
 }
 
 // Pages may only ask for config, swaps and events; everything else is popup-only.

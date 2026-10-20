@@ -24,10 +24,12 @@ la pregunta,the question,lah preh-GOON-tah
 la idea,the idea,lah ee-DEH-ah
 la respuesta,the answer,lah rres-PWES-tah
 o,or,oh
+donde,where (not a question),DOHN-deh
 bien,well / fine,byen
 un poco,a little,oon POH-koh
 aquí,here,ah-KEE
 es,it's / is (what something is),es
+tan,so (before an adjective),tahn
 hay,there is / there are,eye
 más,more,mahs
 menos,less / fewer,MEH-nohs
@@ -39,6 +41,7 @@ a menudo,often,ah meh-NOO-doh
 de verdad,really / for real,deh behr-DAHD
 solo,only / alone,SOH-loh
 casi,almost,KAH-see
+aunque,although / even though,OWN-keh
 demasiado,too much / too,deh-mah-SYAH-doh
 bastante,quite / enough,bahs-TAHN-teh
 como,like / as,KOH-moh
@@ -48,16 +51,19 @@ durante,during,doo-RAHN-teh
 antes de,before,AHN-tes deh
 después de,after,des-PWES deh
 entre,between / among,EN-treh
+nadie,nobody,NAH-dyeh
 contra,against,KOHN-trah
 desde,since (a time) / from,DES-deh
 creo que,I think that,KREH-oh keh
 hay que,you have to / we need to,eye keh
 por ejemplo,for example,por eh-HEM-ploh
+ya no,no longer,yah noh
 en realidad,actually,en rreh-ah-lee-DAHD
 por supuesto,of course,por soo-PWES-toh
 de acuerdo,okay / agreed,deh ah-KWEHR-doh
 o sea,I mean / in other words,oh SEH-ah
 todo,all / everything,TOH-doh
+incluso,even,een-KLOO-soh
 nada,nothing,NAH-dah
 algo,something,AHL-goh
 todo el mundo,everyone,TOH-doh el MOON-doh
@@ -66,20 +72,25 @@ el día,the day,el DEE-ah
 la cosa,the thing,lah KOH-sah
 el mundo,the world,el MOON-doh
 la vida,life,lah BEE-dah
+por ahora,for now,por ah-OH-rah
 el trabajo,work / the job,el trah-BAH-hoh
 la razón,the reason,lah rrah-SOHN
 la manera,the way,lah mah-NEH-rah
 la parte,the part,lah PAHR-teh
+sino,but rather,SEE-noh
+tampoco,not either / neither,tahm-POH-koh
 el lado,the side,el LAH-doh
 el final,the end,el fee-NAHL
 el principio,the beginning,el preen-SEE-pyoh
 grande,big,GRAHN-deh
 pequeño,small,peh-KEH-nyoh
 bueno,good,BWEH-noh
+de hecho,in fact,deh EH-choh
 malo,bad,MAH-loh
 nuevo,new,NWEH-boh
 viejo,old,BYEH-hoh
 mismo,same,MEES-moh
+es decir,that is (to say),es deh-SEER
 otro,other / another,OH-troh
 verdadero,true / real,behr-dah-DEH-roh
 falso,false / fake,FAHL-soh
@@ -110,7 +121,9 @@ hoy,today,oy
 mañana,tomorrow,mah-NYAH-nah
 ayer,yesterday,ah-YEHR
 esta noche,tonight,ES-tah NOH-cheh
+todos,everyone / all of them,TOH-dohs
 allí,there,ah-YEE
+así,like this / that way,ah-SEE
 allá,over there,ah-YAH
 para nada,not at all,PAH-rah NAH-dah
 alguien,someone,AHL-gyen
@@ -118,9 +131,11 @@ eso,that,EH-soh
 esto,this,ES-toh
 en,in / on / at,en
 sobre,about (a topic) / on top of,SOH-breh
+muchos,many,MOO-chohs
 la casa,the house / home,lah KAH-sah
 la semana,the week,lah seh-MAH-nah
 el año,the year,el AH-nyoh
+cualquier,any,kwahl-KYEHR
 el amigo,the friend,el ah-MEE-goh
 la familia,the family,lah fah-MEE-lyah
 la ciudad,the city,lah syoo-DAHD
@@ -130,26 +145,31 @@ la historia,the story / history,lah ees-TOH-ryah
 la música,music,lah MOO-see-kah
 el gato,the cat,el GAH-toh
 el perro,the dog,el PEH-rroh
+una vez,once,OO-nah bes
 la escuela,school,lah es-KWEH-lah
 joven,young,HOH-ben
 bonito,pretty / nice,boh-NEE-toh
 fuerte,strong / loud,FWEHR-teh
 largo,long,LAHR-goh
 caliente,hot (to the touch),kah-LYEN-teh
+a ver,let's see,ah behr
 frío,cold,FREE-oh
 feliz,happy,feh-LEES
 triste,sad,TREES-teh
 libre,free (not busy),LEE-breh
 seguro,sure / safe,seh-GOO-roh
+ambos,both,AHM-bohs
 sencillo,simple,sen-SEE-yoh
 interesante,interesting,een-teh-reh-SAHN-teh
 increíble,incredible,een-kreh-EE-bleh
+lo mismo,the same thing,loh MEES-moh
 perfecto,perfect,pehr-FEK-toh
 pésimo,awful,PEH-see-moh
 excelente,excellent,ek-seh-LEN-teh
 diferente,different,dee-feh-REN-teh
 común,common,koh-MOON
 rápido,fast / quick / quickly,RRAH-pee-doh
+acá,here,ah-KAH
 último,last,OOL-tee-moh
 próximo,next,PROHK-see-moh
 siguiente,following / next,see-GYEN-teh
@@ -182,6 +202,7 @@ tanto,so much,TAHN-toh
 a causa de,because of,ah KOW-sah deh
 gracias a,thanks to,GRAH-syahs ah
 en lugar de,instead of,en loo-GAHR deh
+mientras tanto,meanwhile,MYEN-trahs TAHN-toh
 al lado de,next to,ahl LAH-doh deh
 alrededor de,around,ahl-rreh-deh-DOR deh
 al menos,at least,ahl MEH-nohs
@@ -209,6 +230,7 @@ en algún lado,somewhere,en ahl-GOON LAH-doh
 adentro,inside,ah-DEN-troh
 afuera,outside,ah-FWEH-rah
 arriba,up / upstairs,ah-RREE-bah
+últimamente,lately,OOL-tee-mah-MEN-teh
 abajo,down / downstairs,ah-BAH-hoh
 temprano,early,tem-PRAH-noh
 tarde,late,TAHR-deh
@@ -218,11 +240,13 @@ al rato,in a little while,ahl RRAH-toh
 antes,before / earlier,AHN-tes
 de ahora en adelante,from now on,deh ah-OH-rah en ah-deh-LAHN-teh
 aproximadamente,approximately / roughly,ah-prohk-see-MAH-dah-MEN-teh
+por lo tanto,therefore,por loh TAHN-toh
 exactamente,exactly,ek-SAHK-tah-MEN-teh
 probablemente,probably,proh-BAH-bleh-MEN-teh
 por suerte,luckily,por SWEHR-teh
 lamentablemente,unfortunately,lah-men-TAH-bleh-MEN-teh
 obviamente,obviously,OHB-byah-MEN-teh
+en serio,seriously,en SEH-ryoh
 sin duda,no doubt / definitely,seen DOO-dah
 definitivamente,definitely,deh-fee-nee-TEE-bah-MEN-teh
 completamente,completely,kohm-PLEH-tah-MEN-teh
@@ -245,6 +269,7 @@ varios,several,BAH-ryohs
 algunos,some / a few,ahl-GOO-nohs
 aquí está,here it is,ah-KEE es-TAH
 una vez más,once again,OO-nah bes MAHS
+a través de,through,ah trah-BES deh
 todavía no,not yet,toh-dah-BEE-ah noh
 nada mal,not bad,NAH-dah mahl
 así así,so-so,ah-SEE ah-SEE
@@ -255,6 +280,7 @@ hasta pronto,see you soon,AHS-tah PROHN-toh
 adiós,goodbye,ah-DYOHS
 chao,bye,CHAH-oh
 buenos días,good morning,BWEH-nohs DEE-ahs
+de repente,suddenly,deh rreh-PEN-teh
 buenas tardes,good afternoon,BWEH-nahs TAHR-des
 buenas noches,good evening / good night,BWEH-nahs NOH-ches
 perdón,sorry / excuse me,pehr-DOHN
@@ -263,6 +289,7 @@ de nada,you're welcome,deh NAH-dah
 no hay problema,no problem,noh eye proh-BLEH-mah
 eso es,that's it / exactly,EH-soh es
 es verdad,that's true,es behr-DAHD
+por si acaso,just in case,por see ah-KAH-soh
 no pasa nada,it's no big deal,noh PAH-sah NAH-dah
 qué lástima,what a pity,KEH LAHS-tee-mah
 mejor así,better this way / just as well,meh-HOR ah-SEE
@@ -298,6 +325,7 @@ el resto,the rest,el RRES-toh
 muchísimo,a whole lot,moo-CHEE-see-moh
 me encanta,I love it,meh en-KAHN-tah
 me molesta,it bothers me,meh moh-LES-tah
+la diferencia,the difference,lah dee-feh-REN-syah
 no me importa,I don't care,noh meh eem-POR-tah
 ya veremos,we'll see,yah beh-REH-mohs
 ya está,"there, done",yah es-TAH
@@ -305,6 +333,7 @@ vámonos,let's go,BAH-moh-nohs
 qué pena,what a shame,KEH PEH-nah
 qué suerte,what luck,KEH SWEHR-teh
 de ninguna manera,no way,deh neen-GOO-nah mah-NEH-rah
+el estado,the state / status,el es-TAH-doh
 buen trabajo,good job,bwen trah-BAH-hoh
 a decir verdad,to tell the truth,ah deh-SEER behr-DAHD
 en efecto,indeed,en eh-FEK-toh
@@ -318,8 +347,10 @@ absolutamente,absolutely,ahb-soh-LOO-tah-MEN-teh
 súper,super / really,SOO-pehr
 por un lado,on one hand,por oon LAH-doh
 algo así,something like that,AHL-goh ah-SEE
+el grupo,the group,el GROO-poh
 la persona,the person,lah pehr-SOH-nah
 ser,to be (what something is),sehr
+el sistema,the system,el sees-TEH-mah
 estar,to be (state or place),es-TAHR
 la gente,people,lah HEN-teh
 amable,kind / nice,ah-MAH-bleh
@@ -330,6 +361,7 @@ hacer,to do / make,ah-SEHR
 el niño,the child / boy,el NEE-nyoh
 grosero,rude,groh-SEH-roh
 recordar,to remember / remind,rreh-kor-DAHR
+la información,information,lah een-for-mah-SYOHN
 el chico,the boy / guy,el CHEE-koh
 ir,to go,eer
 la chica,the girl,lah CHEE-kah
@@ -348,20 +380,25 @@ los padres,the parents,lohs PAH-dres
 poder,to be able to / can,poh-DEHR
 el esposo,the husband,el es-POH-soh
 el bebé,the baby,el beh-BEH
+la universidad,the university,lah oo-nee-behr-see-DAHD
 querer,to want / love,keh-REHR
 enfermo,sick,en-FEHR-moh
 el vecino,the neighbor,el beh-SEE-noh
+la situación,the situation,lah see-twah-SYOHN
 deber,to have to / should,deh-BEHR
 el novio,the boyfriend,el NOH-byoh
 la novia,the girlfriend,lah NOH-byah
+el servicio,the service,el sehr-BEE-syoh
 decir,to say / tell,deh-SEER
 el jefe,the boss,el HEH-feh
 preparado,prepared / ready,preh-pah-RAH-doh
 el cliente,the customer / client,el KLYEN-teh
+el proceso,the process,el proh-SEH-soh
 tomar,to take / drink,toh-MAHR
 el profesor,the teacher,el proh-feh-SOR
 dar,to give,dahr
 el alumno,the pupil,el ah-LOOM-noh
+el video,the video,el bee-DEH-oh
 ocupado,busy,oh-koo-PAH-doh
 el estudiante,the student,el es-too-DYAHN-teh
 poner,to put,poh-NEHR
@@ -376,7 +413,9 @@ la tarde,the afternoon,lah TAHR-deh
 martes,Tuesday,MAHR-tes
 la noche,the night / evening,lah NOH-cheh
 pensar,to think,pen-SAHR
+la cantidad,the amount,lah kahn-tee-DAHD
 vacío,empty,bah-SEE-oh
+la imagen,the image,lah ee-MAH-hen
 creer,to believe,kreh-EHR
 el fin de semana,the weekend,el feen deh seh-MAH-nah
 el mes,the month,el mes
@@ -420,6 +459,7 @@ entender,to understand,en-ten-DEHR
 la puerta,the door,lah PWEHR-tah
 bajo,short / low,BAH-hoh
 la ventana,the window,lah ben-TAH-nah
+el acceso,access,el ahk-SEH-soh
 aprender,to learn,ah-pren-DEHR
 la pared,the wall,lah pah-RED
 olvidar,to forget,ohl-bee-DAHR
@@ -427,6 +467,7 @@ el techo,the roof / ceiling,el TEH-choh
 el piso,the floor / story (of a building),el PEE-soh
 angosto,narrow,ahn-GOHS-toh
 acordarse,to remember,ah-kor-DAHR-seh
+el modelo,the model,el moh-DEH-loh
 la escalera,the stairs / ladder,lah es-kah-LEH-rah
 la tienda,the store,lah TYEN-dah
 empezar,to start,em-peh-SAHR
@@ -468,9 +509,11 @@ la lluvia,the rain,lah YOO-byah
 azul,blue,ah-SOOL
 la nieve,the snow,lah NYEH-beh
 beber,to drink,beh-BEHR
+la salida,the exit / the way out,lah sah-LEE-dah
 el viento,the wind,el BYEN-toh
 dormir,to sleep,dor-MEER
 la nube,the cloud,lah NOO-beh
+el plazo,the deadline,el PLAH-soh
 verde,green,BEHR-deh
 la tierra,the earth / ground,lah TYEH-rrah
 trabajar,to work,trah-bah-HAHR
@@ -478,6 +521,7 @@ el agua,water,el AH-gwah
 el fuego,the fire,el FWEH-goh
 jugar,to play (a game),hoo-GAHR
 el árbol,the tree,el AHR-bohl
+el diseño,the design,el dee-SEH-nyoh
 amarillo,yellow,ah-mah-REE-yoh
 la flor,the flower,lah flor
 leer,to read,leh-EHR
@@ -491,6 +535,7 @@ gris,gray,grees
 escuchar,to listen,es-koo-CHAHR
 el tren,the train,el tren
 el avión,the plane,el ah-BYOHN
+la papa,the potato,lah PAH-pah
 mirar,to look at / watch,mee-RAHR
 el barco,the boat / ship,el BAHR-koh
 morado,purple,moh-RAH-doh
@@ -500,6 +545,7 @@ la página,the page,lah PAH-hee-nah
 cerrar,to close,seh-RRAHR
 la palabra,the word,lah pah-LAH-brah
 lindo,pretty / cute,LEEN-doh
+el comentario,the comment,el koh-men-TAH-ryoh
 la oración,the sentence / prayer,lah oh-rah-SYOHN
 caminar,to walk,kah-mee-NAHR
 el idioma,the language (like Spanish),el ee-DYOH-mah
@@ -507,11 +553,13 @@ la carta,the letter / playing card,lah KAHR-tah
 correr,to run,koh-RREHR
 el mensaje,the message,el men-SAH-heh
 feo,ugly,FEH-oh
+el lenguaje,the language (programming),el len-GWAH-heh
 la pantalla,the screen,lah pahn-TAH-yah
 caer,to fall,kah-EHR
 el celular,the cell phone,el seh-loo-LAHR
 subir,to go up / upload,soo-BEER
 la computadora,the computer,lah kohm-poo-tah-DOH-rah
+el documento,the document,el doh-koo-MEN-toh
 tierno,sweet / tender,TYEHR-noh
 el teclado,the keyboard,el teh-KLAH-doh
 bajar,to go down / download,bah-HAHR
@@ -521,6 +569,7 @@ el archivo,the file,el ahr-CHEE-boh
 doblar,to turn (a corner) / fold,doh-BLAHR
 la carpeta,the folder,lah kahr-PEH-tah
 rico,rich / tasty,RREE-koh
+el permiso,permission,el pehr-MEE-soh
 el enlace,the link,el en-LAH-seh
 cambiar,to change,kahm-BYAHR
 el sitio,the site / place,el SEE-tyoh
@@ -530,6 +579,7 @@ pobre,poor,POH-breh
 la aplicación,the app / application,lah ah-plee-kah-SYOHN
 decidir,to decide,deh-see-DEER
 la red,the network,lah rred
+el costo,the cost,el KOHS-toh
 la actualización,the update,lah ahk-twah-lee-sah-SYOHN
 ayudar,to help,ah-yoo-DAHR
 raro,strange / rare,RRAH-roh
@@ -546,6 +596,7 @@ construir,to build,kohns-TRWEER
 el respaldo,the backup,el rres-PAHL-doh
 romper,to break,rrohm-PEHR
 la llave,the key (for a lock),lah YAH-beh
+la tarjeta,the card,lah tahr-HEH-tah
 famoso,famous,fah-MOH-soh
 la caja,the box,lah KAH-hah
 arreglar,to fix,ah-rreh-GLAHR
@@ -563,6 +614,7 @@ la taza,the cup / mug,lah TAH-sah
 útil,useful,OO-teel
 el plato,the plate / dish,el PLAH-toh
 llamar,to call,yah-MAHR
+el límite,the limit,el LEE-mee-teh
 la botella,the bottle,lah boh-TEH-yah
 el cuchillo,the knife,el koo-CHEE-yoh
 mostrar,to show,mohs-TRAHR
@@ -580,6 +632,7 @@ el boleto,the ticket,el boh-LEH-toh
 el regalo,the gift,el rreh-GAH-loh
 dejar,to leave / let,deh-HAHR
 práctico,practical / handy,PRAHK-tee-koh
+el aviso,the notice / heads-up,el ah-BEE-soh
 el juego,the game,el HWEH-goh
 el juguete,the toy,el hoo-GEH-teh
 llevar,to carry / wear / take,yeh-BAHR
@@ -618,6 +671,7 @@ el vestido,the dress,el bes-TEE-doh
 los zapatos,the shoes,lohs sah-PAH-tohs
 bailar,to dance,bye-LAHR
 el abrigo,the coat,el ah-BREE-goh
+el rendimiento,performance,el rren-dee-MYEN-toh
 reciente,recent,rreh-SYEN-teh
 el sombrero,the hat,el sohm-BREH-roh
 cantar,to sing,kahn-TAHR
@@ -641,6 +695,7 @@ vivir,to live,bee-BEER
 el pollo,the chicken,el POH-yoh
 el pescado,the fish (food),el pes-KAH-doh
 completo,complete / full,kohm-PLEH-toh
+el dispositivo,the device,el dees-poh-see-TEE-boh
 sentir,to feel / be sorry,sen-TEER
 las verduras,vegetables,lahs behr-DOO-rahs
 la fruta,the fruit,lah FROO-tah
@@ -648,6 +703,7 @@ oler,to smell,oh-LEHR
 la manzana,the apple,lah mahn-SAH-nah
 parecido,similar / alike,pah-reh-SEE-doh
 tocar,to touch / play (music),toh-KAHR
+la etiqueta,the tag / label,lah eh-tee-KEH-tah
 la fresa,the strawberry,lah FREH-sah
 el azúcar,the sugar,el ah-SOO-kahr
 oír,to hear,oh-EER
@@ -655,22 +711,26 @@ la sal,the salt,lah sahl
 igual,the same / equal,ee-GWAHL
 el chocolate,the chocolate,el choh-koh-LAH-teh
 conocer,to know (a person or place) / meet,koh-noh-SEHR
+el jugo,the juice,el HOO-goh
 el pastel,the cake,el pahs-TEL
 reconocer,to recognize,rreh-koh-noh-SEHR
 la sopa,the soup,lah SOH-pah
 preferir,to prefer,preh-feh-REER
 el arroz,the rice,el ah-RROHS
 la pasta,pasta,lah PAHS-tah
+los lentes,the glasses,lohs LEN-tes
 el desayuno,breakfast,el deh-sah-YOO-noh
 odiar,to hate,oh-DYAHR
 el almuerzo,lunch,el ahl-MWEHR-soh
 enorme,huge,eh-NOR-meh
 la cena,dinner,lah SEH-nah
 desear,to wish,deh-seh-AHR
+la plantilla,the template,lah plahn-TEE-yah
 la comida,the food / meal,lah koh-MEE-dah
 marzo,March,MAHR-soh
 el sabor,the taste / flavor,el sah-BOR
 soñar,to dream,soh-NYAHR
+el borrador,the draft,el boh-rrah-DOR
 el hambre,hunger,el AHM-breh
 mayor,older / bigger,mah-YOR
 reír,to laugh,rreh-EER
@@ -681,6 +741,7 @@ la meta,the goal,lah MEH-tah
 vivo,alive / lively,BEE-boh
 la opción,the option / choice,lah ohp-SYOHN
 sonreír,to smile,sohn-rreh-EER
+el refresco,the soda,el rreh-FRES-koh
 la decisión,the decision,lah deh-see-SYOHN
 gritar,to shout,gree-TAHR
 el cambio,the change,el KAHM-byoh
@@ -832,6 +893,7 @@ tener razón,to be right,teh-NEHR rrah-SOHN
 la vaca,the cow,lah BAH-kah
 habitual,usual,ah-bee-TWAHL
 tener la culpa,to be at fault,teh-NEHR lah KOOL-pah
+chistoso,funny,chees-TOH-soh
 el conejo,the rabbit,el koh-NEH-hoh
 el oso,the bear,el OH-soh
 necesitar,to need,neh-seh-see-TAHR
@@ -855,23 +917,35 @@ tener cuidado,to be careful,teh-NEHR kwee-DAH-doh
 el borde,the edge,el BOR-deh
 ir de fiesta,to go out partying,eer deh FYES-tah
 el centro,the center / downtown,el SEN-troh
+ya veo,I see,yah BEH-oh
 terminado,finished / done,tehr-mee-NAH-doh
+tiene sentido,it makes sense,TYEH-neh sen-TEE-doh
 el fondo,the bottom / background,el FOHN-doh
+da igual,it doesn't matter (either way),dah ee-GWAHL
 hacer las compras,to go grocery shopping,ah-SEHR lahs KOHM-prahs
+no importa,it doesn't matter,noh eem-POR-tah
 el puente,the bridge,el PWEN-teh
+no entiendo,I don't understand,noh en-TYEN-doh
 agosto,August,ah-GOHS-toh
 la iglesia,the church,lah ee-GLEH-syah
 tomarse el tiempo,to take the time,toh-MAHR-seh el TYEM-poh
+no funciona,it doesn't work,noh foon-SYOH-nah
 el museo,the museum,el moo-SEH-oh
 disponible,available,dees-poh-NEE-bleh
 la biblioteca,the library,lah bee-blyoh-TEH-kah
+estoy de acuerdo,I agree,es-TOY deh ah-KWEHR-doh
 darse cuenta,to realize,DAHR-seh KWEN-tah
 el hospital,the hospital,el ohs-pee-TAHL
+vale la pena,it's worth it,BAH-leh lah PEH-nah
 gastar,to spend (money),gahs-TAHR
 el banco,the bank / bench,el BAHN-koh
+no te preocupes,don't worry,noh teh preh-oh-KOO-pes
 abierto,open,ah-BYEHR-toh
+me equivoqué,my mistake / I was wrong,meh eh-kee-boh-KEH
 el correo,the email / mail,el koh-RREH-oh
+se me olvidó,I forgot,seh meh ohl-bee-DOH
 pedir prestado,to borrow,peh-DEER pres-TAH-doh
+es que,the thing is,es keh
 el parque,the park,el PAHR-keh
 el pueblo,the town / village,el PWEH-bloh
 prestar,to lend,pres-TAHR
@@ -884,6 +958,7 @@ servir,to serve / be useful,sehr-BEER
 la azotea,the rooftop,lah ah-soh-TEH-ah
 pagado,paid,pah-GAH-doh
 el golpe,the blow / hit,el GOHL-peh
+se puede,you can / it's possible,seh PWEH-deh
 valer,to be worth,bah-LEHR
 el gesto,the gesture,el HES-toh
 llover,to rain,yoh-BEHR
@@ -908,8 +983,10 @@ probar,to taste / try / test,proh-BAHR
 la noticia,the news (item),lah noh-TEE-syah
 el periódico,the newspaper,el peh-RYOH-dee-koh
 llenar,to fill,yeh-NAHR
+conseguir,to get / manage to,kohn-seh-GEER
 la tele,the TV,lah TEH-leh
 preocupado,worried,preh-oh-koo-PAH-doh
+mantener,to keep / maintain,mahn-teh-NEHR
 el canal,the channel,el kah-NAHL
 vaciar,to empty,bah-SYAHR
 la serie,the series,lah SEH-ryeh
@@ -920,6 +997,7 @@ la pena,sorrow / shame,lah PEH-nah
 adivinar,to guess,ah-dee-bee-NAHR
 la preocupación,the worry,lah preh-oh-koo-pah-SYOHN
 la confianza,trust / confidence,lah kohn-FYAHN-sah
+pedir,to ask for,peh-DEER
 enseñar,to teach / show,en-seh-NYAHR
 sorprendido,surprised,sor-pren-DEE-doh
 la paz,peace,lah pahs
@@ -928,6 +1006,7 @@ estudiar,to study,es-too-DYAHR
 el poder,power,el poh-DEHR
 decepcionado,disappointed,deh-sep-syoh-NAH-doh
 repetir,to repeat,rreh-peh-TEER
+mejorar,to improve,meh-hoh-RAHR
 la fuerza,strength / force,lah FWEHR-sah
 el calor,heat,el kah-LOR
 traducir,to translate,trah-doo-SEER
@@ -940,23 +1019,27 @@ la longitud,length,lah lohn-hee-TOOD
 la altura,height,lah ahl-TOO-rah
 firmar,to sign,feer-MAHR
 el pensamiento,the thought,el pen-sah-MYEN-toh
+quedar,to remain / be left,keh-DAHR
 levantar,to lift / raise,leh-bahn-TAHR
 la memoria,memory,lah meh-MOH-ryah
 perdido,lost,pehr-DEE-doh
 la mente,the mind,lah MEN-teh
 reducir,to reduce / lower,rreh-doo-SEER
 el alma,the soul,el AHL-mah
+resolver,to solve,rreh-sohl-BEHR
 grueso,thick,GRWEH-soh
 el carácter,personality / character,el kah-RAHK-tehr
 prender,to turn on,pren-DEHR
 el ánimo,the mood / spirits,el AH-nee-moh
 apagar,to turn off,ah-pah-GAHR
+no se puede,you can't / it's not possible,noh seh PWEH-deh
 el chiste,the joke,el CHEES-teh
 el paseo,the walk / outing,el pah-SEH-oh
 maduro,ripe / mature,mah-DOO-roh
 conectar,to connect / plug in,koh-nek-TAHR
 el recorrido,the route / tour,el rreh-koh-RREE-doh
 el paraguas,the umbrella,el pah-RAH-gwahs
+continuar,to continue,kohn-tee-NWAHR
 salvar,to rescue / save (a life),sahl-BAHR
 la maleta,the suitcase,lah mah-LEH-tah
 dulce,sweet,DOOL-seh
@@ -972,26 +1055,31 @@ el disco,the disk / record,el DEES-koh
 noviembre,November,noh-BYEM-breh
 la herramienta,the tool,lah eh-rrah-MYEN-tah
 regalar,to give (as a gift),rreh-gah-LAHR
+eliminar,to remove / delete,eh-lee-mee-NAHR
 la tarea,the task / homework,lah tah-REH-ah
 amargo,bitter,ah-MAHR-goh
 la lista,the list,lah LEES-tah
 traer,to bring,trah-EHR
 la columna,the column,lah koh-LOOM-nah
 llevarse bien,to get along,yeh-BAHR-seh byen
+publicar,to publish / post,poo-blee-KAHR
 el título,the title,el TEE-too-loh
 el nombre,the name,el NOHM-breh
 delicioso,delicious,deh-lee-SYOH-soh
 irse,to leave (a place),EER-seh
 el apellido,the last name,el ah-peh-YEE-doh
+aparecer,to appear,ah-pah-reh-SEHR
 la dirección,the address / direction,lah dee-rek-SYOHN
 extrañar,to miss (someone),eks-trah-NYAHR
 el correo electrónico,the email,el koh-RREH-oh eh-lek-TROH-nee-koh
+funcionar,to work (run properly),foon-syoh-NAHR
 asqueroso,disgusting,ahs-keh-ROH-soh
 la cuenta,the account / bill,lah KWEN-tah
 faltar,to be missing / lack,fahl-TAHR
 el usuario,the user,el oo-SWAH-ryoh
 evitar,to avoid,eh-bee-TAHR
 la configuración,the settings,lah kohn-fee-goo-rah-SYOHN
+incluir,to include,een-KLWEER
 barato,cheap,bah-RAH-toh
 el intento,the attempt,el een-TEN-toh
 impedir,to prevent,eem-peh-DEER
@@ -1008,6 +1096,7 @@ extranjero,foreign / foreigner,eks-trahn-HEH-roh
 la basura,the trash,lah bah-SOO-rah
 divertirse,to have fun,dee-behr-TEER-seh
 el bote de basura,the trash can,el BOH-teh deh bah-SOO-rah
+notar,to notice,noh-TAHR
 diciembre,December,dee-SYEM-breh
 el cuaderno,the notebook,el kwah-DEHR-noh
 aburrirse,to get bored,ah-boo-RREER-seh
@@ -1031,6 +1120,7 @@ el curso,the course,el KOOR-soh
 el código,the code,el KOH-dee-goh
 la función,the function,lah foon-SYOHN
 los datos,the data,lohs DAH-tohs
+avisar,to let someone know,ah-bee-SAHR
 el valor,the value,el bah-LOR
 la versión,the version,lah behr-SYOHN
 la clave,the key / password,lah KLAH-beh
@@ -1038,7 +1128,9 @@ la tabla,the table (data),lah TAH-blah
 ejecutar,to run (a program),eh-heh-koo-TAHR
 depurar,to debug,deh-poo-RAHR
 compilar,to compile,kohm-pee-LAHR
+configurar,to set up / configure,kohn-fee-goo-RAHR
 el registro,the log / record,el rreh-HEES-troh
+desplegar,to deploy,des-pleh-GAHR
 la búsqueda,the search,lah BOOS-keh-dah
 embarazada,pregnant,em-bah-rah-SAH-dah
 sensible,sensitive,sen-SEE-bleh
