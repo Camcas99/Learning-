@@ -42,10 +42,10 @@ Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Cla
 extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the
 question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the
 default. Rerunning setup (`/spanish-weave:setup`) asks again, with "Keep the current site choice" as the default for
-the websites question, and never resets your progress. Words you're already learning keep their status, so if
-Spanish Weave had already handed you its first 5 learning words (the plugin's prompt hook does this on your first
-prompt), or you rerun setup with a higher answer, you can start one stage lower until those words graduate, after
-about 3 days of seeing them.
+the websites question, and never resets your progress. Words you've made progress on keep their status, so if you
+rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3 days of
+seeing them. The first learning words the plugin hands out on your first prompt don't count against you: if you
+haven't seen them yet, setup marks them known along with the rest.
 
 Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (Google requires you to be 18 or older), as a file path or pasted into the extension popup.

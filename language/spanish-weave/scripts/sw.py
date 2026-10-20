@@ -271,13 +271,13 @@ def setup_codex(dry_run):
     print('  Codex never runs a new hook before that. `codex exec` runs stay Spanish-free either way.')
 
 
-KEY_SHAPE = re.compile(r'^[A-Za-z0-9_-]{30,64}$')
+KEY_SHAPE = re.compile(r'^(?:[A-Za-z0-9]{1,8}\.)?[A-Za-z0-9_-]{30,64}$')  # AIza... or the newer AQ.... keys
 
 
 def read_key_file(arg):
     """The key from a file. Never echoes the argument, the path or the contents, since any of them may be the key."""
     path = Path(arg).expanduser()
-    if not path.is_file() and (arg.startswith('AIza') or KEY_SHAPE.match(arg)):
+    if not path.is_file() and (arg.startswith(('AIza', 'AQ.')) or KEY_SHAPE.match(arg)):
         sys.exit('That looks like a key, not a file path; paste the key into the extension popup instead.')
     try:
         key = path.read_text().strip()
@@ -655,6 +655,7 @@ def uninstall(args):
           '      claude plugin uninstall spanish-weave@learning\n'
           '      claude plugin marketplace remove learning   # only if nothing else from that marketplace is installed')
     print('  - the Chrome extension, if you loaded it: open chrome://extensions and click Remove on Spanish Weave')
+    print('  - a Spanish Weave block pasted into claude.ai or ChatGPT settings, if any: delete it there')
     for item in left:
         print(f'  - {item}')
     for path in backups:
@@ -769,6 +770,9 @@ def pause(value):
             state['paused'] = value
         print('Spanish Weave paused: no Spanish in chat or on websites until you resume.' if value else 'Spanish Weave resumed.')
         print(CHROME_PAUSED if value else CHROME_PICKS_UP)
+        if value:
+            print('A Spanish Weave block pasted into claude.ai or ChatGPT settings keeps working (on the phone too) '
+                  'until you remove it there.')
     return run
 
 
