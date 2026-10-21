@@ -73,7 +73,7 @@ pasted block's rules in your own replies.
 
 ## How it works, so you can explain it
 
-- **Word list** (`data/lexicon.csv`): 1,043 Latin American words and phrases in learning order: connectors and
+- **Word list** (`data/lexicon.csv`): 1,135 Latin American words and phrases in learning order: connectors and
   adverbs first (y, pero, entonces, con, sin...), then everyday phrases, nouns, adjectives and verbs, then coding
   words. Each has an English gloss and a sound hint with the stressed syllable in capitals.
 - **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 learning words at once, shaky ones included;

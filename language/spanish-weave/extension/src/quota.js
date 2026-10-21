@@ -36,3 +36,21 @@ export async function countCall(storage, day = localDay(), host = '') {
   if (host) sites[host] = (sites[host] || 0) + 1;
   await storage.set({ [KEY]: { day, count: used.count + 1, sites } });
 }
+
+// Models whose Gemini daily quota is spent ({ model: until ms }), kept in storage because a restarted worker must wait
+// too. A new key starts with none (background.js clears it).
+export const DAILY_KEY = 'dailyQuota';
+
+export async function spentToday(storage, now = Date.now()) {
+  const { [DAILY_KEY]: saved } = await storage.get([DAILY_KEY]);
+  return new Map(Object.entries(saved || {}).filter(([, until]) => Number(until) > now).map(([m, until]) => [m, Number(until)]));
+}
+
+// Writes only what this batch added over what is stored now, so batches running at once keep each other's entries and
+// a key change's reset made meanwhile stands. loaded: the map as this batch read it.
+export async function saveSpent(storage, daily, loaded, now = Date.now()) {
+  const base = await spentToday(storage, now);
+  let changed = false;
+  for (const [m, until] of daily) if (loaded.get(m) !== until) { base.set(m, until); changed = true; }
+  if (changed) await storage.set({ [DAILY_KEY]: Object.fromEntries(base) });
+}

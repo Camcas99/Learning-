@@ -75,6 +75,10 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     casa.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
     await wait(800);
     expect(casa.classList.contains('sw-tip')).toBe(true);
+    // One fixed box outside the page's text shows the word and its gloss, so a clipping container can't hide it.
+    const box = win.document.querySelector('sw-gloss.sw-gloss-on');
+    expect(box.textContent).toBe('casa = house / home · fem. · "KAH-sah"');
+    expect(box.parentElement).toBe(win.document.documentElement);
     expect(spoken).toHaveLength(0);
     casa.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
 

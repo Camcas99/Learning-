@@ -645,8 +645,9 @@ class Scale(Home):
                 self.assertIn(f'the first {n} words of my Spanish Weave list (it starts with y, pero', about)
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
-                # every word is in use, so this budget is 3,900 (about 3,800 at 1,000 known words).
-                self.assertLess(len(brief.encode()), 3900, known)
+                # every word is in use, and the longer 0.3.3 list puts a few more noted words among the learning ones,
+                # so this budget is 4,200 (3,850 to 4,050 at 1,000 known words, depending on which words are learning).
+                self.assertLess(len(brief.encode()), 4200, known)
         # The longest export: just under the band cutoff, every known word is named.
         self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)
 
@@ -891,7 +892,7 @@ class Placement(Home):
         state = swlib.new_state('2026-10-01')
         items = placement.items(state)
         number = lambda pick: [n for n, (_, band) in enumerate(items, 1) if pick(band)]
-        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1040)  # every real word
+        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1140)  # every real word
         self.assertEqual(placement.estimate(state, number(lambda band: True))[0], 0)  # yes to everything is no signal
         half_first = number(lambda band: band == 0)[:4] + number(lambda band: band is None)[:2]
         self.assertEqual(placement.estimate(state, half_first), (40, 4, 2))  # (4/8 - 3/14) / (1 - 3/14) of 100 words
@@ -1039,7 +1040,8 @@ class Unattended(Home):
             out = json.loads(self.run_hook({'session_id': 't', 'transcript_path': str(log), 'prompt': notice}))
             context = out['hookSpecificOutput']['additionalContext']
             self.assertIn('Spanish Weave (Stage 1)', context)
-            self.assertNotIn('Recall:', context)
+            self.assertNotIn('open it with "Recall:', context)
+            self.assertIn('No recall cue in this reply', context)  # models otherwise repeat the last cue
         self.assertEqual(swlib.read_json(self.home / 'sw' / 'sessions.json')['t']['n'], 1)
         self.assertIsNone(weave.prompt_source('What does a <task-notification> tag mean?'))  # typed: only a lead counts
         self.assertIsNone(weave.prompt_source('Can you explain <scheduled-task > tags?'))
@@ -1966,7 +1968,26 @@ if __name__ == '__main__':
 
 
 class UpstreamPorts(unittest.TestCase):
-    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2."""
+    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2 and 0.3.3."""
+
+    def test_gap_words_are_listed_and_the_first_words_stay(self):
+        es = [w['es'] for w in swlib.load_lexicon()]
+        for word in ('sino', 'tampoco', 'tan', 'aunque', 'no funciona', 'el sistema', 'desplegar', 'chistoso'):
+            self.assertIn(word, es)
+        self.assertLess(es.index('sino'), 100)  # the pero note points to it
+        self.assertEqual(es[:5], ['y', 'pero', 'entonces', 'con', 'sin'])
+        self.assertIn('tan', swlib.UNMEASURABLE)  # "a tan coat" is English
+
+    def test_export_can_copy_the_claude_ai_block(self):
+        import sw
+        from unittest import mock
+        with mock.patch.object(sw.shutil, 'which', lambda cmd: '/usr/bin/pbcopy' if cmd == 'pbcopy' else None), \
+                mock.patch.object(sw.subprocess, 'run') as run:
+            self.assertTrue(sw.copy_to_clipboard('block'))
+        self.assertEqual(run.call_args.args[0], ['pbcopy'])
+        self.assertEqual(run.call_args.kwargs['input'], 'block')
+        with mock.patch.object(sw.shutil, 'which', lambda cmd: None):
+            self.assertFalse(sw.copy_to_clipboard('block'))  # no clipboard tool: the printed block still works
 
     def test_new_sense_guards_appear_with_their_words(self):
         import weave

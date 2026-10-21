@@ -52,6 +52,7 @@
     </label>
     <label class="row"><span>Model</span><select id="model"></select></label>
     <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
+    <label class="row" id="claudeRow" hidden><span>Claude key</span><input type="password" id="claudeKey" placeholder="sk-ant-…" autocomplete="off"></label>
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
   </section>
@@ -60,7 +61,7 @@
     <label class="row check"><span>Color noun gender</span><input type="checkbox" id="genderColors"></label>
     <p class="small">Alt+click or Alt+Enter on a Spanish word to hear it (Option on a Mac). Chrome may keep a page silent until you've clicked on it.</p>
   </section>
-  <p class="small">Sites where it's on send readable page text to Gemini with your key. With a free key Google may use it to improve its AI and people may review it. Forms, links, code and editable text are skipped.</p>
+  <p class="small" id="privacy">Sites where it's on send readable page text to Gemini with your key. With a free key Google may use it to improve its AI and people may review it. Forms, links, code and editable text are skipped.</p>
   <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>
 </body>

@@ -191,6 +191,8 @@ What's kept where, and what gets sent:
   with your word lists and stage. With a free key, Google may use that text to improve its products and AI, and
   human reviewers may read it; Google asks free users not to send personal or sensitive information. (In the EEA,
   the UK and Switzerland, Google treats free keys like paid ones.)
+- **To Anthropic instead, only if you choose it:** if you pick Claude Haiku as the model in the extension popup and
+  paste a paid Claude API key there, that same page text goes to Anthropic's API instead of Gemini.
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
 - **In Chrome:** the extension keeps its settings, your key and a small cache of swapped words with a few words of
   page text around each, in Chrome's own storage. Removing the extension deletes them.

@@ -264,8 +264,93 @@ export function keepsMeaning(original, gloss) {
     .some((meaning) => meaning.trim() && NEGATIVE.test(meaning) === negative);
 }
 
+// The English a swap replaces must be one of the word's glosses, a listed synonym, or a plain inflection of one, so
+// a model slip like "to start" -> entonces is dropped instead of shown (from French Weave by Jackie Oliver, MIT).
+const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
+const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
+  .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+// Everyday English variants of a gloss, including the ones the prompt asks the model to use ("big"/"large"/"huge"
+// -> grande, "only"/"alone"/"single" -> solo, "other"/"another" -> otro).
+export const SYNONYMS = {
+  big: ['large', 'huge'],
+  only: ['alone', 'single', 'just'],
+  other: ['another', 'else'],
+  'i think that': ['i think'],
+  okay: ['ok'],
+  'thank you': ['thanks'],
+  'a little': ['a bit', 'a little bit'],
+  'a lot': ['lots', 'a lot of', 'lots of', 'much', 'so much'],
+  much: ['so much'],
+  maybe: ['perhaps', 'possibly'],
+  also: ['too', 'as well'],
+  'too much': ['too many'],
+  difficult: ['hard'],
+  actually: ['in fact'],
+  but: ['however'],
+  'there is': ["there's", 'there are'],
+  'there are': ["there's", 'there is'],
+  "it's": ['it is', 'this is', "that's", 'that is'],
+  hello: ['hi'],
+  'of course': ['sure', 'certainly'],
+  so: ['therefore', 'so then'],
+  ready: ['all set'],
+};
+
+const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']];
+
+// The English forms a gloss matches exactly (each meaning, without a leading article or "to", and its synonyms);
+// verbs: those from a "to ..." meaning, which take endings instead of a plural.
+export function glossForms(en, synonyms = SYNONYMS) {
+  const forms = new Set();
+  const verbs = new Set();
+  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
+    const g = cleanEn(alt);
+    if (!g) continue;
+    const verb = /^to\s/.test(g);
+    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
+      for (const form of [f, ...(synonyms[f] || [])]) {
+        forms.add(form);
+        if (verb) verbs.add(form);
+      }
+    }
+  }
+  return { forms, verbs };
+}
+
+// How the English matches a gloss: 'exact' (a meaning or a synonym), 'plural' (a meaning that is not a verb, plus -s,
+// -es or -ies: "problems" for "the problem"), 'inflected' (a verb meaning with an ending: "fixed" for "to fix"), or ''.
+export function glossMatch(original, en, synonyms = SYNONYMS) {
+  const { forms, verbs } = glossForms(en, synonyms);
+  const t = cleanEn(original);
+  if (!t) return '';
+  let found = '';
+  for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
+    if (forms.has(c)) return 'exact';
+    for (const [suffix, stem] of SUFFIXES) {
+      const base = c.slice(0, -suffix.length) + stem;
+      if (!c.endsWith(suffix) || !forms.has(base)) continue;
+      if (suffix.endsWith('s') && !verbs.has(base)) found ||= 'plural';
+      else found = 'inflected';
+    }
+  }
+  return found;
+}
+
+// A plural English noun ("problems") must not show the singular list word (el problema). The swap stays only when the
+// list has the plural too: an entry glossed with exactly that English whose word starts like the singular one.
+function pluralEntry(idx, hit, o) {
+  const bare = (w) => normalizeEs(exactEs(w).replace(ARTICLE_RE, ''));
+  const stem = bare(hit.canon).slice(0, -1);
+  if (stem.length < 3) return null;
+  for (const entry of idx.exact.values()) {
+    if (entry !== hit && bare(entry.canon).startsWith(stem) && glossMatch(o, entry.en) === 'exact') return entry;
+  }
+  return null;
+}
+
 // Fail closed: keep only swaps whose Spanish is on the list (the plugin's word state, else the level's bundled list)
-// and that keep the English's meaning (keepsMeaning).
+// and that keep the English's meaning (glossMatch, keepsMeaning).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // Adds gn (noun gender) and n (usage note) when the word has them.
 // ALL-CAPS English (a heading, a shouted word, an acronym) stays English; "OK" is fine.
@@ -279,8 +364,15 @@ export function validateSwaps(level, swaps, sharedWords) {
     if (!s || typeof s.o !== 'string' || typeof s.es !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.es.trim() || allCaps(o)) continue;
-    const hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
+    let hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
     if (!hit || !keepsMeaning(o, hit.en)) continue;
+    const match = glossMatch(o, hit.en);
+    if (!match) continue;
+    if (match === 'plural' && !(hit = pluralEntry(idx, hit, o))) continue;
+    // "my problem" -> "my el problema", "the answer" -> "the la respuesta": when the English article (or a possessive)
+    // stays outside the swap, use the bare noun.
+    const bare = exactEs(hit.canon).replace(ARTICLE_RE, '');
+    if (bare !== exactEs(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     out.push({
       o,
       es: matchCase(hit.canon, o),

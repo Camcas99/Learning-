@@ -54,6 +54,7 @@ import platform
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 
@@ -491,7 +492,6 @@ def state_fix(error):
 def check(_args):
     """Prints one line per check; exits 1 if any failed."""
     import struct
-    import subprocess
     home, ok = swlib.home(), True
 
     def report(passed, what):
@@ -798,8 +798,24 @@ def export_cmd(args):
         block = export.claude_ai(state)
         print(f'claude.ai > Settings > "Instructions for Claude" (older layouts: personal preferences). Replace the old '
               f'Spanish Weave block ({len(block)} characters):\n\n{block}')
+        if args.copy and copy_to_clipboard(block):
+            print('\n(Also copied to your clipboard, ready to paste.)')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
+
+
+def copy_to_clipboard(text):
+    """Best effort: pbcopy (macOS), wl-copy or xclip (Linux). True when one of them took the text. From French Weave
+    by Jackie Oliver (MIT)."""
+    for cmd in (['pbcopy'], ['wl-copy'], ['xclip', '-selection', 'clipboard']):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, check=True, timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
 
 
 def log_chat_day(_args):
@@ -1128,6 +1144,7 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
                    type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
     p.set_defaults(run=export_cmd)

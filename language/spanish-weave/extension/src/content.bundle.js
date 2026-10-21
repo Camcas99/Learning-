@@ -282,7 +282,7 @@ return { hashKey };
 // ---- settings.js
 const m_settings = (() => {
 'use strict';
-// Preferences, stored under chrome.storage.local["settings"]. The Gemini key is stored apart from these, so
+// Preferences, stored under chrome.storage.local["settings"]. The Gemini and Claude keys are stored apart from these, so
 // the config pages get never carries it.
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -306,7 +306,7 @@ function cleanSettings(s = {}) {
   if (Number.isFinite(s.newSitesAt) && s.newSitesAt >= 0) d.newSitesAt = s.newSitesAt;
   if (typeof s.speak === 'boolean') d.speak = s.speak;
   if (typeof s.genderColors === 'boolean') d.genderColors = s.genderColors;
-  if (['gemini-3.8-flash', 'gemini-3.5-flash-lite'].includes(s.model)) d.model = s.model;
+  if (['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'claude-haiku-5-5'].includes(s.model)) d.model = s.model;
   if (Number.isInteger(s.levelOverride) && s.levelOverride >= 0 && s.levelOverride <= 4) d.levelOverride = s.levelOverride;
   for (const [host, enabled] of Object.entries(s.siteOverrides || {})) {
     if (/^(?=.{1,253}$)[a-z0-9]+(?:[a-z0-9.-]*[a-z0-9])?$/.test(host) && typeof enabled === 'boolean') d.siteOverrides[host] = enabled;
@@ -774,8 +774,93 @@ function keepsMeaning(original, gloss) {
     .some((meaning) => meaning.trim() && NEGATIVE.test(meaning) === negative);
 }
 
+// The English a swap replaces must be one of the word's glosses, a listed synonym, or a plain inflection of one, so
+// a model slip like "to start" -> entonces is dropped instead of shown (from French Weave by Jackie Oliver, MIT).
+const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
+const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
+  .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+// Everyday English variants of a gloss, including the ones the prompt asks the model to use ("big"/"large"/"huge"
+// -> grande, "only"/"alone"/"single" -> solo, "other"/"another" -> otro).
+const SYNONYMS = {
+  big: ['large', 'huge'],
+  only: ['alone', 'single', 'just'],
+  other: ['another', 'else'],
+  'i think that': ['i think'],
+  okay: ['ok'],
+  'thank you': ['thanks'],
+  'a little': ['a bit', 'a little bit'],
+  'a lot': ['lots', 'a lot of', 'lots of', 'much', 'so much'],
+  much: ['so much'],
+  maybe: ['perhaps', 'possibly'],
+  also: ['too', 'as well'],
+  'too much': ['too many'],
+  difficult: ['hard'],
+  actually: ['in fact'],
+  but: ['however'],
+  'there is': ["there's", 'there are'],
+  'there are': ["there's", 'there is'],
+  "it's": ['it is', 'this is', "that's", 'that is'],
+  hello: ['hi'],
+  'of course': ['sure', 'certainly'],
+  so: ['therefore', 'so then'],
+  ready: ['all set'],
+};
+
+const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']];
+
+// The English forms a gloss matches exactly (each meaning, without a leading article or "to", and its synonyms);
+// verbs: those from a "to ..." meaning, which take endings instead of a plural.
+function glossForms(en, synonyms = SYNONYMS) {
+  const forms = new Set();
+  const verbs = new Set();
+  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
+    const g = cleanEn(alt);
+    if (!g) continue;
+    const verb = /^to\s/.test(g);
+    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
+      for (const form of [f, ...(synonyms[f] || [])]) {
+        forms.add(form);
+        if (verb) verbs.add(form);
+      }
+    }
+  }
+  return { forms, verbs };
+}
+
+// How the English matches a gloss: 'exact' (a meaning or a synonym), 'plural' (a meaning that is not a verb, plus -s,
+// -es or -ies: "problems" for "the problem"), 'inflected' (a verb meaning with an ending: "fixed" for "to fix"), or ''.
+function glossMatch(original, en, synonyms = SYNONYMS) {
+  const { forms, verbs } = glossForms(en, synonyms);
+  const t = cleanEn(original);
+  if (!t) return '';
+  let found = '';
+  for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
+    if (forms.has(c)) return 'exact';
+    for (const [suffix, stem] of SUFFIXES) {
+      const base = c.slice(0, -suffix.length) + stem;
+      if (!c.endsWith(suffix) || !forms.has(base)) continue;
+      if (suffix.endsWith('s') && !verbs.has(base)) found ||= 'plural';
+      else found = 'inflected';
+    }
+  }
+  return found;
+}
+
+// A plural English noun ("problems") must not show the singular list word (el problema). The swap stays only when the
+// list has the plural too: an entry glossed with exactly that English whose word starts like the singular one.
+function pluralEntry(idx, hit, o) {
+  const bare = (w) => normalizeEs(exactEs(w).replace(ARTICLE_RE, ''));
+  const stem = bare(hit.canon).slice(0, -1);
+  if (stem.length < 3) return null;
+  for (const entry of idx.exact.values()) {
+    if (entry !== hit && bare(entry.canon).startsWith(stem) && glossMatch(o, entry.en) === 'exact') return entry;
+  }
+  return null;
+}
+
 // Fail closed: keep only swaps whose Spanish is on the list (the plugin's word state, else the level's bundled list)
-// and that keep the English's meaning (keepsMeaning).
+// and that keep the English's meaning (glossMatch, keepsMeaning).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // Adds gn (noun gender) and n (usage note) when the word has them.
 // ALL-CAPS English (a heading, a shouted word, an acronym) stays English; "OK" is fine.
@@ -789,8 +874,15 @@ function validateSwaps(level, swaps, sharedWords) {
     if (!s || typeof s.o !== 'string' || typeof s.es !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.es.trim() || allCaps(o)) continue;
-    const hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
+    let hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
     if (!hit || !keepsMeaning(o, hit.en)) continue;
+    const match = glossMatch(o, hit.en);
+    if (!match) continue;
+    if (match === 'plural' && !(hit = pluralEntry(idx, hit, o))) continue;
+    // "my problem" -> "my el problema", "the answer" -> "the la respuesta": when the English article (or a possessive)
+    // stays outside the swap, use the bare noun.
+    const bare = exactEs(hit.canon).replace(ARTICLE_RE, '');
+    if (bare !== exactEs(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     out.push({
       o,
       es: matchCase(hit.canon, o),
@@ -840,7 +932,7 @@ const ZERO_SPANISH = [
 function isZeroSpanish(text) {
   return ZERO_SPANISH.some((re) => re.test(text));
 }
-return { MAX_BUILT_LEVEL, resolveLevel, L1_WORDS, L2_EXTRA, L2_WORDS, wordsForLevel, normalizeEs, exactEs, genderOf, matchCase, keepsMeaning, allCaps, validateSwaps, sentenceCount, capSwaps, wordCount, isZeroSpanish };
+return { MAX_BUILT_LEVEL, resolveLevel, L1_WORDS, L2_EXTRA, L2_WORDS, wordsForLevel, normalizeEs, exactEs, genderOf, matchCase, keepsMeaning, SYNONYMS, glossForms, glossMatch, allCaps, validateSwaps, sentenceCount, capSwaps, wordCount, isZeroSpanish };
 })();
 // ---- page.js
 const m_page = (() => {
@@ -928,6 +1020,39 @@ function speak(text, { synth = globalThis.speechSynthesis, Utterance = globalThi
 }
 return { RATE, pickVoice, speak };
 })();
+// ---- pick.js
+const m_pick = (() => {
+'use strict';
+// Which pending passages the next swaps request carries (content.js). No chrome APIs. From French Weave by Jackie
+// Oliver (MIT).
+const BATCH_SIZE = 8; // the worker takes at most 8 passages a request
+
+// How far an element is from the window, in pixels (0 when any of it shows); top breaks ties, so on-screen passages
+// go top to bottom.
+function placeOf(el, viewHeight) {
+  const r = el.getBoundingClientRect();
+  return { gap: r.bottom < 0 ? -r.bottom : r.top > viewHeight ? r.top - viewHeight : 0, top: r.top };
+}
+
+// pending: Map<key, { text, els: Set }>; sent: keys already out; keyOf(el): the key the element was last read as.
+// Nearest the window first, not first come: on an infinite timeline the oldest pending passages are the ones that
+// scrolled away. A passage whose elements have all left the page (the timeline unmounts what scrolled past) or now
+// show other text is dropped from pending: if it comes back, it is asked for again then, or painted at once from the
+// page's memo when its answer already came.
+function pickBatch(pending, sent, keyOf, viewHeight, size = BATCH_SIZE) {
+  const ranked = [];
+  for (const [key, p] of pending) {
+    if (sent.has(key)) continue;
+    for (const el of p.els) if (!el.isConnected || keyOf(el) !== key) p.els.delete(el);
+    if (!p.els.size) { pending.delete(key); continue; }
+    const places = [...p.els].map((el) => placeOf(el, viewHeight));
+    ranked.push({ key, text: p.text, gap: Math.min(...places.map((x) => x.gap)), top: Math.min(...places.map((x) => x.top)) });
+  }
+  ranked.sort((a, b) => a.gap - b.gap || a.top - b.top);
+  return ranked.slice(0, size).map(({ key, text }) => ({ key, text }));
+}
+return { BATCH_SIZE, placeOf, pickBatch };
+})();
 // ---- content.js
 (() => {
 'use strict';
@@ -940,6 +1065,7 @@ const { siteEnabled, hasSiteAccess } = m_settings;
 const { localDay } = m_hostsource;
 const { selector, readable, textRoot } = m_page;
 const { speak } = m_speech;
+const { pickBatch } = m_pick;
 
 let config = null;
 let observer = null;
@@ -959,6 +1085,10 @@ const failures = new Map(); // text key -> failed model attempts; retried with b
 // Kept across restarts; cleared when it gets large.
 const painted = new Set();
 const MAX_RETRIES = 3;
+// Batches this page has out at once. The rest wait here rather than in the worker's queue, so each new batch is made
+// of the passages on screen or nearest to it at that moment (pick.js), not of ones that scrolled away meanwhile.
+const MAX_BATCHES_OUT = 2;
+let batchesOut = 0;
 const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
 // Text that keeps changing (a live ticker, a reply streaming in, a page fighting the swaps) would cost a model call per
 // version. After CHURN_MAX changes within CHURN_MS, an element waits until its text has held still for SETTLE_MS.
@@ -990,10 +1120,33 @@ function record(span, event) {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
+// The gloss is one box for the whole page, fixed to the viewport and placed over the word, so a container with
+// overflow: hidden (quoted posts on X, comment threads) can't clip or hide it the way a box inside the word could. It
+// sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers (the
+// word's aria-label carries the gloss). From French Weave by Jackie Oliver (MIT).
+let tipBox = null;
+const TIP_GAP = 4;
+function placeTip(span) {
+  if (!tipBox?.isConnected) {
+    tipBox = document.createElement('sw-gloss');
+    tipBox.className = 'sw-gloss';
+    tipBox.setAttribute('aria-hidden', 'true');
+    document.documentElement.append(tipBox);
+  }
+  tipBox.textContent = `${span.getAttribute('data-es') || ''} = ${span.getAttribute('data-tip') || ''}`;
+  tipBox.classList.add('sw-gloss-on');
+  const word = span.getBoundingClientRect();
+  const box = tipBox.getBoundingClientRect();
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const top = word.top - box.height - TIP_GAP >= 0 ? word.top - box.height - TIP_GAP : word.bottom + TIP_GAP;
+  tipBox.style.left = `${Math.max(TIP_GAP, Math.min(word.left, width - box.width - TIP_GAP))}px`;
+  tipBox.style.top = `${top}px`;
+}
 // The gloss appears only after a short dwell; reaching it counts as a peek (the reader needed the meaning).
 function hideTip() {
   clearTimeout(tipTimer); tipTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.sw-tip`)) el.classList.remove('sw-tip');
+  tipBox?.classList.remove('sw-gloss-on');
 }
 function armTip(e) {
   const span = swapFor(e);
@@ -1003,6 +1156,7 @@ function armTip(e) {
     tipTimer = null;
     if (!span.isConnected || span.classList.contains('sw-en')) return;
     span.classList.add('sw-tip');
+    placeTip(span);
     if (config.settings.speak) say(span);
     if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
   }, TIP_DELAY_MS);
@@ -1050,15 +1204,18 @@ function consider(el) {
 }
 async function flush() {
   timer = null;
-  if (!on()) return;
+  if (!on() || batchesOut >= MAX_BATCHES_OUT) return; // the reply to one out schedules the next
   const gen = generation;
-  const items = [...pending].filter(([key]) => !inflight.has(key)).slice(0, 8).map(([key, p]) => ({ key, text: p.text }));
+  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0);
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
+  batchesOut++;
   let result;
   try { result = await send({ type: 'swaps', revision: config.revision, items }); }
   catch { result = { error: 'Extension unavailable' }; }
-  if (gen !== generation || !on()) return;
+  if (gen !== generation) return; // stop() reset the count
+  batchesOut--;
+  if (!on()) return;
   for (const i of items) {
     inflight.delete(i.key);
     const p = pending.get(i.key);
@@ -1154,6 +1311,7 @@ function stop() {
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null;
   pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  batchesOut = 0;
   for (const el of tracked) { revert(el); keys.delete(el); }
   tracked.clear(); visibleWords.clear();
 }

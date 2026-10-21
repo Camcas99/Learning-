@@ -13,7 +13,10 @@ New here? Read [START-HERE.md](START-HERE.md). Claude sessions picking this up: 
 Adapted from [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver (MIT license): same
 design and code, with a new Spanish word list, sound hints, grammar rules and prompts. Version 0.3.2 also ports
 later French Weave improvements: wider default-off sites, a sensitive-title guard, no swaps inside contractions or
-ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses.
+ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses. Version 0.3.3 adds
+92 more words (sino, tampoco, aunque, no funciona...), a check that each web swap matches its word's meaning, faster
+swaps while scrolling, a wait for Gemini's daily quota, a hover gloss pages can't clip, Claude Haiku as an optional
+model, and a clipboard copy of the claude.ai export.
 
 ## Set up
 
@@ -56,7 +59,7 @@ Then you do up to four things (your agent tells you when):
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/spanish-weave:export` (or `/spanish-weave:export --chatgpt`)
-and paste what it prints:
+and paste what it prints (on a Mac, or Linux with wl-copy or xclip, the claude.ai block is also put on your clipboard):
 - claude.ai: Settings > "Instructions for Claude" (older layouts call it "What personal preferences should Claude
   consider in responses?"). Replace any older Spanish Weave block.
 - ChatGPT: Settings > Personalization: one block in the "Custom instructions" box, the other in "More about you"
@@ -106,7 +109,11 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
   Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
   messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
   on. Swaps are chosen by Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more
-  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere.
+  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere. When Google's
+  own daily free quota runs out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is
+  asked until then. With a paid Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it
+  makes fewer wrong swaps, Anthropic bills it per use, and it falls back to Gemini Flash-Lite when a Gemini key is
+  saved too.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -267,7 +274,7 @@ z and soft c sound like s.
 
 ## How words advance
 
-Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,000 Spanish words and short phrases in
+Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,100 Spanish words and short phrases in
 frequency/usefulness order (connectors and adverbs first, then everyday phrases, nouns, adjectives and verbs, and
 coding words at the end), each with a gloss and a sound hint.
 
@@ -352,9 +359,12 @@ What Spanish Weave keeps, and what it sends:
   and stage. With a free-tier key, Google may use that text to improve its products, human reviewers may read it,
   and Google asks that no personal or sensitive information be sent; in the EEA, UK and Switzerland the paid-tier
   data terms apply.
+- **Sent to Anthropic's API with each page instead**, only if you pick Claude Haiku in the popup and paste a Claude
+  key there: the same page text, word lists and stage, under Anthropic's API terms.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
-- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key, a cache of
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if you
+  pasted one), a cache of
   chosen swaps with a few words of page text around each, and today's count of model calls for each site. Removing the extension deletes them; deleting
   `~/.spanish-weave` doesn't.
 

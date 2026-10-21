@@ -3,7 +3,7 @@ export const MODELS = {
   'gemini-3.8-flash': 'Gemini 3.8 Flash',
   'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
 };
-export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite' };
+export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite', 'claude-haiku-5-5': 'gemini-3.5-flash-lite' };
 export const THINKING_LEVEL = 'low';
 export const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
@@ -20,7 +20,7 @@ export function buildRequest({ system, user, schema, thinkingLevel = THINKING_LE
 }
 
 // Returns Map<id, swaps[]> from the model's JSON. Throws on HTTP error, timeout, or unparseable output.
-export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000 }) {
+export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000, now = Date.now }) {
   const res = await fetchImpl(`${API_BASE}${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -30,16 +30,51 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
   if (!res.ok) {
     const error = new Error(`HTTP ${res.status}`);
     error.status = res.status;
-    // 429 bodies carry RetryInfo ("retryDelay": "36s"); fall back to Retry-After.
+    // 429 bodies carry RetryInfo ("retryDelay": "36s"); fall back to Retry-After. A free-tier daily quota says hours,
+    // so honor up to a day instead of retrying every 10 minutes.
     let detail = '';
     try { detail = await res.text(); } catch { /* status alone is enough */ }
     const delay = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail)?.[1] || res.headers?.get?.('retry-after'));
-    if (delay > 0) error.retryAfterMs = Math.min(delay, 600) * 1000;
+    if (delay > 0) error.retryAfterMs = Math.min(delay, 86400) * 1000;
+    if (res.status === 429 && dailyQuota(detail)) {
+      // Google's retryDelay for a per-day quota counts down to midnight UTC, but the quota resets at midnight Pacific,
+      // so a spent day waits until just after the next Pacific midnight, or Google's time if that is sooner.
+      error.daily = true;
+      error.retryAfterMs = Math.min(error.retryAfterMs || Infinity, dailyReset(now()) - now());
+    }
     throw error;
   }
   const data = await res.json();
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
   return parseSwapsResponse(text);
+}
+
+// Per-day Gemini quotas reset at midnight Pacific time; calls start again this long after it. (The daily-quota handling
+// is from French Weave by Jackie Oliver, MIT.)
+export const DAILY_RESET_ZONE = 'America/Los_Angeles';
+export const DAILY_RESET_SLACK_MS = 60000;
+const zoneParts = new Intl.DateTimeFormat('en-US', { timeZone: DAILY_RESET_ZONE, hourCycle: 'h23',
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+// Pacific wall-clock time at ms, read as if it were UTC; minus ms, that is the zone's offset then (DST included).
+function wallClock(ms) {
+  const p = Object.fromEntries(zoneParts.formatToParts(ms).map(({ type, value }) => [type, Number(value)]));
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+}
+// The first Pacific midnight after ms, plus the slack. Midnight is never skipped or repeated there (DST moves 2 AM).
+export function dailyReset(ms) {
+  const wall = new Date(wallClock(ms));
+  const midnight = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + 1);
+  const guess = midnight - (wallClock(midnight) - midnight);
+  return midnight - (wallClock(guess) - guess) + DAILY_RESET_SLACK_MS;
+}
+
+// Whether a 429 body names a per-day quota (google.rpc.QuotaFailure, quotaId
+// "GenerateRequestsPerDayPerProjectPerModel-FreeTier"). Only this yes or no is kept, never the body's text.
+export function dailyQuota(detail) {
+  let body = null;
+  try { body = JSON.parse(detail); } catch { return false; }
+  const details = Array.isArray(body?.error?.details) ? body.error.details : [];
+  return details.some((d) => (Array.isArray(d?.violations) ? d.violations : []).some((v) => /PerDay/.test(String(v?.quotaId || ''))));
 }
 
 export function parseSwapsResponse(text) {
