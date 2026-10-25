@@ -736,12 +736,13 @@ def mark(kind):
                         found = swlib.find(state, phrase)
                         if found:
                             break
-                    if found and found['status'] == 'queue':
-                        # "donde" typed for dónde, a word in use: the one being learned, not its unaccented twin.
-                        twin = next((w for w in state['words'] if w['status'] != 'queue'
+                    if (kind == 'asked' and found and found['status'] == 'queue' and swlib.fold(phrase) == swlib.key(phrase)):
+                        # "learn donde" typed without the accent while dónde is in use: the word being learned, not its
+                        # unaccented twin from the queue. A typed accent, or known, keeps the exact spelling.
+                        twin = next((w for w in state['words'] if w['status'] != 'queue' and w['es'] != found['es']
                                      and swlib.fold(w['es']) == swlib.fold(found['es'])), None)
-                        found = twin or found
-                        phrase = found['es'] if twin else phrase
+                        if twin:
+                            found, phrase = twin, twin['es']
                     if found and swlib.apply_event(state, phrase, kind):
                         done.append(found['es'])  # the list's spelling, accents included: "tambien" -> también
                     else:

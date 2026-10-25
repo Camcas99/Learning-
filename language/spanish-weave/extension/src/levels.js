@@ -272,7 +272,7 @@ export function keepsMeaning(original, gloss) {
 // a model slip like "to start" -> entonces is dropped instead of shown (from French Weave by Jackie Oliver, MIT).
 // Contractions are spelled out first, so "isn't", "is not" and "it's not" compare alike.
 const SPELL_OUT = [[/\bcan't\b/g, 'can not'], [/\bcannot\b/g, 'can not'], [/\bwon't\b/g, 'will not'], [/n't\b/g, ' not'],
-  [/\bi'm\b/g, 'i am'], [/\blet's\b/g, 'let us'], [/\b(it|that|there|here|what|who|he|she|where)'s\b/g, '$1 is'],
+  [/\bi'm\b/g, 'i am'], [/\blet's\b/g, 'let us'], [/\b(it|there|here|what|who|he|she|where)'s\b/g, '$1 is'],
   [/'re\b/g, ' are'], [/'ve\b/g, ' have'], [/'ll\b/g, ' will'], [/'d\b/g, ' would']];
 const cleanEn = (s) => SPELL_OUT.reduce((t, [re, to]) => t.replace(re, to), String(s).toLowerCase().replace(/[’‘`]/g, "'")
   .replace(/\(.*?\)/g, ' ').replace(/[^\p{L}\p{N}' -]+/gu, ' ').replace(/(\p{L})-(\p{L})/gu, '$1 $2').replace(/-/g, ' '))
@@ -297,7 +297,7 @@ export const SYNONYMS = {
   but: ['however'],
   'there is': ['there are'],
   'there are': ['there is'],
-  'it is': ['this is', 'that is'],
+  'it is': ['this is', 'that is', "that's"],
   hello: ['hi'],
   'of course': ['sure', 'certainly'],
   so: ['therefore', 'so then'],
@@ -337,43 +337,50 @@ function stems(word) {
   return out;
 }
 
-// The English forms a gloss matches exactly (each meaning, without a leading "the" or "to", without a leading "it" in
-// a phrase like "it doesn't work", and its synonyms); verbs: the "to ..." meanings and the bare meanings after one in
-// the same gloss ("to do / make"), which take endings instead of a plural.
-export function glossForms(en, synonyms = SYNONYMS) {
+// The English forms a gloss matches exactly (each meaning, without a leading "the" or "to", and its synonyms), plus a
+// few shortened phrase forms: "does not work" for "it does not work", "worth it" for "it is worth it", "i think" for
+// "i think that". verbs: for a verb entry (isVerb), the "to ..." meanings and the bare meanings after one in the same
+// gloss ("to do / make"), which take endings instead of a plural.
+export function glossForms(en, synonyms = SYNONYMS, isVerb = true) {
   const forms = new Set();
   const verbs = new Set();
   let verb = false;
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
     if (!g) continue;
-    verb = /^to\s/.test(g) || (verb && !/^(the|a|an)\s/.test(g));
-    const variants = [g, g.replace(/^(?:the|to)\s+/, '')];
-    for (const f of [...variants]) {
-      if (/^it\s\S/.test(f)) variants.push(f.replace(/^it\s/, ''));      // "it does not work" -> "does not work"
-      if (/^it is\s\S/.test(f)) variants.push(f.replace(/^it is\s/, '')); // "it is worth it" -> "worth it"
-      if (/\sthat$/.test(f)) variants.push(f.replace(/\sthat$/, ''));      // "i think that" -> "i think"
-    }
-    for (const f of variants) {
-      for (const form of [f, ...(synonyms[f] || []).map(cleanEn)]) {
-        forms.add(form);
-        if (verb) verbs.add(form);
-      }
+    verb = isVerb && (/^to\s/.test(g) || (verb && !/^(the|a|an)\s/.test(g)));
+    const add = (form) => { forms.add(form); if (verb) verbs.add(form); };
+    for (const f of new Set([g, g.replace(/^(?:the|to)\s+/, '')])) {
+      for (const form of [f, ...(synonyms[f] || []).map(cleanEn)]) add(form);
+      // Shortened forms add no synonyms, and never leave a lone function word or adjective ("not", "possible", "so").
+      const words = (x) => x.split(' ').length;
+      if (/^it\s\S/.test(f) && !/^it is\s/.test(f)) add(f.replace(/^it\s/, ''));                 // it does not work
+      if (/^it is\s\S+\s\S/.test(f) && !/^it is not\s/.test(f)) add(f.replace(/^it is\s/, '')); // it is worth it
+      if (/^it is\s/.test(f)) add(f.replace(/^it\s/, ''));                                         // it is not -> is not
+      if (/^(i|it)\s.*\sthat$/.test(f) && words(f) >= 3) add(f.replace(/\sthat$/, ''));            // i think that
     }
   }
   return { forms, verbs };
 }
 
+// A list entry that is a verb: its first word is an infinitive ("arreglar", "darse cuenta"), so a "to ..." gloss
+// takes endings. "a decir verdad" (to tell the truth) is a set phrase, not a verb.
+const INFINITIVE = /^\p{L}*(?:ar|er|ir|ír)(?:se|lo|la|le)?(?:\s|$)/u;
+export const isVerbEntry = (es) => INFINITIVE.test(exactEs(es).replace(ARTICLE_RE, ''));
+
 // How the English matches a gloss: 'exact' (a meaning or a synonym), 'plural' (a meaning that is not a verb, plus -s,
 // -es or -ies: "problems" for "the problem"), 'inflected' (a verb meaning with an ending: "fixed" for "to fix",
 // "looking for" for "to look for"), or ''. A leading "the", "a" or "an" in the English is dropped for nouns; a leading
 // "to" only for verbs ("to work" is not el trabajo).
-export function glossMatch(original, en, synonyms = SYNONYMS) {
-  const { forms, verbs } = glossForms(en, synonyms);
+export function glossMatch(original, en, synonyms = SYNONYMS, isVerb = true) {
+  const { forms, verbs } = glossForms(en, synonyms, isVerb);
   const t = cleanEn(original);
   if (!t) return '';
   const candidates = [{ c: t, verbOnly: false }];
-  if (/^(the|a|an)\s/.test(t)) candidates.push({ c: t.replace(/^(the|a|an)\s+/, ''), verbOnly: false });
+  // "a little", "a bit", "a lot", "a few" are amounts, not an article and a noun: "a little" is never "little" (pequeño).
+  if (/^(the|a|an)\s/.test(t) && !/^an?\s(little|bit|lot|few|while|couple)\b/.test(t)) {
+    candidates.push({ c: t.replace(/^(the|a|an)\s+/, ''), verbOnly: false });
+  }
   if (/^to\s/.test(t)) candidates.push({ c: t.replace(/^to\s+/, ''), verbOnly: true });
   let found = '';
   for (const { c, verbOnly } of candidates) {
@@ -418,7 +425,7 @@ export function validateSwaps(level, swaps, sharedWords) {
     if (!o || !s.es.trim() || allCaps(o)) continue;
     let hit = idx.exact.get(exactEs(s.es)) || idx.folded.get(normalizeEs(s.es));
     if (!hit || !keepsMeaning(o, hit.en)) continue;
-    const match = glossMatch(o, hit.en);
+    const match = glossMatch(o, hit.en, SYNONYMS, isVerbEntry(hit.word || hit.canon));
     if (!match) continue;
     if (match === 'plural' && !(hit = pluralEntry(idx, hit, o))) continue;
     // "my problem" -> "my el problema", "the answer" -> "the la respuesta": when the English article (or a possessive)

@@ -1,6 +1,6 @@
 # Spanish Weave level 37 of 46 (Stage 4)
 
-Learning: 25 words from the [Spanish Weave list](../data/lexicon.csv). Known: the words of levels 1 to 36. When these feel easy, paste [level 38](level-38.md) instead.
+Learning: 25 words. Known: the words of levels 1 to 36. When these feel easy, paste [level 38](level-38.md) instead.
 
 ## claude.ai
 

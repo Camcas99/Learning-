@@ -53,6 +53,7 @@ GUARDS = [
     (('muy', 'mucho'), 'muy before an adjective or adverb, "very much" is mucho'),
     (('si', 'sí'), 'si is if, sí is yes'),
     (('aquí',), 'aquí never for "here\'s"'),
+    (('cualquier',), 'cualquier never after not or in a question'),
     (('ya',), 'ya means already, never "just"'),
     (('como',), 'como never for the verb "like"'),
 ]
@@ -227,15 +228,13 @@ def share(text, words):
     prose = '\n'.join(line for line in prose.split('\n') if not extra(line))
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     spanish = learning = 0
-    rest = prose
-    # Longest first, each match removed before the next search: "faire attention" is not also "faire".
-    for word in sorted(words, key=lambda w: -len(w['es'])):
-        if swlib.norm(word['es']) not in swlib.UNMEASURABLE:
-            regex = swlib.pattern(word['es'])
-            uses = len(regex.findall(rest))
-            spanish += uses * len(word['es'].split())
-            learning += uses if word['status'] != 'known' else 0
-            rest = regex.sub(' ', rest)
+    # Non-overlapping uses, the longest first: "sin embargo" is not also "sin" (swlib.uses).
+    measured = [w for w in words if swlib.norm(w['es']) not in swlib.UNMEASURABLE]
+    counts, rest = swlib.uses(prose, {w['es']: swlib.pattern(w['es']) for w in measured})
+    for word in measured:
+        n = counts.get(word['es'], 0)
+        spanish += n * len(word['es'].split())
+        learning += n if word['status'] != 'known' else 0
     tokens = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest)
     grammar = sum(token in GRAMMAR for token in tokens)
     offlist = sum(token in GRAMMAR or bool(ACCENTED.search(token)) for token in tokens)

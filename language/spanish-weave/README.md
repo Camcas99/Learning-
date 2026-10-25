@@ -16,7 +16,9 @@ later French Weave improvements: wider default-off sites, a sensitive-title guar
 ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses. Version 0.3.3 adds
 92 more words (sino, tampoco, aunque, no funciona...), a check that each web swap matches its word's meaning, faster
 swaps while scrolling, a wait for Gemini's daily quota, a hover gloss pages can't clip, Claude Haiku as an optional
-model, and a clipboard copy of the claude.ai export.
+model, and a clipboard copy of the claude.ai export. With the plugin, the new words come in at their place in the
+list, so if you already know many words, a few basic new ones (sino, tampoco, incluso...) come up for learning first.
+The paste-in levels keep their words: the new words fill new levels 43 to 46.
 
 ## Set up
 
@@ -72,7 +74,7 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
 block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
-(46). A level never changes its words: words added to the list later go into new levels at the end.
+(46). A level never changes its words: words added to the list later go into new levels after the last one.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
@@ -403,7 +405,7 @@ commands/         /spanish-weave:* slash commands
 scripts/          swlib.py (state, rules, transcript scan), weave.py (hook), sw.py (CLI, setup),
                   sw_host.py (native host), export.py (claude.ai / ChatGPT blocks), make_blocks.py (blocks/),
                   hints.py (sound hints), placement.py (placement test)
-data/lexicon.csv  ranked words: es, en, sound hint
+data/lexicon.csv  ranked words: es, en, sound hint, since (the version that added a later word)
 data/notes.csv    usage notes (false friends) by word
 blocks/           ready-made claude.ai / ChatGPT blocks, one per level (generated)
 extension/        Chrome MV3 extension (no build step, no runtime dependencies)
@@ -430,8 +432,10 @@ When you change anything the plugin runs (scripts, commands, data, the extension
 copies only update when the version changes. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
 or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
 
-To add a word, append a row `es,en,` to `data/lexicon.csv` (in the rank where it belongs), run
-`python3 scripts/hints.py --fill` to generate its hint, then `python3 scripts/make_blocks.py`.
+To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
+in the since column (`sino,but rather,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then
+`python3 scripts/make_blocks.py`. The plugin queues the word at its rank; the paste-in levels put each version's words
+in new levels after the last one, so a level someone already pasted never changes.
 
 ## License
 

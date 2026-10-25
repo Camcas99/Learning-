@@ -1,6 +1,6 @@
 # Spanish Weave level 29 of 46 (Stage 4)
 
-Learning: 25 words from the [Spanish Weave list](../data/lexicon.csv). Known: the words of levels 1 to 28. When these feel easy, paste [level 30](level-30.md) instead.
+Learning: 25 words. Known: the words of levels 1 to 28. When these feel easy, paste [level 30](level-30.md) instead.
 
 ## claude.ai
 

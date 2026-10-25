@@ -1,6 +1,6 @@
 # Spanish Weave level 2 of 46 (Stage 1)
 
-Learning: 25 words from the [Spanish Weave list](../data/lexicon.csv). Known: the words of level 1. When these feel easy, paste [level 3](level-03.md) instead.
+Learning: 25 words. Known: the words of level 1. When these feel easy, paste [level 3](level-03.md) instead.
 
 ## claude.ai
 

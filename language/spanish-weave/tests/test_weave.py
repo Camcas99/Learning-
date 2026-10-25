@@ -91,9 +91,7 @@ class Matching(unittest.TestCase):
         self.assertFalse(self.hits('todo', 'leave a TODO here'))
         self.assertFalse(self.hits('todo', 'TODO: fix later'))
         self.assertFalse(self.hits('algo', 'the algo is off'))
-        self.assertTrue(self.hits('todos', 'todos pass now'))
-        for english in ('I updated the todos', 'there are 3 TODOs left', 'see todos.md', 'TODOs: none', 'two todos left'):
-            self.assertFalse(self.hits('todos', english), english)
+        self.assertIn('todos', swlib.UNMEASURABLE)  # English TODOs come in too many forms to tell apart
         self.assertFalse(self.hits('es', 'switch to ES modules'))
         self.assertFalse(self.hits('en', 'en route to prod'))
         self.assertFalse(self.hits('con', 'install conda'))
@@ -1081,6 +1079,9 @@ class Blocks(unittest.TestCase):
         self.assertIn('sino', later)
         self.assertNotIn('sino', [w['es'] for w in order[:1043]])
         self.assertEqual([w['es'] for w in order[:20]], [w['es'] for w in lexicon[:20]])
+        levels = make_blocks.level_words(lexicon)
+        self.assertEqual([len(level) for level in levels[41:]], [18, 25, 25, 25, 17])  # 0.3.2's last level keeps its 18
+        self.assertEqual(make_blocks.version_tuple('0.3.10') > make_blocks.version_tuple('0.3.9'), True)
 
 
 class Codex(Home):
@@ -2006,6 +2007,17 @@ class UpstreamPorts(Home):
             self.assertEqual(index['words']['la pena']['n'], 0)
             self.assertNotIn('resolver', index['words'])  # "the DNS resolver" is English
 
+    def test_each_use_goes_to_the_word_spelled_like_it(self):
+        words = ['mañana', 'la mañana', 'al final', 'el final', 'es decir', 'decir']
+        patterns = {es: swlib.pattern(es) for es in words}
+        count = lambda text: swlib.uses(swlib.norm(text), patterns)[0]
+        self.assertEqual(count('See you mañana, then.'), {'mañana': 1})
+        self.assertEqual(count('Early in la mañana it rains.'), {'la mañana': 1})
+        self.assertEqual(count('It worked al final.'), {'al final': 1})
+        self.assertEqual(count('Read el final first.'), {'el final': 1})
+        self.assertEqual(count('One line, es decir small.'), {'es decir': 1})
+        self.assertEqual(count('Hard to decir.'), {'decir': 1})
+
     def test_quiz_keeps_una_vez_and_la_vez_apart(self):
         once = {'es': 'una vez', 'en': 'once'}
         time_ = {'es': 'la vez', 'en': 'the time (occasion)'}
@@ -2015,6 +2027,9 @@ class UpstreamPorts(Home):
         self.assertFalse(swlib.check(time_, 'una vez', 'produce'))
         self.assertTrue(swlib.check(time_, 'vez', 'produce'))  # a missing article is fine for a noun
         self.assertFalse(swlib.check({'es': 'un poco', 'en': 'a little'}, 'poco', 'produce'))
+        # A bare answer that is also another listed word: the learner decides ("mañana" is tomorrow too).
+        self.assertIsNone(swlib.check({'es': 'la mañana', 'en': 'the morning'}, 'mañana', 'produce'))
+        self.assertTrue(swlib.check({'es': 'la mañana', 'en': 'the morning'}, 'la mañana', 'produce'))
 
     def test_unaccented_donde_marks_the_dónde_being_learned(self):
         import sw
@@ -2028,6 +2043,12 @@ class UpstreamPorts(Home):
         state = swlib.load_state()
         self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
         self.assertEqual(swlib.find(state, 'donde')['status'], 'queue')
+        # A typed accent, or known, keeps the exact spelling: "known dónde" never marks donde.
+        with contextlib.redirect_stdout(io.StringIO()):
+            sw.mark('known')(argparse.Namespace(words=['donde'], command='known'))
+        state = swlib.load_state()
+        self.assertEqual(swlib.find(state, 'donde')['status'], 'known')
+        self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
 
     def test_export_can_copy_the_claude_ai_block(self):
         import sw

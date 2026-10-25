@@ -197,3 +197,20 @@ it('a passage dropped because its element left the page forgets the element, so 
   expect(pickBatch(pending, new Set(), () => 'k', 800, 8, (el) => forgotten.push(el))).toEqual([]);
   expect(forgotten).toEqual([gone]);
 });
+
+it('shortened gloss forms never leave a lone function word, and set phrases take no verb endings (0.3.3 verification)', () => {
+  const words = ['para que,so that', "se puede,you can / it's possible", 'no es,it isn\'t (what something isn\'t)',
+    'pequeño,small', 'es decir,that is (to say)', 'a decir verdad,to tell the truth', 'encima,on top / on top of that',
+    'algo así,something like that', 'vale la pena,it\'s worth it', 'creo que,I think that', 'parece que,it seems that',
+    'ir,to go', 'no funciona,it doesn\'t work', 'es,it\'s / is (what something is)']
+    .map((line) => { const [es, en] = line.split(/,(.+)/); return { es, en, hint: 'x', status: 'active' }; });
+  const kept = (o, es) => validateSwaps(2, [{ o, es }], words).length === 1;
+  for (const [o, es] of [['So', 'para que'], ['therefore', 'para que'], ['not', 'no es'], ['possible', 'se puede'],
+    ['a little', 'pequeño'], ["That's", 'es decir'], ['tells the truth', 'a decir verdad'], ['on top of', 'encima']]) {
+    expect([o, es, kept(o, es)]).toEqual([o, es, false]);
+  }
+  for (const [o, es] of [['worth it', 'vale la pena'], ['I think', 'creo que'], ['it seems', 'parece que'], ['goes', 'ir'],
+    ['going', 'ir'], ["doesn't work", 'no funciona'], ["it's", 'es'], ["isn't", 'no es'], ['so that', 'para que'], ['tiny', 'pequeño']]) {
+    expect([o, es, kept(o, es)]).toEqual([o, es, true]);
+  }
+});

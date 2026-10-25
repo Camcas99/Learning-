@@ -1,6 +1,6 @@
 # Spanish Weave level 7 of 46 (Stage 3)
 
-Learning: 25 words from the [Spanish Weave list](../data/lexicon.csv). Known: the words of levels 1 to 6. When these feel easy, paste [level 8](level-08.md) instead.
+Learning: 25 words. Known: the words of levels 1 to 6. When these feel easy, paste [level 8](level-08.md) instead.
 
 ## claude.ai
 
