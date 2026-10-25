@@ -289,8 +289,8 @@ coding words at the end), each with a gloss and a sound hint.
   known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
   word; a known word peeked on 2 days within a week, both since it became known, turns shaky. **Shaky -> known**
   after 7 days with no flip, peek or quiz miss, once you've really seen the word again since the last one (days
-  counted by `log-chat-day` don't count; solo, mayor, sensible, tan and resolver, which chat can't count, need only
-  the week).
+  counted by `log-chat-day` don't count; solo, mayor, sensible, tan, resolver and todos, which chat can't count, need
+  only the week).
 - **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
   native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
@@ -320,10 +320,10 @@ ChatGPT block, kept under the 1,500-character limit of the Free and Go plans, ca
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
 one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor`,
-`sensible`, `tan` and `resolver` are never counted from chat, since English uses them with other meanings (the quiz,
-the extension or `known` can still move them); and a few words skip their English
-uses: TODO and "the TODOs", "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`. A phrase is counted
-before the words inside it, so "es decir" is not also a sighting of decir.
+`sensible`, `tan`, `resolver` and `todos` (English TODOs) are never counted from chat, since English uses them with
+other meanings (the quiz, the extension or `known` can still move them); and a few words skip their English
+uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`. A phrase is counted before the words
+inside it, so "es decir" is not also a sighting of decir.
 
 **Chats that can't be scanned** (claude.ai, ChatGPT) don't count toward exposure. If you mostly read Spanish there,
 `sw.py log-chat-day` (or `export --log-day`) counts today as exposure for your learning words. It's off by default
@@ -433,7 +433,7 @@ copies only update when the version changes. To test with your own state folder,
 or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
 
 To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
-in the since column (`sino,but rather,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then
+in the since column (`quizás,perhaps,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then
 `python3 scripts/make_blocks.py`. The plugin queues the word at its rank; the paste-in levels put each version's words
 in new levels after the last one, so a level someone already pasted never changes.
 

@@ -358,6 +358,9 @@ export function glossForms(en, synonyms = SYNONYMS, isVerb = true) {
       if (/^it is\s\S+\s\S/.test(f) && !/^it is not\s/.test(f)) add(f.replace(/^it is\s/, '')); // it is worth it
       if (/^it is\s/.test(f)) add(f.replace(/^it\s/, ''));                                         // it is not -> is not
       if (/^(i|it)\s.*\sthat$/.test(f) && words(f) >= 3) add(f.replace(/\sthat$/, ''));            // i think that
+      // "that's" stays as written (so it never matches es decir's "that is"), so its written-out form is added here:
+      // "that is why" for "that's why".
+      if (/^that's\s/.test(f)) add(f.replace(/^that's\s/, 'that is '));
     }
   }
   return { forms, verbs };

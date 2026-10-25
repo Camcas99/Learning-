@@ -736,9 +736,9 @@ def mark(kind):
                         found = swlib.find(state, phrase)
                         if found:
                             break
-                    if (kind == 'asked' and found and found['status'] == 'queue' and swlib.fold(phrase) == swlib.key(phrase)):
-                        # "learn donde" typed without the accent while dónde is in use: the word being learned, not its
-                        # unaccented twin from the queue. A typed accent, or known, keeps the exact spelling.
+                    if found and found['status'] == 'queue' and swlib.fold(phrase) == swlib.key(phrase):
+                        # "donde" typed without the accent while dónde is in use: the word in use, not its unaccented
+                        # twin from the queue (the printed line shows the accent). A typed accent keeps the exact word.
                         twin = next((w for w in state['words'] if w['status'] != 'queue' and w['es'] != found['es']
                                      and swlib.fold(w['es']) == swlib.fold(found['es'])), None)
                         if twin:

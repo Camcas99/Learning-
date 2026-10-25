@@ -2043,12 +2043,18 @@ class UpstreamPorts(Home):
         state = swlib.load_state()
         self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
         self.assertEqual(swlib.find(state, 'donde')['status'], 'queue')
-        # A typed accent, or known, keeps the exact spelling: "known dónde" never marks donde.
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
             sw.mark('known')(argparse.Namespace(words=['donde'], command='known'))
+        self.assertEqual(out.getvalue().strip(), 'Known: dónde')  # known too: the word in use
+        # A typed accent keeps the exact spelling: with donde in use, "known dónde" marks dónde, never donde.
+        state = swlib.new_state('2026-10-01')
+        swlib.find(state, 'donde').update(status='active', added='2026-10-01')
+        swlib.save_state(state)
+        with contextlib.redirect_stdout(io.StringIO()):
+            sw.mark('known')(argparse.Namespace(words=['dónde'], command='known'))
         state = swlib.load_state()
-        self.assertEqual(swlib.find(state, 'donde')['status'], 'known')
-        self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
+        self.assertEqual(swlib.find(state, 'dónde')['status'], 'known')
+        self.assertEqual(swlib.find(state, 'donde')['status'], 'active')
 
     def test_export_can_copy_the_claude_ai_block(self):
         import sw

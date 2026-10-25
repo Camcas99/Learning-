@@ -28,11 +28,12 @@ OUTPUT_EVERY = 5  # with output practice on, every fifth reply invites the user 
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
 LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
 # Spanish grammar words on no list: several in one reply mean it slipped into Spanish sentences.
-# Left out on purpose: words English also uses (son, era, he, has, me, a, no, de, del, la, los, las, su, mi).
+# Left out on purpose: words English also uses (son, era, he, has, me, a, no, de, del, la, los, las, su, mi, and todos,
+# as in "the TODOs").
 GRAMMAR = set("yo tú él ella nosotros nosotras ellos ellas usted ustedes una unos unas eres somos están estamos "
               "estaban estuvo fue fueron sido estoy está tiene tienen tenemos hemos han hizo hace hacen puede pueden "
               "podría debe nuestro nuestra nuestros nuestras estos estas aquel aquella les nos se lo le que por tu voy "
-              "todos donde cual".split())
+              "donde cual".split())
 ACCENTED = re.compile('[áéíóúñü]')  # an off-list word with one of these is Spanish too (counted from Stage 3)
 RECALL, GLOSS = re.compile(r'\s*\**recall:', re.I), re.compile(r'\s=\s')  # recall cue and footer gloss lines (see extra)
 # Words that are easy to swap in the wrong sense, and the guard for each; a guard is in the brief once any of its

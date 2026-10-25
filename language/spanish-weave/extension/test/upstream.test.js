@@ -202,7 +202,7 @@ it('shortened gloss forms never leave a lone function word, and set phrases take
   const words = ['para que,so that', "se puede,you can / it's possible", 'no es,it isn\'t (what something isn\'t)',
     'pequeño,small', 'es decir,that is (to say)', 'a decir verdad,to tell the truth', 'encima,on top / on top of that',
     'algo así,something like that', 'vale la pena,it\'s worth it', 'creo que,I think that', 'parece que,it seems that',
-    'ir,to go', 'no funciona,it doesn\'t work', 'es,it\'s / is (what something is)']
+    'ir,to go', 'no funciona,it doesn\'t work', 'es,it\'s / is (what something is)', "por eso,that's why"]
     .map((line) => { const [es, en] = line.split(/,(.+)/); return { es, en, hint: 'x', status: 'active' }; });
   const kept = (o, es) => validateSwaps(2, [{ o, es }], words).length === 1;
   for (const [o, es] of [['So', 'para que'], ['therefore', 'para que'], ['not', 'no es'], ['possible', 'se puede'],
@@ -210,7 +210,8 @@ it('shortened gloss forms never leave a lone function word, and set phrases take
     expect([o, es, kept(o, es)]).toEqual([o, es, false]);
   }
   for (const [o, es] of [['worth it', 'vale la pena'], ['I think', 'creo que'], ['it seems', 'parece que'], ['goes', 'ir'],
-    ['going', 'ir'], ["doesn't work", 'no funciona'], ["it's", 'es'], ["isn't", 'no es'], ['so that', 'para que'], ['tiny', 'pequeño']]) {
+    ['going', 'ir'], ["doesn't work", 'no funciona'], ["it's", 'es'], ["isn't", 'no es'], ['so that', 'para que'], ['tiny', 'pequeño'],
+    ['That is why', 'por eso'], ["That's why", 'por eso']]) {
     expect([o, es, kept(o, es)]).toEqual([o, es, true]);
   }
 });
