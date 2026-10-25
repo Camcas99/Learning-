@@ -2112,3 +2112,30 @@ class SeedAfterHook(unittest.TestCase):
         self.assertTrue(sw.KEY_SHAPE.match('AIza' + 'b' * 35))
         self.assertFalse(sw.KEY_SHAPE.match('AQ.short'))
         self.assertFalse(sw.KEY_SHAPE.match('not a key at all, has spaces and is long enough'))
+
+
+class OutsideEvents(Home):
+    """Events from outside the Mac's own commands: the extension (through the native host) and the phone inbox."""
+
+    def test_quiz_answers_from_outside_are_checked_and_recorded_like_the_quiz(self):
+        state = swlib.new_state('2026-10-20')
+        pero = swlib.find(state, 'pero')
+        events = [
+            {'word': 'pero', 'kind': 'quiz', 'result': 'right', 'day': '2026-10-21'},
+            {'word': 'pero', 'kind': 'quiz', 'result': 'wrong', 'day': '2026-10-21'},  # that day is answered
+            {'word': 'la idea', 'kind': 'quiz', 'result': 'right', 'day': '2026-10-21'},  # not in use yet
+            {'word': 'pero', 'kind': 'quiz', 'result': 'maybe', 'day': '2026-10-21'},
+            {'word': 'pero', 'kind': 'quiz', 'result': 'right', 'day': '1999-01-01'},  # too old
+            {'word': 'x' * 65, 'kind': 'quiz', 'result': 'right'},
+            'junk',
+        ]
+        applied, skipped = swlib.apply_events(state, events, kinds=('quiz',), today_='2026-10-22')
+        self.assertEqual((applied, skipped), (1, 6))
+        self.assertEqual(pero['box'], 1)
+        self.assertEqual(pero['reviews'][-1][:2], ['2026-10-21', 1])
+        # A later answer from the Mac's own quiz wins over an older phone answer that arrives late.
+        swlib.review(state, 'pero', False, day='2026-10-23')
+        self.assertEqual(swlib.apply_events(state, [{'word': 'pero', 'kind': 'quiz', 'result': 'right', 'day': '2026-10-22'}],
+                                            kinds=('quiz',), today_='2026-10-23'), (0, 1))
+        # The extension's path never takes quiz answers.
+        self.assertEqual(swlib.apply_events(state, [{'word': 'pero', 'kind': 'quiz', 'result': 'right'}]), (0, 1))
