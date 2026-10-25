@@ -185,7 +185,10 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    block (next item), so the block includes those words.
 6. Preferences block: run `python3 "$SW" export` (claude.ai) and `python3 "$SW" export --chatgpt` (ChatGPT) and
    show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
-   about once a week.
+   about once a week. On a paid Claude plan they can instead add the spanish-weave-chat plugin in claude.ai
+   (Customize > Plugins, marketplace Camcas99/Learning-) and paste the one line `python3 "$SW" export --chat` prints.
+6b. iPhone quiz (Mac only, opt-in): if they want it, run `python3 "$SW" phone on` and point them to IPHONE.md for the
+   Shortcut. Only today's quiz words go to iCloud Drive.
 7. Commands, which they type themselves (Claude can't start them, except status): `/spanish-weave:status`,
    `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`, `/spanish-weave:stage 1-4|auto`,
    `/spanish-weave:pause`, `/spanish-weave:resume`, `/spanish-weave:quiz`, `/spanish-weave:placement`,

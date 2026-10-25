@@ -51,7 +51,9 @@ granted:
   and they open it under Code in the Claude app. It needs a claude.ai subscription login (Pro, Max, Team or
   Enterprise; not an API key; Team and Enterprise need the Owner to enable it), and the computer has to stay on. A
   cloud session started from the phone starts on a fresh machine each time, so it can't keep their progress, and
-  the extension (3) needs Chrome on a computer.
+  the extension (3) needs Chrome on a computer. On a paid Claude plan, the chat-only plugin spanish-weave-chat (same
+  marketplace) replaces the pasted block with one line in their preferences. With a Mac, `/spanish-weave:phone on`
+  adds a daily quiz on the iPhone through a Shortcut and iCloud Drive (IPHONE.md); it is opt-in and Mac only.
 - **If they already know some Spanish**, offer the 2-minute placement test (`/spanish-weave:placement`) so they
   don't start with words they know.
 - **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. The
