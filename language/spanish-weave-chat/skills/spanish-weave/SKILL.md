@@ -3,7 +3,7 @@ name: spanish-weave
 description: Weave Latin American Spanish words into every English chat reply at the learner's level. Load at the start of every chat when preferences mention Spanish Weave.
 license: MIT
 metadata:
-  version: "0.3.4"
+  version: "0.3.5"
 ---
 
 # Spanish Weave
