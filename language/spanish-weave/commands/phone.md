@@ -1,5 +1,5 @@
 ---
-description: iPhone quiz through iCloud Drive (Mac only): turn it on or off, sync now, or show its status
+description: "iPhone quiz through iCloud Drive (Mac only): turn it on or off, sync now, or show its status"
 argument-hint: "[on|off|sync|status]"
 allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" phone:*)
 disable-model-invocation: true

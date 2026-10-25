@@ -74,7 +74,8 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
 block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
-(46). A level never changes its words: words added to the list later go into new levels after the last one.
+(46). A level never changes its words: words added to the list later go into new levels after the last one. On a
+Pro or Max plan, claude.ai can take one short line instead: see "On claude.ai and the Claude apps" below.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
@@ -88,9 +89,35 @@ Spanish Weave in `chrome://extensions`, then reload the tabs you had open: until
 they logged "Extension context invalidated" errors instead). `/spanish-weave:status` and `sw.py check` say when those copies are behind
 the installed plugin, and `check` also flags a local folder the marketplace was added from that has gone missing.
 
+### On claude.ai and the Claude apps
+
+On a Pro or Max plan, claude.ai and the Claude apps (web, desktop, iPhone and Android) can load Spanish Weave as a
+skill, so you paste one line instead of a 6 to 7 KB block, and fixes to the rules arrive as plugin updates:
+
+1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, enter
+   `Camcas99/Learning-`, and install **spanish-weave-chat** from it (the other plugin there, spanish-weave, is this
+   Claude Code one). Turn on its automatic sync if offered.
+2. In Settings > "Instructions for Claude", replace any Spanish Weave block with this line, with your level in place
+   of 1. With the Claude Code plugin, `/spanish-weave:export chat` prints it with the level nearest to your words,
+   and `/spanish-weave:export chat exact` with your own word list instead.
+
+   ```text
+   Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.
+   ```
+
+3. When the words feel easy, type "next level" in a chat: Claude gives you the line for the next level.
+
+The Free plan has no plugins, so keep using the paste-in blocks there. This hasn't been tested on an iPhone yet. And
+Claude loads a skill when it chooses to: the line asks for it in every chat, but a chat can still start without it,
+and then the rest of the line keeps a few swaps (y, pero, entonces...) going. In Claude Code, the hook's brief carries
+the line `spanish-weave-hook: on`, which tells the skill to stay out, so a copy of the chat plugin synced from your
+account doesn't double the Spanish; `sw.py check` notes when Claude Code has it. More in
+[spanish-weave-chat's README](../spanish-weave-chat/README.md).
+
 ### On a phone
 
-- **claude.ai or ChatGPT:** the pasted block is an account setting, so it works in their phone apps too.
+- **claude.ai or ChatGPT:** the pasted block (or the one line for the chat plugin above) is an account setting, so it
+  works in their phone apps too.
 - **Claude Code:** through Remote Control (Pro, Max, Team or Enterprise login, not an API key; on Team or Enterprise
   an Owner must enable it). Run `claude remote-control` on your computer and keep it running (or type
   `/remote-control` in a local Code session in the Claude desktop app), then open the session under Code in the
@@ -157,7 +184,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/spanish-weave:learn <word>` | Put a word back into the learning set |
 | `/spanish-weave:stage [1-4\|auto]` | Pin your stage, or let it follow your known words (no value: show it) |
 | `/spanish-weave:pause` / `resume` | Stop or restart Spanish in chat and on websites |
-| `/spanish-weave:export [chatgpt] [log-day]` | Paste-ready block for claude.ai or ChatGPT (dashes optional) |
+| `/spanish-weave:export [chatgpt\|chat [exact]] [log-day]` | Paste-ready block for claude.ai or ChatGPT, or the one line for the chat plugin (dashes optional) |
 | `/spanish-weave:quiz [N]` | Spaced-repetition quiz on the words that are due; the answers are saved at the end, with one approval |
 | `/spanish-weave:placement` | 2-minute placement test that sets your starting words; one approval to save |
 | `/spanish-weave:anki [all]` | Your words as an Anki import file |
@@ -424,6 +451,7 @@ data/notes.csv    usage notes (false friends) by word
 blocks/           ready-made claude.ai / ChatGPT blocks, one per level (generated)
 extension/        Chrome MV3 extension (no build step, no runtime dependencies)
 tests/            python tests, live model checks, extension end-to-end check
+../spanish-weave-chat/  the skills-only plugin for claude.ai and the Claude apps (generated, except its README)
 ```
 
 ## Develop
@@ -431,7 +459,7 @@ tests/            python tests, live model checks, extension end-to-end check
 ```sh
 python3 -m unittest discover -s tests            # hook, rules, hints, quiz, placement, notes, exports, host, setup, docs
 python3 scripts/hints.py --check                 # every hint in the word list matches the rules
-python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
+python3 scripts/make_blocks.py                   # regenerate blocks/ and ../spanish-weave-chat after changing the rules, lexicon or version
 python3 scripts/bundle_content.py                # rebuild extension/src/content.bundle.js after changing content.js or its imports
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/sw-eval    # live check via claude -p, isolated from your own config
@@ -443,8 +471,10 @@ PROFILE=/tmp/sw-profile node tests/extension_e2e.mjs       # Playwright Chromium
 
 When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in
 `.claude-plugin/plugin.json`, `extension/manifest.json` and `extension/package.json`, all three the same: installed
-copies only update when the version changes. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
-or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
+copies only update when the version changes. Then run `python3 scripts/make_blocks.py`, which gives the chat plugin
+(`../spanish-weave-chat`) the same version; `make_blocks.py --check` fails while the two differ. To test with your
+own state folder, point `SPANISH_WEAVE_HOME` at a new or empty folder you own (setup refuses one that holds other
+things, and the hook and commands write nothing there).
 
 To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
 in the since column (`quizás,perhaps,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then

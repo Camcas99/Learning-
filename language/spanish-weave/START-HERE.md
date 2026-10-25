@@ -141,12 +141,36 @@ You type these yourself: Claude can't start them for you (except status).
 | `/spanish-weave:output on` / `off` | turn "Your turn" practice on or off |
 | `/spanish-weave:pause` / `resume` | take a break from Spanish everywhere |
 | `/spanish-weave:export` | get an up-to-date block for claude.ai or ChatGPT (refresh it weekly) |
+| `/spanish-weave:export chat` | get the one line for the claude.ai chat plugin (see "On claude.ai and the Claude apps") |
 | `/spanish-weave:anki` | export your words to Anki, if you use it |
 
 With the pasted block in claude.ai or ChatGPT, you can type a word with a question mark ("pero?") for a quick
 translation, "quiz" for a three-word quiz, "story" (claude.ai only) to retell the last answer as a short story at
 your level, or "easier" / "harder" for that chat. In Claude Code, just ask ("what does pero mean?") or use the
 commands above.
+
+## On claude.ai and the Claude apps
+
+Have a Pro or Max plan? Then claude.ai and the Claude apps (including the iPhone and Android apps) can use Spanish
+Weave as a skill. You paste one short line instead of the long block, and fixes to the rules reach you on their own:
+
+1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, type
+   `Camcas99/Learning-`, and click Add. From its list, install **spanish-weave-chat** (not spanish-weave: that one
+   is for Claude Code on a computer). If there's a switch to sync it automatically, turn it on.
+2. In Settings > "Instructions for Claude", delete any Spanish Weave block and paste this line, with your level in
+   place of 1:
+
+   ```text
+   Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.
+   ```
+
+3. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
+
+With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know.
+
+Two honest caveats. It hasn't been tested on an iPhone yet. And Claude decides for itself when to load a skill: the
+line asks for it in every chat, but a chat can still start without it, and then the rest of the line still gets you
+a few Spanish words (y, pero, entonces...). On the free plan there are no plugins, so keep using the paste-in blocks.
 
 ## On your phone and Instagram
 

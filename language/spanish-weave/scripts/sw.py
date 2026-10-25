@@ -23,10 +23,14 @@
   sw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   sw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
                                                      (the flags work without dashes too: export chatgpt)
+  sw.py export --chat [--exact]                      the one preference line for claude.ai and the Claude apps
+                                                     with the spanish-weave-chat plugin: the published level
+                                                     nearest to your words (--exact: your own word list instead)
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   sw.py check                                        verify the state, extension folder and native host, that
                                                      setup's copies match the installed plugin's version, and that
-                                                     a local folder the marketplace was added from is still there
+                                                     a local folder the marketplace was added from is still there;
+                                                     notes the chat-only plugin when Claude Code has it too
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
                                                      N questions with answers instead, default 5, for Claude to ask)
   sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
@@ -65,6 +69,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
 import export  # noqa: E402
 import phone  # noqa: E402
+import make_blocks  # noqa: E402
 import placement  # noqa: E402
 
 HOST_NAME = 'com.spanishweave.host'
@@ -305,6 +310,17 @@ def installed_entries():
 
 def installed_plugin():
     return next(iter(installed_entries()), None)
+
+
+CHAT_PLUGIN = 'spanish-weave-chat'  # the skills-only plugin for claude.ai, which can reach Claude Code too
+
+
+def chat_plugin_keys():
+    """installed_plugins.json's names (plugin@marketplace) for the chat-only plugin, from any marketplace. Read only:
+    setup never changes Claude Code's settings for it, since the hook's marker line keeps its skill quiet."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'installed_plugins.json', {})
+    plugins = data.get('plugins') if isinstance(data, dict) else None
+    return sorted(k for k in plugins if k.split('@')[0] == CHAT_PLUGIN) if isinstance(plugins, dict) else []
 
 
 def marketplace_entry():
@@ -548,6 +564,11 @@ def check(_args):
         enabled = config.exists() and enable_codex_hooks(config.read_text()) == config.read_text().rstrip('\n') + '\n'
         report(enabled, f'Codex hook in {swlib.codex_home() / "hooks.json"} with [features] hooks = true '
                         '(Codex asks you to trust it on first start)')
+    chat = chat_plugin_keys()
+    if chat:
+        print(f'note {", ".join(chat)} (the chat-only plugin) {"is" if len(chat) == 1 else "are"} in Claude Code too. '
+              f'Nothing to do: the hook\'s brief carries the line "{swlib.HOOK_MARKER}", which keeps its skill quiet '
+              'here, so replies get one word list, not two.')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
     try:
@@ -805,8 +826,23 @@ def export_cmd(args):
     with swlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
         swlib.promote(state)  # today's refill first, so the stored version is the one printed below
-        export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
-    if args.chatgpt:
+        level = make_blocks.nearest_level(state) if args.chat and not args.exact else None
+        export.mark_exported(state, 'chat-exact' if args.exact else 'chat' if args.chat else
+                             'chatgpt' if args.chatgpt else 'claude-ai', level)
+    if args.chat:
+        text = export.chat_exact(state) if args.exact else export.chat_line(level)
+        where = ('claude.ai and the Claude apps, with the spanish-weave-chat plugin added (Pro or Max: Customize > '
+                 'Plugins). Paste into Settings > "Instructions for Claude" in place of any older Spanish Weave block '
+                 'or line')
+        if args.exact:
+            print(f'{where}: these two lines carry your own word list ({len(text)} characters); re-export about weekly.'
+                  f'\n\n{text}')
+        else:
+            print(f'{where}: level {level} of {len(make_blocks.level_words(swlib.load_lexicon()))} is the nearest to '
+                  f'your words, and Claude Code tells you when that changes.\n\n{text}')
+        if args.copy and copy_to_clipboard(text):
+            print('\n(Also copied to your clipboard, ready to paste.)')
+    elif args.chatgpt:
         about, respond = export.chatgpt(state)
         limit = export.CHATGPT_LIMIT
         over = [f'The {box} block is {len(text):,} characters, over the {limit:,} limit of the Free and Go plans '
@@ -1228,10 +1264,15 @@ def main(argv=None):
     target = p.add_mutually_exclusive_group()
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
+    target.add_argument('--chat', action='store_true',
+                        help='one line for claude.ai and the Claude apps with the spanish-weave-chat plugin: the '
+                             'published level nearest to your words')
+    p.add_argument('--exact', action='store_true', help='with --chat: your own word list instead of a level')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
-    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
-    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
-                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block or chat line to the clipboard')
+    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|chat|exact|log-day',
+                   help='the same flags without the dashes',
+                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'chat', 'exact', 'log-day'))
     p.set_defaults(run=export_cmd)
     exporter = p
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
@@ -1266,8 +1307,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     for word in getattr(args, 'extra', []):  # chatgpt -> --chatgpt, claude.ai -> --claude-ai, all -> --all
         setattr(args, re.sub(r'[-.]', '_', word), True)
-    if args.command == 'export' and args.chatgpt and args.claude_ai:
-        exporter.error('argument --chatgpt: not allowed with argument --claude-ai')
+    if args.command == 'export':  # again with the flags given without dashes
+        given = [f'--{name.replace("_", "-")}' for name in ('claude_ai', 'chatgpt', 'chat') if getattr(args, name)]
+        if len(given) > 1:
+            exporter.error(f'argument {given[1]}: not allowed with argument {given[0]}')
+        if args.exact and not args.chat:
+            exporter.error('argument --exact: only with --chat')
     try:
         args.run(args)
     except swlib.StateError as error:

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -650,7 +651,8 @@ class Scale(Home):
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
                 # every word is in use, and the longer 0.3.3 list puts a few more noted words among the learning ones,
-                # so this budget is 4,200 (3,850 to 4,050 at 1,000 known words, depending on which words are learning).
+                # so this budget is 4,200 (3,950 to 4,150 at 1,000 known words, depending on which words are learning,
+                # 23 bytes of it the "spanish-weave-hook: on" line that keeps the chat plugin's skill out of the way).
                 self.assertLess(len(brief.encode()), 4200, known)
         # The longest export: just under the band cutoff, every known word is named.
         self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)
@@ -1934,9 +1936,11 @@ class Docs(unittest.TestCase):
     """The docs friends and their agents follow: commands that run as written, and claims that match the code."""
 
     def test_versions_agree(self):
-        """Installed copies update only when the version changes, so the plugin and extension move together."""
+        """Installed copies update only when the version changes, so the plugin and extension move together (and the
+        chat plugin, which make_blocks.py writes)."""
         versions = [json.loads((ROOT / path).read_text())['version']
-                    for path in ('.claude-plugin/plugin.json', 'extension/manifest.json', 'extension/package.json')]
+                    for path in ('.claude-plugin/plugin.json', 'extension/manifest.json', 'extension/package.json',
+                                 '../spanish-weave-chat/.claude-plugin/plugin.json')]
         self.assertEqual(len(set(versions)), 1, versions)
         self.assertGreaterEqual(tuple(int(part) for part in versions[0].split('.')), (0, 3, 0))
 
@@ -2241,3 +2245,251 @@ class PhoneSync(Home):
         self.assertIn('iPhone sync: on, last synced', text)
         self.assertIn('iPhone sync is off.', text)
         self.assertTrue((self.folder / 'snapshot.json').exists())
+
+
+CHAT = ROOT.parent / 'spanish-weave-chat'
+SKILL_DIR = CHAT / 'skills' / 'spanish-weave'
+REPO = ROOT.parent.parent
+
+
+def main_version():
+    return json.loads((ROOT / '.claude-plugin' / 'plugin.json').read_text())['version']
+
+
+class ChatSkill(Home):
+    """The chat-only plugin (spanish-weave-chat) for claude.ai and the Claude apps: generated from the same rules and
+    levels as the paste blocks, inside the skill limits, and quiet where the hook already briefs every reply."""
+
+    def sw(self, *argv):
+        with mock.patch('sys.stdout', new=io.StringIO()) as out:
+            sw.main(list(argv))
+        return out.getvalue()
+
+    def test_skill_frontmatter_within_limits(self):
+        text = (SKILL_DIR / 'SKILL.md').read_text(encoding='utf-8')
+        self.assertTrue(text.startswith('---\n'))
+        head, body = text[4:].split('\n---\n', 1)
+        top = [line for line in head.splitlines() if not line.startswith(' ')]
+        self.assertEqual([line.split(':', 1)[0] for line in top], ['name', 'description', 'license', 'metadata'])
+        fields = {k: v.strip() for k, v in (line.split(':', 1) for line in top)}
+        self.assertEqual((fields['name'], SKILL_DIR.name), ('spanish-weave', 'spanish-weave'))  # matches its folder
+        self.assertRegex(fields['name'], r'^[a-z0-9-]{1,64}$')
+        self.assertNotRegex(fields['name'], 'claude|anthropic')
+        self.assertTrue(50 < len(fields['description']) <= 200, len(fields['description']))  # help center: 200
+        self.assertNotRegex(head, '[<>]')  # no XML tags
+        self.assertNotIn(': ', fields['description'])  # plain YAML text
+        self.assertEqual(fields['license'], 'MIT')
+        self.assertEqual(head.splitlines()[-1], f'  version: "{main_version()}"')
+        self.assertLess(len(text.splitlines()), 500)
+        # The body: stand down under the hook, where to find the state line, then the pasted rules.
+        self.assertIn(f'contains the line `{swlib.HOOK_MARKER}`, stop here', body)
+        self.assertIn('a line starting `Spanish weave state`', body)
+        self.assertIn('"Spanish Weave level N"', body)
+        self.assertIn('`references/levels/level-07.md`', body)
+        self.assertIn('"next level"', body)
+        self.assertIn(export.chat_line('N'), body)
+        self.assertTrue(body.endswith('## Rules\n\n' + export.rules(skill=True) + '\n'))
+        self.assertIn('in the Spanish Weave state line found by step 2 or 3 above.', body)
+        # What make_blocks refuses to write.
+        self.assertEqual(make_blocks.skill_problems(text), [])
+        broken = [text.replace(fields['description'], 'x' * 201), text.replace(fields['description'], 'Note: words'),
+                  text.replace('name: spanish-weave', 'name: claude-weave'),
+                  text.replace('license: MIT', 'license: <MIT>'),
+                  text.replace('## Rules', '\n' * 500 + '## Rules')]
+        for bad in broken:
+            self.assertTrue(make_blocks.skill_problems(bad))
+
+    def test_level_files_match_the_paste_blocks(self):
+        levels = len(make_blocks.level_words(swlib.load_lexicon()))
+        files = sorted((SKILL_DIR / 'references' / 'levels').iterdir())
+        self.assertEqual([p.name for p in files], [f'level-{n:02d}.md' for n in range(1, levels + 1)])
+        self.assertEqual(len(list((ROOT / 'blocks').glob('level-*.md'))), levels)
+        for n, path in enumerate(files, 1):
+            text = path.read_text(encoding='utf-8')
+            self.assertEqual((text.count('\n'), text[-1]), (1, '\n'), path.name)  # one line
+            line = text[:-1]
+            block = (ROOT / 'blocks' / f'level-{n:02d}.md').read_text(encoding='utf-8')
+            claude_ai = block.split('```text\n', 1)[1].split('\n```', 1)[0]  # the first block on the page
+            pasted = claude_ai.rsplit('\n\n', 1)[1]  # its state line, after the rules
+            self.assertTrue(pasted.startswith('Spanish weave state — '), n)
+            # The same line, without the block's placeholder dates (1/1) and its link to the next block's file.
+            self.assertEqual(line, re.sub(r' \(\d+/\d+\)| \(next: level-\d+\.md\)', '', pasted), n)
+            self.assertTrue(line.endswith(f' | Level {n} of {levels}'), n)
+            mine, theirs = export.parse_state_line(line), export.parse_state_line(pasted)
+            self.assertEqual({k: mine[k] for k in ('stage', 'active', 'shaky', 'known')},
+                             {k: theirs[k] for k in ('stage', 'active', 'shaky', 'known')}, n)
+
+    def test_blocks_keep_their_rules(self):
+        """The paste blocks stay byte-identical: the skill's rules differ only in where the state line is."""
+        rules = export.rules()
+        self.assertIn('My stage and words are in the Spanish Weave state line below.', rules)
+        self.assertEqual(rules, 'SPANISH WEAVE\n\n' + export.rules(skill=True).replace(export.SKILL_WHERE, export.WHERE)
+                         .replace('\n- ', '\n\n- '))
+        for n in (1, 7, 46):
+            self.assertIn(f'```text\n{rules}\n\nSpanish weave state — ',
+                          (ROOT / 'blocks' / f'level-{n:02d}.md').read_text(encoding='utf-8'))
+        self.assertNotIn('spanish-weave-chat', (ROOT / 'blocks' / 'level-01.md').read_text(encoding='utf-8'))
+
+    def test_versions_match_and_check_catches_a_stale_plugin(self):
+        version = main_version()
+        manifest = json.loads((CHAT / '.claude-plugin' / 'plugin.json').read_text())
+        self.assertEqual((manifest['name'], manifest['version'], manifest['license']),
+                         ('spanish-weave-chat', version, 'MIT'))
+        self.assertEqual(sorted(p.name for p in CHAT.iterdir()), ['.claude-plugin', 'LICENSE', 'README.md', 'skills'])
+        self.assertEqual((CHAT / 'LICENSE').read_text(), (ROOT / 'LICENSE').read_text())
+        lexicon = swlib.load_lexicon()
+        levels = len(make_blocks.level_words(lexicon))
+        files = make_blocks.chat_files(lexicon, levels, version)
+        copy = self.home / 'chat'
+        shutil.copytree(CHAT, copy)
+        self.assertEqual(make_blocks.chat_problems(files, version, copy), [])
+        # The main plugin's version raised without rerunning make_blocks.
+        bumped = make_blocks.chat_files(lexicon, levels, '9.9.9')
+        problems = make_blocks.chat_problems(bumped, '9.9.9', copy)
+        self.assertIn(f'its version is {version}, but spanish-weave is 9.9.9; they must match', problems)
+        self.assertTrue(any(p.startswith('out of date: .claude-plugin/plugin.json, skills/spanish-weave/SKILL.md')
+                            for p in problems), problems)
+        # The chat plugin's version edited by hand.
+        path = copy / '.claude-plugin' / 'plugin.json'
+        path.write_text(path.read_text().replace(f'"version": "{version}"', '"version": "0.0.1"'))
+        self.assertIn(f'its version is 0.0.1, but spanish-weave is {version}; they must match',
+                      make_blocks.chat_problems(files, version, copy))
+        shutil.copy(CHAT / '.claude-plugin' / 'plugin.json', path)
+        # Folders claude.ai refuses or would load as skills, a level no block has, a missing README.
+        (copy / 'bin').mkdir()
+        (copy / 'skills' / 'spanish-weave' / 'references' / 'levels' / f'level-{levels + 1}.md').write_text('x\n')
+        (copy / 'README.md').unlink()
+        problems = '; '.join(make_blocks.chat_problems(files, version, copy))
+        for part in ('a chat plugin has no bin', f'not a published level, remove: level-{levels + 1}.md', 'README.md'):
+            self.assertIn(part, problems)
+
+    def test_hook_brief_carries_the_marker(self):
+        state = swlib.load_state()
+        self.assertEqual(weave.brief(state, {}).splitlines()[-1], swlib.HOOK_MARKER)
+        out = json.loads(Brief.run_hook(self, {'session_id': 'x', 'transcript_path': str(self.home / 'missing.jsonl')}))
+        self.assertIn(swlib.HOOK_MARKER, out['hookSpecificOutput']['additionalContext'].splitlines())
+        # The skill's stand-down step names the same line.
+        self.assertIn(f'`{swlib.HOOK_MARKER}`', (SKILL_DIR / 'SKILL.md').read_text(encoding='utf-8'))
+
+    def test_nearest_level(self):
+        lexicon = swlib.load_lexicon()
+        levels = make_blocks.level_words(lexicon)
+        for n in range(1, len(levels) + 1):  # a published level's own state is that level
+            self.assertEqual(make_blocks.nearest_level(make_blocks.level_state(n, lexicon), lexicon), n)
+        state = make_blocks.level_state(7, lexicon)
+        find = lambda es: next(w for w in state['words'] if w['es'] == es)
+        find(levels[0][0]['es'])['status'] = 'shaky'  # one slip in level 1 doesn't send them back
+        self.assertEqual(make_blocks.nearest_level(state, lexicon), 7)
+        for count, level in ((16, 7), (17, 8)):  # level 7 is passed once more than two thirds of it is known
+            for w in levels[6][:count]:
+                find(w['es'])['status'] = 'known'
+            self.assertEqual(make_blocks.nearest_level(state, lexicon), level, count)
+        for w in state['words']:
+            w['status'] = 'known'
+        self.assertEqual(make_blocks.nearest_level(state, lexicon), len(levels))
+        for w in state['words']:
+            w['status'] = 'queue'
+        self.assertEqual(make_blocks.nearest_level(state, lexicon), 1)
+
+    def test_export_chat(self):
+        out = self.sw('export', '--chat')
+        levels = len(make_blocks.level_words(swlib.load_lexicon()))
+        self.assertIn(f'level 1 of {levels} is the nearest to your words', out)
+        self.assertTrue(out.endswith('\n\n' + export.chat_line(1) + '\n'))
+        exported = swlib.load_state()['exported']
+        self.assertEqual((exported['target'], exported['level']), ('chat', 1))
+        line = export.chat_line(1)
+        self.assertLess(len(line), 400)
+        self.assertNotIn('\n', line)
+        for part in ('Spanish Weave level 1.', 'load the spanish-weave skill', 'Without the skill, still swap y, pero',
+                     'never in code', 'footer line'):
+            self.assertIn(part, line)
+        # Someone who knows the words of levels 1 to 6 gets level 7, also without the dashes.
+        with swlib.editing() as state:
+            for w in make_blocks.level_order(swlib.load_lexicon())[:150]:
+                swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
+        self.assertTrue(self.sw('export', 'chat').endswith('\n\n' + export.chat_line(7) + '\n'))
+        self.assertEqual(swlib.load_state()['exported']['level'], 7)
+        # exact: their own word list, which the skill's step 2 takes in place of a level's.
+        out = self.sw('export', '--chat', '--exact')
+        intro, state_line = out.rstrip('\n').split('\n')[-2:]
+        self.assertTrue(intro.startswith('Spanish Weave: my word list is the state line below. At the start'))
+        self.assertTrue(state_line.startswith('Spanish weave state (re-export about weekly) — Stage: '))
+        state = swlib.load_state()
+        self.assertEqual(export.parse_state_line(state_line)['stage'], swlib.stage_for(state))
+        self.assertEqual(state['exported']['target'], 'chat-exact')
+        self.assertNotIn('level', state['exported'])
+        again = self.sw('export', 'chat', 'exact')
+        self.assertEqual(again.rsplit(' | ', 1)[0], out.rsplit(' | ', 1)[0])  # all but the time stamp
+        for argv in (['export', '--exact'], ['export', 'chat', 'chatgpt'], ['export', '--chat', '--claude-ai']):
+            with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
+                sw.main(argv)
+
+    def test_chat_line_nudge_once_per_new_level(self):
+        self.sw('export', '--chat')
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=time.time() + 30 * 86400))  # same level
+        order = make_blocks.level_order(swlib.load_lexicon())
+        for upto, level in ((25, 2), (50, 3)):
+            with swlib.editing() as state:
+                for w in order[:upto]:
+                    swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
+            notice = weave.export_notice(swlib.load_state())
+            self.assertIn(f'your claude.ai level is now {level}.', notice)
+            self.assertIn('/spanish-weave:export chat', notice)
+            self.assertIsNone(weave.export_notice(swlib.load_state()))  # once per level
+        # An exact line goes stale like a block, so it gets the weekly nudge.
+        self.sw('export', 'chat', 'exact')
+        with swlib.editing() as state:
+            swlib.apply_event(state, order[60]['es'], 'known')
+        notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)
+        self.assertIn('/spanish-weave:export chat exact', notice)
+
+    def test_check_notes_the_chat_plugin_and_changes_nothing(self):
+        def check():
+            with mock.patch.object(Path, 'home', return_value=self.home), \
+                    mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}):
+                return SetupSafety.check(self)
+        self.assertNotIn('spanish-weave-chat', check())
+        SetupSafety.claude_file(self, 'installed_plugins.json', {'version': 2, 'plugins': {
+            'spanish-weave@learning': [{'scope': 'user', 'version': main_version()}],
+            'spanish-weave-chat@learning': [{'scope': 'user', 'version': main_version()}]}})
+        files = lambda: {p: p.read_bytes() for p in (self.home / 'claude').rglob('*') if p.is_file()}
+        before = files()
+        out = check()
+        self.assertIn('note spanish-weave-chat@learning (the chat-only plugin) is in Claude Code too. Nothing to do: '
+                      f'the hook\'s brief carries the line "{swlib.HOOK_MARKER}"', out)
+        self.assertEqual(files(), before)  # read only: setup and check never write Claude Code's settings
+        self.assertFalse((self.home / 'claude' / 'settings.json').exists())
+
+    def test_marketplace_lists_both_plugins(self):
+        market = json.loads((REPO / '.claude-plugin' / 'marketplace.json').read_text(encoding='utf-8'))
+        entries = {p['name']: p for p in market['plugins']}
+        self.assertEqual(sorted(entries), ['spanish-weave', 'spanish-weave-chat'])
+        for name, entry in entries.items():
+            self.assertEqual(entry['source'], f'./language/{name}')
+            self.assertNotIn('version', entry)  # only in each plugin.json
+            manifest = REPO / entry['source'] / '.claude-plugin' / 'plugin.json'
+            self.assertEqual(json.loads(manifest.read_text())['name'], name)
+        self.assertTrue(entries['spanish-weave']['description'].startswith(
+            'For Claude Code on your computer (uses hooks). On claude.ai or the Claude apps, add spanish-weave-chat '
+            'instead.'))
+        self.assertIn('Pick this one in Customize > Plugins.', entries['spanish-weave-chat']['description'])
+
+    def test_docs_give_the_current_line(self):
+        for path in (ROOT / 'README.md', ROOT / 'START-HERE.md', CHAT / 'README.md'):
+            text = path.read_text(encoding='utf-8')
+            self.assertIn(export.chat_line(1), text, path)
+            self.assertIn('Camcas99/Learning-', text, path)
+            flat = ' '.join(text.split())
+            self.assertRegex(flat, r"(?i)(hasn't been|not yet) tested on an iPhone", path)
+            self.assertIn('paste-in blocks', flat, path)
+        self.assertIn('### On claude.ai and the Claude apps', (ROOT / 'README.md').read_text(encoding='utf-8'))
+        self.assertTrue(section(ROOT / 'START-HERE.md', 'On claude.ai and the Claude apps'))
+
+    @unittest.skipUnless(shutil.which('claude'), 'needs the Claude Code CLI')
+    def test_claude_validates_both_plugins_and_the_marketplace(self):
+        env = dict(os.environ, HOME=str(self.home), CLAUDE_CONFIG_DIR=str(self.home / 'claude'))
+        for path in (REPO, ROOT, CHAT):
+            result = subprocess.run(['claude', 'plugin', 'validate', '--strict', str(path)], capture_output=True,
+                                    text=True, timeout=120, env=env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
