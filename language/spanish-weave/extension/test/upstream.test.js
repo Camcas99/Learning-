@@ -121,12 +121,17 @@ it("a spent daily quota waits until just after midnight Pacific, survives in sto
   await ask().catch(() => {});
   expect(calls).toBe(2); // nothing more until the reset
   const storage = memoryStorage();
-  await saveSpent(storage, daily, new Map(), at);
-  expect([...(await spentToday(storage, at)).keys()]).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
-  expect((await spentToday(storage, Date.UTC(2026, 9, 21, 7, 2))).size).toBe(0);
+  await saveSpent(storage, daily, new Map(), 'key1', 'key1', at);
+  expect([...(await spentToday(storage, 'key1', at)).keys()]).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+  expect((await spentToday(storage, 'key1', Date.UTC(2026, 9, 21, 7, 2))).size).toBe(0);
+  expect((await spentToday(storage, 'key2', at)).size).toBe(0); // a new key (pasted or from setup) starts fresh
+  const late = memoryStorage();
+  await saveSpent(late, daily, new Map(), 'key1', 'key2', at); // the old key's 429 landed after the key changed
+  expect((await spentToday(late, 'key2', at)).size).toBe(0);
+  expect((await spentToday(late, 'key1', at)).size).toBe(0);
 });
 
-it('Claude Haiku: structured JSON request with the key in a header, plain errors, and Gemini as the fallback', async () => {
+it('Claude Haiku: structured JSON request with the key in a header, plain errors, and never a quiet Gemini fallback', async () => {
   const body = buildClaudeRequest({ model: 'claude-haiku-5-5', system: 'S', user: 'U', schema: { type: 'object', properties: { a: { type: 'object', properties: {} } } } });
   expect(body.output_config).toEqual({ effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false,
     properties: { a: { type: 'object', properties: {}, additionalProperties: false } } } } });
@@ -134,17 +139,61 @@ it('Claude Haiku: structured JSON request with the key in a header, plain errors
   expect(cleanSettings({ model: 'claude-haiku-5-5' }).model).toBe('claude-haiku-5-5');
   const seen = [];
   const reply = { passages: [{ id: 'a', swaps: [{ o: 'and', es: 'y', g: 'and', h: 'ee', ctx: 'cats and dogs' }] }] };
+  let claudeOk = false;
   const fetchImpl = async (url, init) => {
     seen.push({ url, headers: init.headers });
-    if (url === CLAUDE_URL) return { ok: false, status: 401, headers: { get: () => null }, text: async () => '{"error":{"message":"bad key sk-ant-SECRET"}}' };
+    if (url === CLAUDE_URL && !claudeOk) return { ok: false, status: 401, headers: { get: () => null }, text: async () => '{"error":{"message":"bad key sk-ant-SECRET"}}' };
+    if (url === CLAUDE_URL) return { ok: true, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(reply) }] }) };
     return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(reply) }] } }] }) };
   };
   const batch = [{ id: 'a', text: 'cats and dogs play in the yard' }];
-  const r = await requestSwaps({ apiKey: 'G', claudeKey: 'C', model: 'claude-haiku-5-5', level: 1, batch, fetchImpl });
+  const failed = await requestSwaps({ apiKey: 'G', claudeKey: 'C', model: 'claude-haiku-5-5', level: 1, batch, fetchImpl }).catch((e) => e);
+  expect(seen.map((r) => r.url)).toEqual([CLAUDE_URL]); // the Gemini key is never used for a Claude pick
   expect(seen[0].headers['x-api-key']).toBe('C');
   expect(seen[0].headers['anthropic-version']).toBe('2023-06-01');
-  expect(r.model).toBe('gemini-3.5-flash-lite');
-  expect(r.errors.join()).toContain('Claude key was refused');
-  expect(r.errors.join()).not.toContain('SECRET');
-  await expect(requestSwaps({ apiKey: '', claudeKey: '', model: 'claude-haiku-5-5', level: 1, batch, fetchImpl })).rejects.toThrow('Add a Claude key');
+  expect(failed.message).toContain('Claude key was refused');
+  expect(failed.message).not.toContain('SECRET');
+  claudeOk = true;
+  const r = await requestSwaps({ apiKey: 'G', claudeKey: 'C', model: 'claude-haiku-5-5', level: 1, batch, fetchImpl });
+  expect([r.model, r.results.a.map((x) => x.es)]).toEqual(['claude-haiku-5-5', ['y']]);
+  await expect(requestSwaps({ apiKey: 'G', claudeKey: '', model: 'claude-haiku-5-5', level: 1, batch, fetchImpl })).rejects.toThrow('Add a Claude key');
+});
+
+it('the bare-noun rule drops only el/la/los/las of the same word, and natural English still matches (0.3.3 review)', () => {
+  const words = [
+    { es: 'un poco', en: 'a little', hint: 'oon POH-koh', status: 'active' },
+    { es: 'una vez', en: 'once', hint: 'OO-nah bes', status: 'active' },
+    { es: 'la mañana', en: 'the morning', hint: 'lah mah-NYAH-nah', status: 'active' },
+    { es: 'mañana', en: 'tomorrow', hint: 'mah-NYAH-nah', status: 'active' },
+    { es: 'el cambio', en: 'the change', hint: 'el KAHM-byoh', status: 'active' },
+    { es: 'funciona', en: 'it works', hint: 'foon-SYOH-nah', status: 'active' },
+    { es: 'soy', en: 'I am (who or what I am)', hint: 'soy', status: 'active' },
+    { es: 'hacer', en: 'to do / make', hint: 'ah-SEHR', status: 'active' },
+    { es: 'el trabajo', en: 'work / the job', hint: 'el trah-BAH-hoh', status: 'active' },
+  ];
+  const one = (o, es) => validateSwaps(1, [{ o, es }], words)[0] || null;
+  expect(one('a little', 'un poco').es).toBe('un poco'); // never "poco" (not much)
+  expect(one('once', 'una vez').es).toBe('una vez');
+  expect(one('once', 'una vez').gn).toBeUndefined(); // a phrase, not a noun
+  const morning = one('morning', 'la mañana');
+  expect([morning.es, morning.word, morning.g, morning.gn]).toEqual(['mañana', 'la mañana', 'morning', 'f']); // still "the morning", not "tomorrow"
+  expect(one('a problem', 'el cambio')).toBeNull();
+  expect(one('changed', 'el cambio')).toBeNull(); // a verb form is not a noun's gloss
+  expect(one('to work', 'el trabajo')).toBeNull();
+  expect(one('little', 'un poco')).toBeNull();
+  expect(one('works', 'funciona').es).toBe('funciona');
+  expect(one("I'm", 'soy').es).toBe('soy');
+  expect(one('makes', 'hacer').es).toBe('hacer'); // every sense of a "to ..." gloss is a verb
+  expect(glossMatch('stopped', 'to stop')).toBe('inflected');
+  expect(glossMatch('studied', 'to study')).toBe('inflected');
+  expect(glossMatch('looking for', 'to look for')).toBe('inflected');
+  expect(glossMatch("isn't", "it isn't (what something isn't)")).toBe('exact');
+});
+
+it('a passage dropped because its element left the page forgets the element, so it is read again when it comes back', () => {
+  const gone = { isConnected: false, getBoundingClientRect: () => ({ top: 0, bottom: 10 }) };
+  const pending = new Map([['k', { text: 'k', els: new Set([gone]) }]]);
+  const forgotten = [];
+  expect(pickBatch(pending, new Set(), () => 'k', 800, 8, (el) => forgotten.push(el))).toEqual([]);
+  expect(forgotten).toEqual([gone]);
 });

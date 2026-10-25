@@ -56,4 +56,4 @@ def estimate(state, known):
         total += share * (last - first + 1)
         if share < 0.5:
             break
-    return int(round(total, -1)), real, fake
+    return min(int(round(total, -1)), len(state['words'])), real, fake  # never more than the list holds

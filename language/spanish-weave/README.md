@@ -71,7 +71,8 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
-block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through level 42.
+block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
+(46). A level never changes its words: words added to the list later go into new levels at the end.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
@@ -112,8 +113,8 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
   than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere. When Google's
   own daily free quota runs out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is
   asked until then. With a paid Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it
-  makes fewer wrong swaps, Anthropic bills it per use, and it falls back to Gemini Flash-Lite when a Gemini key is
-  saved too.
+  makes fewer wrong swaps and Anthropic bills it per use. It never falls back to Gemini, so with Claude picked no page
+  text goes to Google, even when a Gemini key is saved.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -286,7 +287,8 @@ coding words at the end), each with a gloss and a sound hint.
   known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
   word; a known word peeked on 2 days within a week, both since it became known, turns shaky. **Shaky -> known**
   after 7 days with no flip, peek or quiz miss, once you've really seen the word again since the last one (days
-  counted by `log-chat-day` don't count; solo, mayor and sensible, which chat can't count, need only the week).
+  counted by `log-chat-day` don't count; solo, mayor, sensible, tan and resolver, which chat can't count, need only
+  the week).
 - **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
   native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
@@ -315,10 +317,11 @@ with any Spanish adjective next to it agreeing (la idea nueva). The extension's 
 ChatGPT block, kept under the 1,500-character limit of the Free and Go plans, carries the most common ones.
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
-one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor` and
-`sensible` are never counted from chat, since English uses them with other meanings (the quiz, the extension or
-`known` can still move them); and a few words skip their English
-uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`.
+one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor`,
+`sensible`, `tan` and `resolver` are never counted from chat, since English uses them with other meanings (the quiz,
+the extension or `known` can still move them); and a few words skip their English
+uses: TODO and "the TODOs", "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`. A phrase is counted
+before the words inside it, so "es decir" is not also a sighting of decir.
 
 **Chats that can't be scanned** (claude.ai, ChatGPT) don't count toward exposure. If you mostly read Spanish there,
 `sw.py log-chat-day` (or `export --log-day`) counts today as exposure for your learning words. It's off by default

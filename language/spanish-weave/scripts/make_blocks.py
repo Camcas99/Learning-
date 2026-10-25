@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Writes blocks/level-NN.md: ready-made Spanish Weave blocks for claude.ai and ChatGPT, no install needed.
 
-Level k knows the lexicon's first (k-1)*PER_LEVEL words (it is in frequency/usefulness order) and learns the next
-PER_LEVEL. The claude.ai block names every known word up to 150; past that it says "the first N words of my Spanish
+Level k knows the first (k-1)*PER_LEVEL words of the level order and learns the next PER_LEVEL. The level order is
+the lexicon's (frequency/usefulness) order, except that words added to the list after the blocks were first published
+(lexicon.csv's since column) come after all the others, in their list order. So a published level never changes its
+words: someone who pasted level 5 and moves to level 6 is never told that words no block taught them are known. (With
+the plugin, new words are queued at their list rank instead, since its state knows what each learner has met.) The claude.ai block names every known word up to 150; past that it says "the first N words of my Spanish
 Weave list" and names the newest 40 (the list is not a general frequency rank, so it never says "most common"). The
 ChatGPT field names as many as fit. Same rules source and state-line format as `sw.py export`, so the blocks can't
 drift from it.
 Usage: python3 scripts/make_blocks.py [--check]   (--check: fail if blocks/ is out of date or a block is too long)
 """
 import argparse
+import csv
 from pathlib import Path
 import sys
 
@@ -22,6 +26,13 @@ KNOWN_NAMED = swlib.COLLAPSE_AT  # known words named one by one, as in `sw.py ex
 # level 7, with all 150 known words named, at about 7,100 characters.
 CLAUDE_AI_MAX = 7500
 OUT = swlib.PLUGIN_ROOT / 'blocks'
+
+
+def level_order(lexicon, path=swlib.LEXICON):
+    """The lexicon with later additions (a since version) moved after the words the first blocks were made from."""
+    with open(path, encoding='utf-8', newline='') as file:
+        later = {swlib.key(r['es']) for r in csv.DictReader(file) if (r.get('since') or '').strip()}
+    return [w for w in lexicon if swlib.key(w['es']) not in later] + [w for w in lexicon if swlib.key(w['es']) in later]
 
 
 def level_state(level, lexicon):
@@ -41,9 +52,9 @@ def block(level, levels, lexicon):
     claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED, recent=export.RECENT_NAMED)
     about, respond = export.chatgpt(state, tail=tail)
     first, last = (level - 1) * PER_LEVEL + 1, min(level * PER_LEVEL, len(lexicon))
-    known = f'words ranked 1-{first - 1}' if first > 1 else 'none yet'
+    known = f'the words of level{"s 1 to" if level > 2 else ""} {level - 1}' if level > 1 else 'none yet'
     text = (f'# Spanish Weave level {level} of {levels} (Stage {stage})\n\n'
-            f'Learning: words ranked {first}-{last} of the [Spanish Weave list](../data/lexicon.csv). Known: {known}. '
+            f'Learning: {last - first + 1} words from the [Spanish Weave list](../data/lexicon.csv). Known: {known}. '
             + (f'When these feel easy, paste [level {level + 1}]({nxt}) instead.\n\n' if nxt else 'This is the last level.\n\n')
             + '## claude.ai\n\nSettings > "Instructions for Claude" (on a computer, click your initials at the bottom '
               'left to open Settings; older layouts call the box "What personal preferences should Claude consider in '
@@ -69,7 +80,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    lexicon = swlib.load_lexicon()
+    lexicon = level_order(swlib.load_lexicon())
     levels = -(-len(lexicon) // PER_LEVEL)
     stale, worst = [], [0, 0, 0]
     for level in range(1, levels + 1):

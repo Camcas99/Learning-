@@ -201,9 +201,10 @@ def main(argv=None):
                 row['hint'] = respell(row['es'])
                 filled += 1
         with open(LEXICON, 'w', encoding='utf-8', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['es', 'en', 'hint'], lineterminator='\n')
+            fields = list(table[0]) if table else ['es', 'en', 'hint']  # keeps any column after hint (since)
+            writer = csv.DictWriter(file, fieldnames=fields, lineterminator='\n')
             writer.writeheader()
-            writer.writerows({k: row[k] for k in ('es', 'en', 'hint')} for row in table)
+            writer.writerows({k: row.get(k) or '' for k in fields} for row in table)
         print(f'filled {filled} hints')
     elif args.check:
         differ = [(row['es'], row['hint'], respell(row['es'])) for row in rows() if row['hint'] != respell(row['es'])]

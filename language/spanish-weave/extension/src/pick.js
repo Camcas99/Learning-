@@ -13,12 +13,15 @@ export function placeOf(el, viewHeight) {
 // Nearest the window first, not first come: on an infinite timeline the oldest pending passages are the ones that
 // scrolled away. A passage whose elements have all left the page (the timeline unmounts what scrolled past) or now
 // show other text is dropped from pending: if it comes back, it is asked for again then, or painted at once from the
-// page's memo when its answer already came.
-export function pickBatch(pending, sent, keyOf, viewHeight, size = BATCH_SIZE) {
+// page's memo when its answer already came. forget(el) is called for each element dropped because it left the page,
+// so the caller can let a re-attached element be read again.
+export function pickBatch(pending, sent, keyOf, viewHeight, size = BATCH_SIZE, forget = () => {}) {
   const ranked = [];
   for (const [key, p] of pending) {
     if (sent.has(key)) continue;
-    for (const el of p.els) if (!el.isConnected || keyOf(el) !== key) p.els.delete(el);
+    for (const el of p.els) {
+      if (!el.isConnected) { p.els.delete(el); forget(el); } else if (keyOf(el) !== key) p.els.delete(el);
+    }
     if (!p.els.size) { pending.delete(key); continue; }
     const places = [...p.els].map((el) => placeOf(el, viewHeight));
     ranked.push({ key, text: p.text, gap: Math.min(...places.map((x) => x.gap)), top: Math.min(...places.map((x) => x.top)) });

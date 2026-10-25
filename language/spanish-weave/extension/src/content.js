@@ -67,8 +67,10 @@ function record(span, event) {
 // sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers (the
 // word's aria-label carries the gloss). From French Weave by Jackie Oliver (MIT).
 let tipBox = null;
+let tipSpan = null; // the word the box belongs to: when the page removes or reverts it, the box goes too
 const TIP_GAP = 4;
 function placeTip(span) {
+  tipSpan = span;
   if (!tipBox?.isConnected) {
     tipBox = document.createElement('sw-gloss');
     tipBox.className = 'sw-gloss';
@@ -89,6 +91,7 @@ function hideTip() {
   clearTimeout(tipTimer); tipTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.sw-tip`)) el.classList.remove('sw-tip');
   tipBox?.classList.remove('sw-gloss-on');
+  tipSpan = null;
 }
 function armTip(e) {
   const span = swapFor(e);
@@ -148,7 +151,9 @@ async function flush() {
   timer = null;
   if (!on() || batchesOut >= MAX_BATCHES_OUT) return; // the reply to one out schedules the next
   const gen = generation;
-  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0);
+  // A passage dropped because its element left the page forgets its key, so the element is read again if it comes back.
+  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0,
+    undefined, (el) => keys.delete(el));
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
   batchesOut++;
@@ -204,6 +209,7 @@ function track(root) {
   }
 }
 function mutations(records) {
+  if (tipSpan && !tipSpan.isConnected) hideTip(); // no mouseout comes from a removed word
   const changed = new Set();
   for (const r of records) {
     for (const n of r.addedNodes || []) if (n.nodeType === 1) track(n);
@@ -230,6 +236,7 @@ function mutations(records) {
   observer?.takeRecords();
   for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
   for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
+  if (tipSpan && !tipSpan.isConnected) hideTip(); // the swap was reverted while its gloss showed
 }
 function start() {
   if (observer || !on()) return;

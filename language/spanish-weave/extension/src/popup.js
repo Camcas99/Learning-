@@ -51,7 +51,7 @@ async function refresh() {
   $('claudeKey').placeholder = status.claudeKey ? 'saved (paste to replace)' : 'sk-ant-…';
   $('claudeRow').hidden = !isClaude(s.model) && !status.claudeKey;
   $('privacy').textContent = isClaude(s.model)
-    ? 'Sites where it\'s on send readable page text to Anthropic with your Claude key (Anthropic bills it per use), or to Gemini when that fails and a Gemini key is saved. Forms, links, code and editable text are skipped.'
+    ? 'Sites where it\'s on send readable page text to Anthropic with your Claude key (Anthropic bills it per use), never to Gemini. Forms, links, code and editable text are skipped.'
     : 'Sites where it\'s on send readable page text to Gemini with your key. With a free key Google may use it to improve its AI and people may review it. Forms, links, code and editable text are skipped.';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`

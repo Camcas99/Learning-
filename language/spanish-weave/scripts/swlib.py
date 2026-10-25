@@ -50,7 +50,7 @@ SEED_SPREAD = 28       # words seeded known (setup, placement) get a first check
 
 # Same spelling as an English word with another meaning, so Spanish use can't be told apart in English prose:
 # never counted. (Words English borrowed with the same meaning, like gratis or loco, still count.)
-UNMEASURABLE = {'solo', 'mayor', 'sensible', 'tan'}
+UNMEASURABLE = {'solo', 'mayor', 'sensible', 'tan', 'resolver'}
 DETERMINER = (r"(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|estos|estas|ese|esa|esos|esas|mi|mis|tu|tus|su|sus"
               r"|nuestro|nuestra|nuestros|nuestras)\s+")
 ARTICLE = r"(?:el|la|los|las) "
@@ -65,6 +65,11 @@ SPECIAL = {
     'es': ('', r'(?!\s*(?:modules?\b|\d))'),                    # ES modules, ES 2020
     'en': ('', r'(?!\s+(?:route|masse|dash|passant|bloc|suite)\b)'),
     'todo': (ENGLISH_DETERMINER, r'(?!\s*[:(])(?!\s+(?:lists?|apps?|items?|comments?)\b)'),
+    # "the TODOs", "3 todos left", "todos.md" are English; "todos" alone is Spanish.
+    'todos': (ENGLISH_DETERMINER + ''.join(rf'(?<!\b{d} )' for d in (
+        'these', 'those', 'some', 'all', 'two', 'three', 'few', 'several', 'many', 'more', 'open', 'remaining', 'pending',
+        'outstanding', 'new', 'old', 'any')) + r'(?<!\d )',
+        r'(?!\.\w)(?!\s*[:(])(?!\s+(?:lists?|apps?|items?|comments?|left|remain(?:ing)?|in)\b)'),
     'algo': (ENGLISH_DETERMINER, ''),
 }
 CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+", re.S)
@@ -689,8 +694,14 @@ def check(word, answer, way):
     if not given:
         return False
     if way == 'produce':
-        if bare_fold(given) == bare_fold(word['es']):
+        if fold(given) == fold(word['es']):
             return True
+        if bare_fold(given) == bare_fold(word['es']):
+            if re.match(r'(un|una|unos|unas) ', key(word['es'])):
+                return False  # the un/una is part of the phrase: "poco" is not "un poco", "la vez" not "una vez"
+            if any(fold(w['es']) == fold(given) for w in load_lexicon()):
+                return False  # another listed word: "una vez" (once) is not "la vez" (the time)
+            return True  # a missing or different article
         return None if listed_meanings().get(bare_fold(given), set()) & meanings(word['en']) else False
     english = re.sub(r'^(the|to|a|an) ', '', given)
     if english in meanings(word['en']):
@@ -888,13 +899,16 @@ def scan(words, index, roots=None, start='0000-00-00'):
             if digest in recent:
                 continue  # forked and resumed chats copy old replies
             recent[digest] = day
-            prose = norm(CODE.sub(' ', text))
-            for es, regex in patterns.items():
-                if regex.search(prose):
+            rest = norm(CODE.sub(' ', text))
+            # Longest first, each match removed before the next search, as the hook's share() does: "es decir" is not
+            # also decir, "vale la pena" not also la pena.
+            for es, regex in sorted(patterns.items(), key=lambda p: -len(p[0])):
+                if regex.search(rest):
                     entry = counts[es]
                     entry['n'] += 1
                     if day not in entry['days']:
                         entry['days'] = sorted(entry['days'] + [day])[-60:]
+                    rest = regex.sub(' ', rest)
         offsets[name] = lines.offset
         if mark[0] is not None:
             typed[name] = mark[0]

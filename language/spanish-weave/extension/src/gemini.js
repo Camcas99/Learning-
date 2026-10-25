@@ -3,7 +3,8 @@ export const MODELS = {
   'gemini-3.8-flash': 'Gemini 3.8 Flash',
   'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
 };
-export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite', 'claude-haiku-5-5': 'gemini-3.5-flash-lite' };
+// Claude Haiku has no Gemini fallback: someone who picks Claude never has page text quietly sent to Google instead.
+export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite' };
 export const THINKING_LEVEL = 'low';
 export const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
@@ -38,9 +39,9 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
     if (delay > 0) error.retryAfterMs = Math.min(delay, 86400) * 1000;
     if (res.status === 429 && dailyQuota(detail)) {
       // Google's retryDelay for a per-day quota counts down to midnight UTC, but the quota resets at midnight Pacific,
-      // so a spent day waits until just after the next Pacific midnight, or Google's time if that is sooner.
+      // so a spent day always waits until just after the next Pacific midnight.
       error.daily = true;
-      error.retryAfterMs = Math.min(error.retryAfterMs || Infinity, dailyReset(now()) - now());
+      error.retryAfterMs = dailyReset(now()) - now();
     }
     throw error;
   }

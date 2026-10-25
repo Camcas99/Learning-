@@ -37,20 +37,24 @@ export async function countCall(storage, day = localDay(), host = '') {
   await storage.set({ [KEY]: { day, count: used.count + 1, sites } });
 }
 
-// Models whose Gemini daily quota is spent ({ model: until ms }), kept in storage because a restarted worker must wait
-// too. A new key starts with none (background.js clears it).
+// Models whose Gemini daily quota is spent, kept in storage because a restarted worker must wait too:
+// { key: a hash of the Gemini key they were spent with, models: { model: until ms } }. Entries recorded under another
+// key don't count, so a new key (pasted, or stored by setup) starts with none, even if an old key's 429 lands later.
 export const DAILY_KEY = 'dailyQuota';
 
-export async function spentToday(storage, now = Date.now()) {
+export async function spentToday(storage, key, now = Date.now()) {
   const { [DAILY_KEY]: saved } = await storage.get([DAILY_KEY]);
-  return new Map(Object.entries(saved || {}).filter(([, until]) => Number(until) > now).map(([m, until]) => [m, Number(until)]));
+  if (!saved || saved.key !== key) return new Map();
+  return new Map(Object.entries(saved.models || {}).filter(([, until]) => Number(until) > now).map(([m, until]) => [m, Number(until)]));
 }
 
-// Writes only what this batch added over what is stored now, so batches running at once keep each other's entries and
-// a key change's reset made meanwhile stands. loaded: the map as this batch read it.
-export async function saveSpent(storage, daily, loaded, now = Date.now()) {
-  const base = await spentToday(storage, now);
+// Writes only what this batch added over what is stored now, so batches running at once keep each other's entries.
+// key: the hash of the key this batch used; current: the hash of the key stored now (a batch whose key was replaced
+// meanwhile writes nothing). loaded: the map as this batch read it.
+export async function saveSpent(storage, daily, loaded, key, current = key, now = Date.now()) {
+  if (key !== current) return;
+  const base = await spentToday(storage, key, now);
   let changed = false;
   for (const [m, until] of daily) if (loaded.get(m) !== until) { base.set(m, until); changed = true; }
-  if (changed) await storage.set({ [DAILY_KEY]: Object.fromEntries(base) });
+  if (changed) await storage.set({ [DAILY_KEY]: { key, models: Object.fromEntries(base) } });
 }

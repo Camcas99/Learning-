@@ -1,4 +1,6 @@
 """Offline tests for the hook, word state, native host and setup. Run: python3 -m unittest discover -s tests"""
+import argparse
+import contextlib
 import datetime as dt
 import io
 import json
@@ -89,6 +91,9 @@ class Matching(unittest.TestCase):
         self.assertFalse(self.hits('todo', 'leave a TODO here'))
         self.assertFalse(self.hits('todo', 'TODO: fix later'))
         self.assertFalse(self.hits('algo', 'the algo is off'))
+        self.assertTrue(self.hits('todos', 'todos pass now'))
+        for english in ('I updated the todos', 'there are 3 TODOs left', 'see todos.md', 'TODOs: none', 'two todos left'):
+            self.assertFalse(self.hits('todos', english), english)
         self.assertFalse(self.hits('es', 'switch to ES modules'))
         self.assertFalse(self.hits('en', 'en route to prod'))
         self.assertFalse(self.hits('con', 'install conda'))
@@ -892,7 +897,7 @@ class Placement(Home):
         state = swlib.new_state('2026-10-01')
         items = placement.items(state)
         number = lambda pick: [n for n, (_, band) in enumerate(items, 1) if pick(band)]
-        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1140)  # every real word
+        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1135)  # every real word, never more than the list
         self.assertEqual(placement.estimate(state, number(lambda band: True))[0], 0)  # yes to everything is no signal
         half_first = number(lambda band: band == 0)[:4] + number(lambda band: band is None)[:2]
         self.assertEqual(placement.estimate(state, half_first), (40, 4, 2))  # (4/8 - 3/14) / (1 - 3/14) of 100 words
@@ -1063,8 +1068,19 @@ class Blocks(unittest.TestCase):
         read = lambda level: (ROOT / 'blocks' / f'level-{level:02d}.md').read_text(encoding='utf-8')
         claude = read(4).split('```text\n', 1)[1].split('\n```', 1)[0]
         known = claude.split(' | Known (use freely; never gloss): ', 1)[1].rsplit(' | ', 1)[0]
-        self.assertEqual(known.split(', '), [w['es'] for w in swlib.load_lexicon()[:75]])  # all 75, newest included
+        order = make_blocks.level_order(swlib.load_lexicon())
+        self.assertEqual(known.split(', '), [w['es'] for w in order[:75]])  # all 75, newest included
         self.assertIn('the first 175 words of my Spanish Weave list', read(8))
+
+    def test_levels_keep_their_words_when_words_are_added(self):
+        # Words with a since version come after the others, so a pasted level never gains untaught Known words.
+        lexicon = swlib.load_lexicon()
+        order = make_blocks.level_order(lexicon)
+        later = [w['es'] for w in order[-92:]]
+        self.assertEqual(sorted(w['es'] for w in order), sorted(w['es'] for w in lexicon))
+        self.assertIn('sino', later)
+        self.assertNotIn('sino', [w['es'] for w in order[:1043]])
+        self.assertEqual([w['es'] for w in order[:20]], [w['es'] for w in lexicon[:20]])
 
 
 class Codex(Home):
@@ -1967,7 +1983,7 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class UpstreamPorts(unittest.TestCase):
+class UpstreamPorts(Home):
     """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2 and 0.3.3."""
 
     def test_gap_words_are_listed_and_the_first_words_stay(self):
@@ -1978,6 +1994,41 @@ class UpstreamPorts(unittest.TestCase):
         self.assertEqual(es[:5], ['y', 'pero', 'entonces', 'con', 'sin'])
         self.assertIn('tan', swlib.UNMEASURABLE)  # "a tan coat" is English
 
+    def test_a_phrase_is_counted_before_the_words_inside_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chat = root / 'proj' / 'a.jsonl'
+            chat.parent.mkdir()
+            chat.write_text(line('The fix is small, es decir one line, and vale la pena.') + '\n')
+            index = swlib.scan(['es decir', 'decir', 'vale la pena', 'la pena', 'resolver'], {}, root, start='2026-09-19')
+            self.assertEqual(index['words']['es decir']['n'], 1)
+            self.assertEqual(index['words']['decir']['n'], 0)  # only inside "es decir"
+            self.assertEqual(index['words']['la pena']['n'], 0)
+            self.assertNotIn('resolver', index['words'])  # "the DNS resolver" is English
+
+    def test_quiz_keeps_una_vez_and_la_vez_apart(self):
+        once = {'es': 'una vez', 'en': 'once'}
+        time_ = {'es': 'la vez', 'en': 'the time (occasion)'}
+        self.assertTrue(swlib.check(once, 'una vez', 'produce'))
+        self.assertFalse(swlib.check(once, 'la vez', 'produce'))
+        self.assertFalse(swlib.check(once, 'vez', 'produce'))
+        self.assertFalse(swlib.check(time_, 'una vez', 'produce'))
+        self.assertTrue(swlib.check(time_, 'vez', 'produce'))  # a missing article is fine for a noun
+        self.assertFalse(swlib.check({'es': 'un poco', 'en': 'a little'}, 'poco', 'produce'))
+
+    def test_unaccented_donde_marks_the_dónde_being_learned(self):
+        import sw
+        state = swlib.new_state('2026-10-01')
+        dónde = swlib.find(state, 'dónde')
+        dónde.update(status='active', added='2026-10-01')
+        swlib.save_state(state)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.mark('asked')(argparse.Namespace(words=['donde'], command='learn'))
+        self.assertEqual(out.getvalue().strip(), 'Back to learning: dónde')
+        state = swlib.load_state()
+        self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
+        self.assertEqual(swlib.find(state, 'donde')['status'], 'queue')
+
     def test_export_can_copy_the_claude_ai_block(self):
         import sw
         from unittest import mock
@@ -1985,7 +2036,8 @@ class UpstreamPorts(unittest.TestCase):
                 mock.patch.object(sw.subprocess, 'run') as run:
             self.assertTrue(sw.copy_to_clipboard('block'))
         self.assertEqual(run.call_args.args[0], ['pbcopy'])
-        self.assertEqual(run.call_args.kwargs['input'], 'block')
+        self.assertEqual(run.call_args.kwargs['input'], b'block')  # UTF-8 bytes, read under a UTF-8 locale
+        self.assertEqual(run.call_args.kwargs['env']['LC_ALL'], 'en_US.UTF-8')
         with mock.patch.object(sw.shutil, 'which', lambda cmd: None):
             self.assertFalse(sw.copy_to_clipboard('block'))  # no clipboard tool: the printed block still works
 

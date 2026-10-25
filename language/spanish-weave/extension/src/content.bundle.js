@@ -712,7 +712,7 @@ const exactEs = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘
 const EL_FEMININE = new Set(['agua', 'alma', 'hambre', 'águila', 'aula', 'área', 'arma', 'hacha', 'ave', 'ala', 'hada',
   'habla', 'ancla'].map(normalizeEs));
 // Fixed phrases that start with un/una but are not nouns, so they get no gender cue.
-const NOT_NOUNS = new Set(['un poco', 'una vez más'].map(normalizeEs));
+const NOT_NOUNS = new Set(['un poco', 'una vez', 'una vez más'].map(normalizeEs));
 
 // 'm' or 'f' from a list entry's article ("el problema", "las ganas"); '' without one.
 function genderOf(es) {
@@ -721,6 +721,11 @@ function genderOf(es) {
   if (!m || NOT_NOUNS.has(s)) return '';
   return /^(la|las|una|unas)$/.test(m[1]) || EL_FEMININE.has(m[2]) ? 'f' : 'm';
 }
+
+// The entry without its article ("canción" for "la canción"), keeping the accents, word, gender and note.
+const DEFINITE_RE = /^(?:los|las|el|la)\s+/i;
+const bareEntry = (entry, re = ARTICLE_RE) => ({ ...entry, canon: entry.canon.replace(re, ''), en: entry.en.replace(/^the /, ''),
+  hint: entry.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /i, '') });
 
 const indexCache = new Map();
 function indexFor(level, sharedWords) {
@@ -735,8 +740,7 @@ function indexFor(level, sharedWords) {
     const stripped = full.replace(ARTICLE_RE, '');
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("canción" for "song") and keep the accents from the list.
-      const canon = w.es.replace(ARTICLE_RE, '');
-      idx.set(stripped, { ...about, canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(el|lah|lohs|lahs|oon|oo-nah|oo-nohs|oo-nahs) /i, '') });
+      idx.set(stripped, bareEntry({ ...about, canon: w.es, en: w.en, hint: w.hint }));
     }
   }
   const folded = new Map();
@@ -776,9 +780,13 @@ function keepsMeaning(original, gloss) {
 
 // The English a swap replaces must be one of the word's glosses, a listed synonym, or a plain inflection of one, so
 // a model slip like "to start" -> entonces is dropped instead of shown (from French Weave by Jackie Oliver, MIT).
-const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
-const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
-  .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+// Contractions are spelled out first, so "isn't", "is not" and "it's not" compare alike.
+const SPELL_OUT = [[/\bcan't\b/g, 'can not'], [/\bcannot\b/g, 'can not'], [/\bwon't\b/g, 'will not'], [/n't\b/g, ' not'],
+  [/\bi'm\b/g, 'i am'], [/\blet's\b/g, 'let us'], [/\b(it|that|there|here|what|who|he|she|where)'s\b/g, '$1 is'],
+  [/'re\b/g, ' are'], [/'ve\b/g, ' have'], [/'ll\b/g, ' will'], [/'d\b/g, ' would']];
+const cleanEn = (s) => SPELL_OUT.reduce((t, [re, to]) => t.replace(re, to), String(s).toLowerCase().replace(/[’‘`]/g, "'")
+  .replace(/\(.*?\)/g, ' ').replace(/[^\p{L}\p{N}' -]+/gu, ' ').replace(/(\p{L})-(\p{L})/gu, '$1 $2').replace(/-/g, ' '))
+  .replace(/\s+/g, ' ').trim();
 
 // Everyday English variants of a gloss, including the ones the prompt asks the model to use ("big"/"large"/"huge"
 // -> grande, "only"/"alone"/"single" -> solo, "other"/"another" -> otro).
@@ -786,8 +794,7 @@ const SYNONYMS = {
   big: ['large', 'huge'],
   only: ['alone', 'single', 'just'],
   other: ['another', 'else'],
-  'i think that': ['i think'],
-  okay: ['ok'],
+  okay: ['ok', 'alright', 'all right'],
   'thank you': ['thanks'],
   'a little': ['a bit', 'a little bit'],
   'a lot': ['lots', 'a lot of', 'lots of', 'much', 'so much'],
@@ -798,28 +805,67 @@ const SYNONYMS = {
   difficult: ['hard'],
   actually: ['in fact'],
   but: ['however'],
-  'there is': ["there's", 'there are'],
-  'there are': ["there's", 'there is'],
-  "it's": ['it is', 'this is', "that's", 'that is'],
+  'there is': ['there are'],
+  'there are': ['there is'],
+  'it is': ['this is', 'that is'],
   hello: ['hi'],
   'of course': ['sure', 'certainly'],
   so: ['therefore', 'so then'],
   ready: ['all set'],
+  almost: ['nearly'],
+  someone: ['somebody'],
+  nobody: ['no one'],
+  everyone: ['everybody'],
+  small: ['little', 'tiny'],
+  pretty: ['beautiful'],
+  great: ['awesome'],
+  happy: ['glad'],
+  afterwards: ['afterward', 'after that'],
+  incredible: ['amazing'],
+  toward: ['towards'],
+  sorry: ['i am sorry'],
+  'you have to': ['we have to', 'you need to'],
+  'we need to': ['we have to', 'you need to'],
 };
 
-const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']];
+// Endings taken off a word to find its listed form: -s/-es/-ies (a plural, or a verb's he/she form), -ed/-ied and -ing
+// (verbs only), with a doubled final consonant undone ("stopped", "running").
+function stems(word) {
+  const out = [];
+  const add = (base, plural) => { if (base.length >= 2) out.push({ base, plural }); };
+  if (word.endsWith('ies')) add(word.slice(0, -3) + 'y', true);
+  if (word.endsWith('es')) add(word.slice(0, -2), true);
+  if (word.endsWith('s') && !word.endsWith('ss')) add(word.slice(0, -1), true);
+  if (word.endsWith('ied')) add(word.slice(0, -3) + 'y', false);
+  for (const suffix of ['ed', 'ing']) {
+    if (!word.endsWith(suffix)) continue;
+    const base = word.slice(0, -suffix.length);
+    add(base, false);
+    add(base + 'e', false);
+    if (/([bdfgklmnprtvz])\1$/.test(base)) add(base.slice(0, -1), false);
+  }
+  return out;
+}
 
-// The English forms a gloss matches exactly (each meaning, without a leading article or "to", and its synonyms);
-// verbs: those from a "to ..." meaning, which take endings instead of a plural.
+// The English forms a gloss matches exactly (each meaning, without a leading "the" or "to", without a leading "it" in
+// a phrase like "it doesn't work", and its synonyms); verbs: the "to ..." meanings and the bare meanings after one in
+// the same gloss ("to do / make"), which take endings instead of a plural.
 function glossForms(en, synonyms = SYNONYMS) {
   const forms = new Set();
   const verbs = new Set();
+  let verb = false;
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
     if (!g) continue;
-    const verb = /^to\s/.test(g);
-    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
-      for (const form of [f, ...(synonyms[f] || [])]) {
+    verb = /^to\s/.test(g) || (verb && !/^(the|a|an)\s/.test(g));
+    const variants = [g, g.replace(/^(?:the|to)\s+/, '')];
+    for (const f of [...variants]) {
+      if (/^it\s\S/.test(f)) variants.push(f.replace(/^it\s/, ''));      // "it does not work" -> "does not work"
+      if (/^it is\s\S/.test(f)) variants.push(f.replace(/^it is\s/, '')); // "it is worth it" -> "worth it"
+      if (/\sthat$/.test(f)) variants.push(f.replace(/\sthat$/, ''));      // "i think that" -> "i think"
+    }
+    for (const f of variants) {
+      for (const form of [f, ...(synonyms[f] || []).map(cleanEn)]) {
         forms.add(form);
         if (verb) verbs.add(form);
       }
@@ -829,19 +875,25 @@ function glossForms(en, synonyms = SYNONYMS) {
 }
 
 // How the English matches a gloss: 'exact' (a meaning or a synonym), 'plural' (a meaning that is not a verb, plus -s,
-// -es or -ies: "problems" for "the problem"), 'inflected' (a verb meaning with an ending: "fixed" for "to fix"), or ''.
+// -es or -ies: "problems" for "the problem"), 'inflected' (a verb meaning with an ending: "fixed" for "to fix",
+// "looking for" for "to look for"), or ''. A leading "the", "a" or "an" in the English is dropped for nouns; a leading
+// "to" only for verbs ("to work" is not el trabajo).
 function glossMatch(original, en, synonyms = SYNONYMS) {
   const { forms, verbs } = glossForms(en, synonyms);
   const t = cleanEn(original);
   if (!t) return '';
+  const candidates = [{ c: t, verbOnly: false }];
+  if (/^(the|a|an)\s/.test(t)) candidates.push({ c: t.replace(/^(the|a|an)\s+/, ''), verbOnly: false });
+  if (/^to\s/.test(t)) candidates.push({ c: t.replace(/^to\s+/, ''), verbOnly: true });
   let found = '';
-  for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
-    if (forms.has(c)) return 'exact';
-    for (const [suffix, stem] of SUFFIXES) {
-      const base = c.slice(0, -suffix.length) + stem;
-      if (!c.endsWith(suffix) || !forms.has(base)) continue;
-      if (suffix.endsWith('s') && !verbs.has(base)) found ||= 'plural';
-      else found = 'inflected';
+  for (const { c, verbOnly } of candidates) {
+    if (forms.has(c) && (!verbOnly || verbs.has(c))) return 'exact';
+    const [first, ...rest] = c.split(' ');
+    for (const { base, plural } of stems(first)) {
+      const form = [base, ...rest].join(' ');
+      if (!forms.has(form)) continue;
+      if (verbs.has(form)) found = 'inflected';
+      else if (plural && !verbOnly && !rest.length) found ||= 'plural';
     }
   }
   return found;
@@ -880,9 +932,9 @@ function validateSwaps(level, swaps, sharedWords) {
     if (!match) continue;
     if (match === 'plural' && !(hit = pluralEntry(idx, hit, o))) continue;
     // "my problem" -> "my el problema", "the answer" -> "the la respuesta": when the English article (or a possessive)
-    // stays outside the swap, use the bare noun.
-    const bare = exactEs(hit.canon).replace(ARTICLE_RE, '');
-    if (bare !== exactEs(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
+    // stays outside the swap, the same word goes in without its el/la/los/las. un/una stay ("a little" is un poco, never
+    // poco), and so does an article the swap replaces ("a problem" -> el problema).
+    if (DEFINITE_RE.test(hit.canon) && !/^(the|a|an)\s/i.test(o)) hit = bareEntry(hit, DEFINITE_RE);
     out.push({
       o,
       es: matchCase(hit.canon, o),
@@ -1038,12 +1090,15 @@ function placeOf(el, viewHeight) {
 // Nearest the window first, not first come: on an infinite timeline the oldest pending passages are the ones that
 // scrolled away. A passage whose elements have all left the page (the timeline unmounts what scrolled past) or now
 // show other text is dropped from pending: if it comes back, it is asked for again then, or painted at once from the
-// page's memo when its answer already came.
-function pickBatch(pending, sent, keyOf, viewHeight, size = BATCH_SIZE) {
+// page's memo when its answer already came. forget(el) is called for each element dropped because it left the page,
+// so the caller can let a re-attached element be read again.
+function pickBatch(pending, sent, keyOf, viewHeight, size = BATCH_SIZE, forget = () => {}) {
   const ranked = [];
   for (const [key, p] of pending) {
     if (sent.has(key)) continue;
-    for (const el of p.els) if (!el.isConnected || keyOf(el) !== key) p.els.delete(el);
+    for (const el of p.els) {
+      if (!el.isConnected) { p.els.delete(el); forget(el); } else if (keyOf(el) !== key) p.els.delete(el);
+    }
     if (!p.els.size) { pending.delete(key); continue; }
     const places = [...p.els].map((el) => placeOf(el, viewHeight));
     ranked.push({ key, text: p.text, gap: Math.min(...places.map((x) => x.gap)), top: Math.min(...places.map((x) => x.top)) });
@@ -1125,8 +1180,10 @@ function record(span, event) {
 // sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers (the
 // word's aria-label carries the gloss). From French Weave by Jackie Oliver (MIT).
 let tipBox = null;
+let tipSpan = null; // the word the box belongs to: when the page removes or reverts it, the box goes too
 const TIP_GAP = 4;
 function placeTip(span) {
+  tipSpan = span;
   if (!tipBox?.isConnected) {
     tipBox = document.createElement('sw-gloss');
     tipBox.className = 'sw-gloss';
@@ -1147,6 +1204,7 @@ function hideTip() {
   clearTimeout(tipTimer); tipTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.sw-tip`)) el.classList.remove('sw-tip');
   tipBox?.classList.remove('sw-gloss-on');
+  tipSpan = null;
 }
 function armTip(e) {
   const span = swapFor(e);
@@ -1206,7 +1264,9 @@ async function flush() {
   timer = null;
   if (!on() || batchesOut >= MAX_BATCHES_OUT) return; // the reply to one out schedules the next
   const gen = generation;
-  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0);
+  // A passage dropped because its element left the page forgets its key, so the element is read again if it comes back.
+  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0,
+    undefined, (el) => keys.delete(el));
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
   batchesOut++;
@@ -1262,6 +1322,7 @@ function track(root) {
   }
 }
 function mutations(records) {
+  if (tipSpan && !tipSpan.isConnected) hideTip(); // no mouseout comes from a removed word
   const changed = new Set();
   for (const r of records) {
     for (const n of r.addedNodes || []) if (n.nodeType === 1) track(n);
@@ -1288,6 +1349,7 @@ function mutations(records) {
   observer?.takeRecords();
   for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
   for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
+  if (tipSpan && !tipSpan.isConnected) hideTip(); // the swap was reverted while its gloss showed
 }
 function start() {
   if (observer || !on()) return;

@@ -6,14 +6,14 @@ import { validateSwaps, capSwaps } from './levels.js';
 
 // cooldown: Map<model, until ms>. Rate-limited or overloaded models are skipped until then, so the
 // free tier's per-minute limit does not cost every batch a failed request before the fallback.
-export const COOLDOWN_MS = { 429: 60000, 503: 30000, timeout: 30000 };
+export const COOLDOWN_MS = { 429: 60000, 500: 30000, 503: 30000, 529: 30000, timeout: 30000 };
 
 // When a model with a spent daily quota may be asked again, in the reader's own time ("5:01 AM").
 export const resumeAt = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // daily: Map<model, until ms> for models whose daily quota is spent. The caller keeps it in storage, since it outlives
 // the worker; requestSwaps adds to it. apiKey: the Gemini key; claudeKey: the Claude key. A model whose key is missing
-// is skipped, so Claude Haiku falls back to Gemini Flash-Lite when both keys are saved.
+// is skipped.
 export async function requestSwaps({ apiKey, claudeKey, model, level, batch, words, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now }) {
   const system = buildSystemPrompt(level, words, shownToday);
   const user = buildUserContent(batch);

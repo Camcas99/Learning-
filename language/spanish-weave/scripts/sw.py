@@ -736,6 +736,12 @@ def mark(kind):
                         found = swlib.find(state, phrase)
                         if found:
                             break
+                    if found and found['status'] == 'queue':
+                        # "donde" typed for dónde, a word in use: the one being learned, not its unaccented twin.
+                        twin = next((w for w in state['words'] if w['status'] != 'queue'
+                                     and swlib.fold(w['es']) == swlib.fold(found['es'])), None)
+                        found = twin or found
+                        phrase = found['es'] if twin else phrase
                     if found and swlib.apply_event(state, phrase, kind):
                         done.append(found['es'])  # the list's spelling, accents included: "tambien" -> también
                     else:
@@ -809,8 +815,9 @@ def copy_to_clipboard(text):
     by Jackie Oliver (MIT)."""
     for cmd in (['pbcopy'], ['wl-copy'], ['xclip', '-selection', 'clipboard']):
         if shutil.which(cmd[0]):
-            try:
-                subprocess.run(cmd, input=text, text=True, check=True, timeout=5,
+            try:  # UTF-8 bytes, and a UTF-8 locale so pbcopy doesn't read them as a legacy encoding (LC_ALL=C)
+                env = dict(os.environ, LC_ALL='en_US.UTF-8', LANG='en_US.UTF-8')
+                subprocess.run(cmd, input=text.encode('utf-8'), check=True, timeout=5, env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return True
             except (OSError, subprocess.SubprocessError):

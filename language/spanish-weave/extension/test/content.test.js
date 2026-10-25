@@ -171,6 +171,15 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     const html = win.document.body.innerHTML;
     expect(html).not.toMatch(/data-sw-(word|key)/);
     for (const w of ['la casa', 'el día']) expect(html).not.toContain(w);
+
+    // A word the page removes while its gloss shows takes the box with it (no mouseout comes from a removed node).
+    const goneWord = $('comment-new').querySelector('[data-es="largo"]');
+    goneWord.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
+    await wait(800);
+    expect(win.document.querySelector('sw-gloss.sw-gloss-on')).not.toBeNull();
+    $('comment-new').closest('li').remove();
+    await wait();
+    expect(win.document.querySelector('sw-gloss.sw-gloss-on')).toBeNull();
   } finally {
     await win.happyDOM.close();
     Object.assign(globalThis, originalGlobals);
