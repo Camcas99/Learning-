@@ -649,7 +649,8 @@ class Scale(Home):
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
                 # every word is in use, and the longer 0.3.3 list puts a few more noted words among the learning ones,
-                # so this budget is 4,200 (3,850 to 4,050 at 1,000 known words, depending on which words are learning).
+                # so this budget is 4,200 (3,950 to 4,150 at 1,000 known words, depending on which words are learning,
+                # 23 bytes of it the "spanish-weave-hook: on" line that keeps the chat plugin's skill out of the way).
                 self.assertLess(len(brief.encode()), 4200, known)
         # The longest export: just under the band cutoff, every known word is named.
         self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)

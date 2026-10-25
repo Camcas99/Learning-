@@ -1,0 +1,16 @@
+{
+  "name": "spanish-weave-chat",
+  "displayName": "Spanish Weave for chat",
+  "version": "0.3.4",
+  "description": "Weaves a few Latin American Spanish words into Claude's replies on claude.ai and the Claude apps (iPhone included), at a level you set in one line of your preferences. Skills only: no hooks, no scripts.",
+  "author": {
+    "name": "Camcas99"
+  },
+  "repository": "https://github.com/Camcas99/Learning-",
+  "license": "MIT",
+  "keywords": [
+    "spanish",
+    "language-learning",
+    "skills"
+  ]
+}

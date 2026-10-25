@@ -1,5 +1,6 @@
 """Paste-ready Spanish Weave blocks for chats without hooks: claude.ai personal preferences and ChatGPT custom
-instructions. One rules source (RULES) feeds both, so the long and short versions can't drift apart.
+instructions. One rules source (RULES) feeds both, and the skill of the chat-only plugin (spanish-weave-chat, written
+by make_blocks.py), so the long and short versions can't drift apart.
 
 The state line keeps the format of the original word-state line: Stage | Active | Shaky | Known | Synced.
 """
@@ -25,7 +26,7 @@ RULES = [
     ("Apply only in chat replies to me. Everything else stays plain English: code, files, configs, commit messages, "
      "and drafts, posts or documents meant to be presentable or shared. If I'm not reading it, or unlikely to, no Spanish.",
      "Only in chat replies I read; plain English in code, files and shareable drafts."),
-    ("My stage and words are in the Spanish Weave state line below. Active and Shaky are "
+    ("My stage and words are in the Spanish Weave state line {where}. Active and Shaky are "
      "the words I'm learning; Known words I've seen a lot. Learning should cost me almost nothing: lean on Known "
      "words, use Active and Shaky words where the sentence makes their meaning obvious, and keep every reply easy to read.",
      "Words are in my Spanish Weave state line: lean on Known, use Active/Shaky where meaning is obvious."),
@@ -92,11 +93,43 @@ def stage_text(short=False):
                      f'{" in a sentence" if n == 1 else ""}){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
 
 
-def rules(short=False):
-    fill = {'stages': stage_text(), 'stages_short': stage_text(short=True)}
+# Where the full rules say the state line is: below them in a pasted block; in the chat skill (SKILL.md), wherever its
+# steps found it (the user's preferences, or a level file).
+WHERE = 'below'
+SKILL_WHERE = 'found by step 2 or 3 above'
+
+
+def rules(short=False, skill=False):
+    """The pasted rules: full for claude.ai, short for ChatGPT. skill: the full rules as bare bullets for the chat
+    skill's SKILL.md, which has its own heading and finds the state line by its own steps."""
+    fill = {'stages': stage_text(), 'stages_short': stage_text(short=True), 'where': SKILL_WHERE if skill else WHERE}
     parts = [(s if short else f).format(**fill) for f, s in RULES]
+    if skill:
+        return '\n'.join(f'- {p}' for p in parts if p)
     return ('SPANISH WEAVE. ' if short else 'SPANISH WEAVE\n\n') + ('\n' if short else '\n\n').join(
         p if short else f'- {p}' for p in parts if p)
+
+
+# The one line for claude.ai and the Claude apps with the spanish-weave-chat plugin (Settings > "Instructions for
+# Claude"). Preferences reach every chat, but a skill loads only when Claude chooses to, so the line asks for it
+# every time and carries a few default swaps for a chat where it still doesn't load.
+CHAT_LOAD = ('At the start of every conversation, before your first reply, load the spanish-weave skill and follow it '
+             'for the whole chat.')
+CHAT_FALLBACK = ('Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat '
+                 'replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one '
+                 'footer line.')
+
+
+def chat_line(level):
+    """The preference line for a published level: the skill reads that level's word list."""
+    return f'Spanish Weave level {level}. {CHAT_LOAD} {CHAT_FALLBACK}'
+
+
+def chat_exact(state, now=None):
+    """The preference text for this learner's own words: the same line, then their state line (which the skill takes
+    in place of a level's)."""
+    return (f'Spanish Weave: my word list is the state line below. {CHAT_LOAD} {CHAT_FALLBACK}\n'
+            + state_line(state, now, dates=False))
 
 
 def md(day):
@@ -215,8 +248,11 @@ def chatgpt(state, now=None, limit=None, tail=None):
     return line, rules(short=True)
 
 
-def mark_exported(state, target):
+def mark_exported(state, target, level=None):
+    """Records an export, for the hook's reminder (weave.export_notice); level: the level a chat line named."""
     state['exported'] = {'at': time.time(), 'version': swlib.version(state), 'target': target}
+    if level:
+        state['exported']['level'] = level
 
 
 def log_chat_day(state, day=None):

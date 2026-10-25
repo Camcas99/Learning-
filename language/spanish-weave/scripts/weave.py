@@ -151,7 +151,7 @@ def brief(state, seen, recall=None, output=False):
             text += (' In this reply, if the topic allows, end with one optional line inviting the user to write a few words '
                      'of Spanish with a learning word, like: Your turn: how would you say "without the cache"? (sin). '
                      'Skip it in code-heavy, urgent or zero-Spanish answers.')
-    return text
+    return text + '\n' + swlib.HOOK_MARKER  # tells the chat plugin's skill, if it loads here too, to stay out
 
 
 DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in Spanish every time
