@@ -37,6 +37,7 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     speechSynthesis: { getVoices: () => [{ lang: 'es-ES', name: 'Mónica' }, { lang: 'es-MX', name: 'Paulina' }], speak: (u) => spoken.push(u), cancel() {} },
     SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
     chrome: { runtime: {
+      id: 'sw-test',
       onMessage: { addListener: (fn) => listeners.push(fn) },
       sendMessage: async (msg) => {
         if (msg.type === 'config') return config();
@@ -180,6 +181,21 @@ test('content: Instagram passages, Alt+click speech, spoken gloss, gender cues a
     $('comment-new').closest('li').remove();
     await wait();
     expect(win.document.querySelector('sw-gloss.sw-gloss-on')).toBeNull();
+
+    // The extension is reloaded: this copy is cut off (no runtime id, sendMessage throws "Extension context
+    // invalidated"). A click that would record a flip makes it retire instead of throwing: the page goes back to
+    // English and nothing more is sent.
+    const before = events.length;
+    chrome.runtime.id = undefined;
+    chrome.runtime.sendMessage = () => { throw new Error('Extension context invalidated.'); };
+    const word = win.document.querySelector('.sw-word');
+    expect(() => word.dispatchEvent(user(new win.MouseEvent('click', { bubbles: true })))).not.toThrow();
+    await wait(50);
+    expect(win.document.querySelectorAll('.sw-word')).toHaveLength(0);
+    expect(events.length).toBe(before);
+    for (const fn of listeners) fn({ type: 'retry', config: config() }); // a stray message changes nothing
+    await wait();
+    expect(win.document.querySelectorAll('.sw-word')).toHaveLength(0);
   } finally {
     await win.happyDOM.close();
     Object.assign(globalThis, originalGlobals);

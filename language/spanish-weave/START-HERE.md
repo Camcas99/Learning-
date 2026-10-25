@@ -174,7 +174,8 @@ Now and then there's a new version with fixes. In Claude Code, type these one at
 `/plugin marketplace update learning`, then `/plugin update spanish-weave@learning`. Then restart Claude Code, run
 `/spanish-weave:setup` again (it keeps your progress): pick the same places as the first time, and for the websites
 question keep the default, "Keep the current site choice", so a choice you made later in the extension's popup
-stays. Then in Chrome open `chrome://extensions` and click the reload arrow on Spanish Weave.
+stays. Then in Chrome open `chrome://extensions` and click the reload arrow on Spanish Weave, and reload the tabs you
+had open (until then they show English).
 `/spanish-weave:status` tells you when the copies setup made are behind the plugin, which means it's time to rerun
 setup. With only a pasted block, copy your level's block again now and then to pick up fixes.
 
