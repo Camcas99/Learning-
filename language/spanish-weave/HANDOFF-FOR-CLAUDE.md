@@ -108,13 +108,15 @@ pasted block's rules in your own replies.
     kind line of feedback with the corrected Spanish, then carry on.
   - `/spanish-weave:anki`: export to Anki for anyone who already uses it.
 - **The Chrome extension** (`extension/`): Gemini picks swaps on the page; the extension accepts only words from
-  their list, paints them with a dotted underline (masculine and feminine nouns get slightly different colors),
-  shows the meaning after a short dwell (the pause is deliberate: a moment to guess first), flips a word back on
-  click, and says it aloud on Alt+click. It runs on X and instagram.com out of the box (site adapters live in the
-  `SITES` table in `extension/src/page.js`), never in Instagram direct messages, and its popup has "Say words
-  aloud when the meaning shows" (off by default) and "Color noun gender" (on by default) settings. Other sites
-  need the person's OK: "Allow all websites" in the popup, or the checkbox next to a site's name. It talks to the plugin through a local native messaging host, so web
-  sightings count toward progress too.
+  their list, paints them with a dotted underline (masculine and feminine nouns get slightly different colors), shows
+  the meaning after a short dwell (the pause is deliberate: a moment to guess first), flips a word back on click, and
+  says it aloud on Alt+click. On a touchscreen a tap shows the meaning at once (a peek) with a speaker button, and a
+  second tap or a long press flips; scrolls and the browser's emulated mouse events never count. It runs on X and
+  instagram.com out of the box (site adapters live in the `SITES` table in `extension/src/page.js`), never in
+  Instagram direct messages, and its popup has "Say words aloud when the meaning shows" (off by default) and "Color
+  noun gender" (on by default) settings. Other sites need the person's OK: "Allow all websites" in the popup, or the
+  checkbox next to a site's name. It talks to the plugin through a local native messaging host, so web sightings
+  count toward progress too.
 
 ## Being a good tutor with it
 

@@ -114,14 +114,15 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
 - **claude.ai and ChatGPT**: the same rules as a pasted preferences block. No hooks there, so the block is static
   until you refresh it.
 - **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
-  Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
-  messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
-  on. Swaps are chosen by Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more
-  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere. When Google's
-  own daily free quota runs out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is
-  asked until then. With a paid Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it
-  makes fewer wrong swaps and Anthropic bills it per use. It never falls back to Gemini, so with Claude picked no page
-  text goes to Google, even when a Gemini key is saved.
+  Hover for the meaning, click to flip back, Alt+click to hear it; on a touchscreen, tap for the meaning and tap
+  again or press and hold to flip back. On for every site by default, except email, messaging, AI chat and local
+  addresses; turn sites off from the toolbar popup, or set it to only the sites you turn on. Swaps are chosen by
+  Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more than half of them, so a
+  page that keeps changing can't use up your key or stop Spanish everywhere. When Google's own daily free quota runs
+  out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is asked until then. With a paid
+  Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it makes fewer wrong swaps and
+  Anthropic bills it per use. It never falls back to Gemini, so with Claude picked no page text goes to Google, even
+  when a Gemini key is saved.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -129,6 +130,9 @@ All of it shares one word list on your machine, so words you see on the web coun
 
 - **Swapped words** have a dotted underline and fade in the first time they appear. Hover for a moment and the
   meaning appears (the pause is deliberate: a beat to recall it first); click to flip a word back to English.
+- **Touchscreens:** a tap shows the meaning at once (that counts as a peek, like a hover), with a speaker button to
+  hear the word. Tap the word again while its meaning shows, or press and hold it, to flip it back to English; a tap
+  on an English word turns it back to Spanish. Scrolling or zooming across words never counts.
 - **Noun gender:** masculine nouns get a teal underline and feminine nouns a rose one, fainter once you know the
   word, and the gloss says "masc." or "fem." (el agua and el alma are feminine despite "el"). Turn it off with
   "Color noun gender" in the popup.
@@ -291,12 +295,12 @@ coding words at the end), each with a gloss and a sound hint.
 - **Learning**: at most 20 words at a time, shaky ones included; at most 5 new words a day, and none while 5 or more
   are shaky.
 - **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
-- **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English, `/spanish-weave:learn`, or a
-  known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
-  word; a known word peeked on 2 days within a week, both since it became known, turns shaky. **Shaky -> known**
-  after 7 days with no flip, peek or quiz miss, once you've really seen the word again since the last one (days
-  counted by `log-chat-day` don't count; solo, mayor, sensible, tan, resolver and todos, which chat can't count, need
-  only the week).
+- **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English (on a touchscreen, a second tap
+  or a press and hold), `/spanish-weave:learn`, or a known word you don't recognize in the quiz. A **peek** (hovering
+  until the meaning shows, or a first tap) holds back a learning word; a known word peeked on 2 days within a week,
+  both since it became known, turns shaky. **Shaky -> known** after 7 days with no flip, peek or quiz miss, once
+  you've really seen the word again since the last one (days counted by `log-chat-day` don't count; solo, mayor,
+  sensible, tan, resolver and todos, which chat can't count, need only the week).
 - **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
   native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.

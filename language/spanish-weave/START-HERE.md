@@ -94,7 +94,8 @@ really know go back to learning.
 
 1. **Just read.** Don't stop to study every Spanish word. Let the sentence tell you what it means.
 2. **Guess before you look.** In Chrome the meaning shows only after a short pause on purpose: try to recall it
-   first. In chat, the meanings are in the footer at the end.
+   first. On a touchscreen a tap shows it at once, so guess before you tap; tap again or press and hold to flip the
+   word back to English. In chat, the meanings are in the footer at the end.
 3. **Answer the "Recall: ...?" question in your head** before you read the answer at the end of the reply. It
    shows up every few replies, and it's the most valuable 3 seconds of the day.
 4. **Quiz for 3 to 5 minutes most days** with `/spanish-weave:quiz`. Words you get right come back after longer and
@@ -102,9 +103,9 @@ really know go back to learning.
    end, so you always finish on a right answer. Your answers are saved together at the end, so Claude Code asks you
    once to save them. That spacing is what turns "I've seen it" into "I know it".
 5. **Say words out loud.** The hints show the stressed syllable in capitals: `también` = `tahm-BYEN`. In Chrome,
-   Alt+click (Option+click on a Mac) a Spanish word to hear it, or turn on "Say words aloud when the meaning shows"
-   in the extension's popup. Underline colors tell you a noun's gender: teal for masculine (el), rose for feminine
-   (la), a little fainter once you know the word.
+   Alt+click (Option+click on a Mac) a Spanish word to hear it (on a touchscreen, tap it and then the speaker in its
+   meaning), or turn on "Say words aloud when the meaning shows" in the extension's popup. Underline colors tell you
+   a noun's gender: teal for masculine (el), rose for feminine (la), a little fainter once you know the word.
 6. **Once you know about 40 words, try writing a little:** `/spanish-weave:output on` adds an optional "Your turn"
    line every fifth reply. Answer it and you'll get a gentle one-line correction.
 7. **Keep it honest.** `/spanish-weave:known pero` for words you truly know; `/spanish-weave:learn pero` for ones you
