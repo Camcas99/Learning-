@@ -96,6 +96,10 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
   `/remote-control` in a local Code session in the Claude desktop app), then open the session under Code in the
   Claude app. The computer has to stay on. The hook runs on your computer, so progress is kept. A cloud session
   started from the phone begins on a fresh machine each time, so its word state wouldn't last.
+- **A daily quiz on the iPhone** (Mac only, opt-in): `/spanish-weave:phone on` puts today's due words in iCloud Drive >
+  Shortcuts > Spanish Weave, and a Shortcut you build on the phone asks them and sends the answers back, where they
+  count like `/spanish-weave:quiz` answers. Only those words, their meanings and hints go to iCloud Drive. Steps:
+  [IPHONE.md](IPHONE.md). Not yet tested on a real iPhone.
 - **Chrome extension:** computers only. Chrome on Android and iPhone doesn't run extensions. Some other Android
   browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one, and without the native host it
   would only use its built-in word lists.
@@ -154,6 +158,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/spanish-weave:placement` | 2-minute placement test that sets your starting words; one approval to save |
 | `/spanish-weave:anki [all]` | Your words as an Anki import file |
 | `/spanish-weave:output [on\|off]` | "Your turn" lines that invite you to write a little Spanish (no argument: is it on?) |
+| `/spanish-weave:phone [on\|off\|sync\|status]` | Daily quiz on the iPhone through iCloud Drive, Mac only (see [IPHONE.md](IPHONE.md)) |
 
 You type these yourself: Claude can't start them for you, except status. The same commands work from a terminal as
 `python3 ~/.spanish-weave/app/scripts/sw.py <command>`.
@@ -367,6 +372,10 @@ What Spanish Weave keeps, and what it sends:
   data terms apply.
 - **Sent to Anthropic's API with each page instead**, only if you pick Claude Haiku in the popup and paste a Claude
   key there: the same page text, word lists and stage, under Anthropic's API terms.
+- **Put in iCloud Drive**, only if you turn on the iPhone quiz (`/spanish-weave:phone on`): today's due words with their
+  meanings, sound hints and your stage, in iCloud Drive > Shortcuts > Spanish Weave; your phone's answers come back
+  there as right or wrong per word, never what you typed. Apple can read iCloud Drive unless Advanced Data Protection
+  is on.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
 - **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if you

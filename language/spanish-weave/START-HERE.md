@@ -159,6 +159,10 @@ commands above.
   press the spacebar and scan the QR code). Your computer has to stay on. It runs on your computer, so your words
   and progress are all there. A Claude Code session started in the cloud from your phone begins on a fresh computer
   every time, so it can't keep your progress.
+- **A daily quiz on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on your Mac, then build
+  a short Shortcut on your iPhone that asks your due words each day; your answers count on the Mac just like
+  `/spanish-weave:quiz`. Only today's quiz words go to iCloud Drive. The steps are in [IPHONE.md](IPHONE.md); it hasn't
+  been tried on a real iPhone yet.
 - **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
   Spanish words on a computer.
 - **Instagram's website** (instagram.com in Chrome on a computer): should work, but it hasn't been tried on the real
