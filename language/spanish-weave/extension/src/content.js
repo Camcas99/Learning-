@@ -41,8 +41,24 @@ const changes = new WeakMap(); // element -> times its text changed lately
 const settling = new WeakMap(); // element -> timer that looks at it again once it holds still
 const texts = new WeakMap(); // element -> the text last looked at, to tell a real change from a re-render
 let tipTimer = null;
-const send = (msg) => chrome.runtime.sendMessage(msg);
-const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+// When the extension is reloaded or updated, this copy of the script stays on pages that were already open, cut off
+// from the extension: chrome.runtime.id is gone and sendMessage throws "Extension context invalidated". It then retires:
+// the page goes back to English and nothing more is sent or logged. The new copy runs on pages opened from then on.
+let orphaned = false;
+let navTimer = null;
+const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+function retire() {
+  if (orphaned) return;
+  orphaned = true;
+  stop();
+  clearInterval(navTimer);
+}
+const send = (msg) => {
+  if (orphaned || !alive()) { retire(); return Promise.reject(new Error('Spanish Weave was reloaded; reload the page')); }
+  try { return Promise.resolve(chrome.runtime.sendMessage(msg)); }
+  catch (error) { retire(); return Promise.reject(error); }
+};
+const on = () => !orphaned && config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
 const targets = () => selector(location.href);
 // Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
 const swapFor = (e) => {
@@ -182,7 +198,10 @@ async function flush() {
     memo.set(i.key, swaps);
     if (p) for (const el of p.els) paint(el, i.key);
   }
-  if (result?.stale) { update(await send({ type: 'config' })); return; }
+  if (result?.stale) {
+    try { update(await send({ type: 'config' })); } catch { /* the extension was reloaded: retired */ }
+    return;
+  }
   if ([...pending.keys()].some((k) => !inflight.has(k))) timer = setTimeout(flush, 50);
 }
 // An element whose text changed no longer waits for its old text's swaps; that text goes unasked if nothing else has it.
@@ -306,7 +325,7 @@ document.addEventListener('visibilitychange', seenVisible);
 window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
 // SPA navigation can reuse DOM nodes without changing their text.
 let page = location.href;
-setInterval(() => {
-  if (page !== location.href) { page = location.href; if (config) update(config, true); }
+navTimer = setInterval(() => {
+  if (page !== location.href) { page = location.href; if (config && !orphaned) update(config, true); }
 }, 1000);
 void send({ type: 'config' }).then(update).catch(() => {});

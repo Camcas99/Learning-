@@ -84,7 +84,8 @@ Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 and keeping the default "Keep the current site choice" for the websites question (a site answer would override a
 later "Other sites" choice in the popup): the extension folder, native host and Codex hook run from copies in
 `~/.spanish-weave` that only setup refreshes, and it never resets your progress. Last, click the reload arrow on
-Spanish Weave in `chrome://extensions`. `/spanish-weave:status` and `sw.py check` say when those copies are behind
+Spanish Weave in `chrome://extensions`, then reload the tabs you had open: until then they show English (before 0.3.4
+they logged "Extension context invalidated" errors instead). `/spanish-weave:status` and `sw.py check` say when those copies are behind
 the installed plugin, and `check` also flags a local folder the marketplace was added from that has gone missing.
 
 ### On a phone
