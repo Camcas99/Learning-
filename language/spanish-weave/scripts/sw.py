@@ -40,6 +40,9 @@
   sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated; all works
                                                      without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
+  sw.py phone on|off|sync|status                     opt-in quiz on the iPhone through iCloud Drive (Mac only): the
+                                                     Mac puts today's due words in iCloud Drive > Shortcuts >
+                                                     Spanish Weave and reads the phone's answers back (IPHONE.md)
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
                                                      remove the native host manifests (only Spanish Weave's; and
                                                      the Codex hook and the `hooks = true` setup added), then list
@@ -61,6 +64,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
 import export  # noqa: E402
+import phone  # noqa: E402
 import placement  # noqa: E402
 
 HOST_NAME = 'com.spanishweave.host'
@@ -546,6 +550,15 @@ def check(_args):
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
+    try:
+        on = phone.settings(swlib.load_state(create=False) or {}).get('on')
+    except (swlib.StateError, swlib.UnsafeHome):
+        on = False
+    if on:
+        try:
+            report(True, f'iPhone sync folder: {phone.shortcuts_folder() / phone.FOLDER}')
+        except (phone.Unavailable, phone.NotReady) as error:
+            report(False, f'iPhone sync folder: {error}')
     if not ok:
         sys.exit(1)
 
@@ -656,6 +669,8 @@ def uninstall(args):
           '      claude plugin marketplace remove learning   # only if nothing else from that marketplace is installed')
     print('  - the Chrome extension, if you loaded it: open chrome://extensions and click Remove on Spanish Weave')
     print('  - a Spanish Weave block pasted into claude.ai or ChatGPT settings, if any: delete it there')
+    print('  - the iPhone sync folder, if you turned it on: iCloud Drive > Shortcuts > Spanish Weave (delete it in Finder '
+          'or the Files app), and the Spanish Weave shortcuts on the iPhone')
     for item in left:
         print(f'  - {item}')
     for path in backups:
@@ -704,6 +719,9 @@ def status(_args):
     if behind:
         print(f'  the extension and native host copies are from {behind[0] or "an older version"}, the plugin is '
               f'{behind[1]}: rerun /spanish-weave:setup')
+    line = phone_line(state)
+    if line:
+        print(f'  {line}')
 
 
 QUOTES = '"“”«»\'‘’'
@@ -834,6 +852,65 @@ def log_chat_day(_args):
 
 def refresh(_args):
     swlib.refresh_exposure()
+    phone.background_sync()  # when iPhone sync is on; never raises
+
+
+def phone_line(state):
+    """One status line on iPhone sync, or None when it was never turned on."""
+    settings = phone.settings(state)
+    if not settings:
+        return None
+    if not settings.get('on'):
+        return 'iPhone sync: off (/spanish-weave:phone on)'
+    if settings.get('problem'):
+        return f'iPhone sync: on, but the last try failed: {settings["problem"]}'
+    last = settings.get('last') or {}
+    when = settings.get('synced', 'not yet')
+    extra = f', {last.get("waiting")} answer file{"s" if last.get("waiting") != 1 else ""} still downloading' \
+        if last.get('waiting') else ''
+    return f'iPhone sync: on, last synced {when}, {last.get("answers", 0)} answers from the phone that time{extra}'
+
+
+def phone_cmd(args):
+    action = args.action or 'status'
+    if action == 'status':
+        with swlib.editing() as state:
+            pass
+        print(phone_line(state) or 'iPhone sync: never turned on. Turn it on with /spanish-weave:phone on (needs a Mac '
+                                    'with iCloud Drive and the Shortcuts app on the iPhone; see IPHONE.md).')
+        return
+    if action == 'off':
+        with swlib.editing() as state:
+            phone.enable(state, False)
+        print('iPhone sync is off. The Spanish Weave folder in iCloud Drive > Shortcuts is left as it is; delete it in '
+              'Finder or the Files app if you no longer want it.')
+        return
+    with swlib.editing() as state:
+        if action == 'on':
+            phone.enable(state, True)
+        if not phone.settings(state).get('on'):
+            sys.exit('iPhone sync is off. Turn it on with: sw.py phone on')
+        try:
+            folder, _, _ = phone.ensure_folders(phone.shortcuts_folder())
+            writer = phone.read_snapshot_writer(folder)
+            mine = phone.settings(state).get('writer')
+            if writer and writer != mine:
+                print('Note: another Mac already writes this word list. Keep iPhone sync on for one Mac only, or the two '
+                      'take turns overwriting it: turn it off there with /spanish-weave:phone off.')
+            report = phone.sync(state)
+        except (phone.Unavailable, phone.NotReady, phone.TooBig, OSError) as error:
+            phone.settings(state)['problem'] = str(error)[:300]
+            sys.exit(f'iPhone sync: {error}')
+    print(f'iPhone sync is on. Synced: {report["answers"]} answers from the phone recorded'
+          + (f', {report["ignored"]} lines ignored' if report['ignored'] else '')
+          + (f', {report["waiting"]} answer files still downloading from iCloud' if report['waiting'] else '')
+          + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today '
+          + ('written for the phone.' if report['written'] else '(the phone already has this list).'))
+    for warning in report['warnings']:
+        print(f'Note: {warning}')
+    if action == 'on':
+        print('Next: build the "Spanish Weave Quiz" shortcut on the iPhone (IPHONE.md). This Mac syncs again in the '
+              'background while you use Claude Code, or run /spanish-weave:phone sync.')
 
 
 def question(word, way):
@@ -1183,6 +1260,9 @@ def main(argv=None):
     p = sub.add_parser('output')
     p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
+    p = sub.add_parser('phone')
+    p.add_argument('action', nargs='?', choices=['on', 'off', 'sync', 'status'])
+    p.set_defaults(run=phone_cmd)
     args = parser.parse_args(argv)
     for word in getattr(args, 'extra', []):  # chatgpt -> --chatgpt, claude.ai -> --claude-ai, all -> --all
         setattr(args, re.sub(r'[-.]', '_', word), True)

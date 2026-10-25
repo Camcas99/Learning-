@@ -29,6 +29,7 @@ import export  # noqa: E402
 import hints  # noqa: E402
 import make_blocks  # noqa: E402
 import placement  # noqa: E402
+import phone  # noqa: E402
 
 
 def line(text, day='2026-10-09', sidechain=False):
@@ -2139,3 +2140,104 @@ class OutsideEvents(Home):
                                             kinds=('quiz',), today_='2026-10-23'), (0, 1))
         # The extension's path never takes quiz answers.
         self.assertEqual(swlib.apply_events(state, [{'word': 'pero', 'kind': 'quiz', 'result': 'right'}]), (0, 1))
+
+
+class PhoneSync(Home):
+    """iPhone sync through a stand-in for iCloud Drive > Shortcuts (SPANISH_WEAVE_PHONE_DIR)."""
+
+    def setUp(self):
+        super().setUp()
+        self.icloud = self.home / 'icloud'
+        self.icloud.mkdir(mode=0o700)
+        self.phone_env = mock.patch.dict(os.environ, {'SPANISH_WEAVE_PHONE_DIR': str(self.icloud)})
+        self.phone_env.start()
+        self.addCleanup(self.phone_env.stop)
+        state = swlib.new_state('2026-10-01')  # five words in use since then, so all are due today
+        phone.enable(state)
+        swlib.save_state(state)
+        self.folder = self.icloud / 'Spanish Weave'
+
+    def sync(self):
+        with swlib.editing() as state:
+            return phone.sync(state)
+
+    def snapshot(self):
+        return json.loads((self.folder / 'snapshot.json').read_text(encoding='utf-8'))
+
+    def answer(self, name, lines, end='\n'):
+        (self.folder / 'inbox' / name).write_text('\n'.join(lines) + end, encoding='utf-8')
+
+    def test_snapshot_holds_only_todays_quiz_and_is_rewritten_only_when_it_changes(self):
+        report = self.sync()
+        self.assertTrue(report['written'])
+        snap = self.snapshot()
+        self.assertEqual(sorted(snap), ['day', 'items', 'made', 'stage', 'version', 'writer'])
+        self.assertEqual(snap['day'], swlib.today())
+        self.assertEqual([i['es'] for i in snap['items']], ['y', 'pero', 'entonces', 'con', 'sin'])
+        pero = snap['items'][1]
+        self.assertEqual((pero['way'], pero['ask'], pero['accept']), ('recognize', 'What does "pero" mean?', ['but']))
+        self.assertNotIn('gemini', (self.folder / 'snapshot.json').read_text().lower())
+        self.assertTrue((self.folder / 'inbox').is_dir() and (self.folder / 'phone').is_dir())
+        self.assertEqual([p.name for p in self.folder.iterdir() if p.name.startswith('.')], [])  # no temp left
+        made = snap['made']
+        self.assertFalse(self.sync()['written'])  # nothing changed: the phone's copy stays as it is
+        self.assertEqual(self.snapshot()['made'], made)
+
+    def test_answers_count_only_for_words_the_mac_offered_and_each_line_once(self):
+        self.sync()
+        made, day = self.snapshot()['made'], swlib.today()
+        line = lambda word, result, snap=made: json.dumps({'word': word, 'kind': 'quiz', 'result': result, 'day': day,
+                                                           'snap': snap})
+        self.answer('iphone-20261025-1-1234.jsonl', [
+            line('pero', 'right'),
+            line('la idea', 'right'),                         # not offered
+            line('con', 'right', snap='2020-01-01T00:00:00Z'),  # not a snapshot of this Mac
+            '{“word”: “sin”, “kind”: “quiz”, “result”: “wrong”, '
+            f'“day”: “{day}”, “snap”: “{made}”}}',  # Smart Punctuation quotes
+            'not json',
+        ])
+        report = self.sync()
+        self.assertEqual((report['answers'], report['ignored']), (2, 3))
+        state = swlib.load_state()
+        self.assertEqual(swlib.find(state, 'pero')['box'], 1)
+        self.assertEqual(swlib.find(state, 'sin')['reviews'][-1][:2], [day, 0])
+        self.assertNotIn('pero', [i['es'] for i in self.snapshot()['items']])  # answered: off today's list
+        self.assertEqual(self.sync()['answers'], 0)  # read once
+        # A line still being written (no newline yet) waits; once the file stops growing it counts.
+        self.answer('iphone-20261025-2-5678.jsonl', [line('entonces', 'right')], end='')
+        self.assertEqual(self.sync()['answers'], 0)
+        self.assertEqual(self.sync()['answers'], 1)
+
+    def test_a_file_whose_read_part_changed_is_never_applied_again(self):
+        self.sync()
+        made, day = self.snapshot()['made'], swlib.today()
+        name = 'iphone-20261025-3-0001.jsonl'
+        self.answer(name, [json.dumps({'word': 'y', 'kind': 'quiz', 'result': 'right', 'day': day, 'snap': made})])
+        self.assertEqual(self.sync()['answers'], 1)
+        self.answer(name, [json.dumps({'word': 'con', 'kind': 'quiz', 'result': 'right', 'day': day, 'snap': made})] * 3)
+        report = self.sync()
+        self.assertEqual((report['answers'], report['skipped_files']), (0, 1))
+
+    def test_unavailable_off_a_mac_and_off_when_not_turned_on(self):
+        self.assertRaises(phone.Unavailable, phone.shortcuts_folder, environ={}) if sys.platform != 'darwin' else None
+        with mock.patch.object(phone.sys, 'platform', 'linux'):
+            with self.assertRaises(phone.Unavailable):
+                phone.shortcuts_folder(environ={})
+        with swlib.editing() as state:
+            phone.enable(state, False)
+            self.assertTrue(phone.sync(state).get('off'))
+        self.assertFalse((self.folder / 'snapshot.json').exists())
+
+    def test_phone_command_turns_it_on_and_off(self):
+        with swlib.editing() as state:
+            phone.enable(state, False)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            sw.main(['phone', 'on'])
+            sw.main(['phone', 'status'])
+            sw.main(['phone', 'off'])
+        text = out.getvalue()
+        self.assertIn('iPhone sync is on.', text)
+        self.assertIn('iPhone sync: on, last synced', text)
+        self.assertIn('iPhone sync is off.', text)
+        self.assertTrue((self.folder / 'snapshot.json').exists())
