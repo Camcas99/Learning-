@@ -73,7 +73,7 @@ pasted block's rules in your own replies.
 
 ## How it works, so you can explain it
 
-- **Word list** (`data/lexicon.csv`): 1,043 Latin American words and phrases in learning order: connectors and
+- **Word list** (`data/lexicon.csv`): 1,135 Latin American words and phrases in learning order: connectors and
   adverbs first (y, pero, entonces, con, sin...), then everyday phrases, nouns, adjectives and verbs, then coding
   words. Each has an English gloss and a sound hint with the stressed syllable in capitals.
 - **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 learning words at once, shaky ones included;
@@ -136,10 +136,12 @@ This is the part I care about most.
   and add tests with anything you change.
 - After changing the word list or the rules: `python3 scripts/hints.py --check` (every hint must match the
   pronunciation rules; `--fill` writes hints for new rows) and `python3 scripts/make_blocks.py` (regenerates the
-  42 paste-in levels; a ChatGPT field must stay under 1,500 characters, and some are within a few characters).
+  paste-in levels; a ChatGPT field must stay under 1,500 characters, and some are within a few characters). Mark a
+  word added to the list with the next version in lexicon.csv's `since` column: the levels put each version's words in
+  new levels after the last one, oldest version first, so a published level never changes its words.
 - Their state lives in `~/.spanish-weave` (or `$SPANISH_WEAVE_HOME`). Setup never resets progress; keep it that way.
-- Never print or log the Gemini key, and keep page text out of anything that leaves the browser except the Gemini
-  call itself.
+- Never print or log the Gemini or Claude key, and keep page text out of anything that leaves the browser except the
+  model call itself (Gemini, or Anthropic when the user picked Claude Haiku in the popup).
 
 ## What's verified, and what isn't yet
 

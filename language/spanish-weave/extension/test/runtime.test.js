@@ -14,7 +14,8 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
   const pageReplies = []; // replies to the content script's own requests // everything the worker sends to content scripts
   const originEvents = { added: [], removed: [] };
   let accessLevel;
-  let origins = ['https://*/*', 'http://*/*'];
+  // As in Chrome, getAll also lists the manifest's own API hosts; they must never become sites to run on.
+  let origins = ['https://*/*', 'http://*/*', 'https://generativelanguage.googleapis.com/*', 'https://api.anthropic.com/*'];
   let modelCalls = 0;
   let modelThrows = 0;
   let skipPassage = ''; // the fake model leaves out passages containing this (a page can ask it to)
@@ -295,8 +296,8 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(ticker.querySelector('.sw-word')?.textContent).toBe('y');
     expect(skipped.querySelector('.sw-word')?.textContent).toBe('y');
 
-    // Removing website access reverts the page.
-    origins = [];
+    // Removing website access reverts the page. The manifest's API hosts stay granted, and don't count as sites.
+    origins = ['https://generativelanguage.googleapis.com/*', 'https://api.anthropic.com/*'];
     for (const fn of originEvents.removed) fn();
     await wait(20);
     expect(el.querySelector('.sw-word')).toBeNull();

@@ -1,5 +1,6 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { MODELS } from './gemini.js';
+import { CLAUDE_MODELS, isClaude } from './anthropic.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -46,11 +47,17 @@ async function refresh() {
   $('genderColors').checked = s.genderColors;
   $('apiKey').value = '';
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
+  $('claudeKey').value = '';
+  $('claudeKey').placeholder = status.claudeKey ? 'saved (paste to replace)' : 'sk-ant-…';
+  $('claudeRow').hidden = !isClaude(s.model) && !status.claudeKey;
+  $('privacy').textContent = isClaude(s.model)
+    ? 'Sites where it\'s on send readable page text to Anthropic with your Claude key (Anthropic bills it per use), never to Gemini. Forms, links, code and editable text are skipped.'
+    : 'Sites where it\'s on send readable page text to Gemini with your key. With a free key Google may use it to improve its AI and people may review it. Forms, links, code and editable text are skipped.';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
     : 'built-in list';
   $('operation').textContent = !s.enabled ? 'Off'
-    : !c.hasKey ? 'Add a Gemini key to start'
+    : !c.hasKey ? (isClaude(s.model) ? 'Add a Claude key to start' : 'Add a Gemini key to start')
     : c.paused ? 'Paused from Claude Code'
     : host && !siteEnabled(s, tab.url) ? 'Off on this site'
     : host && !hasSiteAccess(tab.url, c.origins) ? 'This site needs your OK'
@@ -90,7 +97,7 @@ async function inject() {
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
 }
 
-for (const [id, label] of Object.entries(MODELS)) {
+for (const [id, label] of Object.entries({ ...MODELS, ...CLAUDE_MODELS })) {
   const opt = document.createElement('option');
   opt.value = id;
   opt.textContent = label;
@@ -104,6 +111,7 @@ $('model').addEventListener('change', (e) => run(() => save({ settings: { model:
 $('speak').addEventListener('change', (e) => run(() => save({ settings: { speak: e.target.checked } })));
 $('genderColors').addEventListener('change', (e) => run(() => save({ settings: { genderColors: e.target.checked } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
+$('claudeKey').addEventListener('change', (e) => run(() => save({ claudeKey: e.target.value })));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {

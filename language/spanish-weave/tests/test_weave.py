@@ -1,4 +1,6 @@
 """Offline tests for the hook, word state, native host and setup. Run: python3 -m unittest discover -s tests"""
+import argparse
+import contextlib
 import datetime as dt
 import io
 import json
@@ -89,6 +91,7 @@ class Matching(unittest.TestCase):
         self.assertFalse(self.hits('todo', 'leave a TODO here'))
         self.assertFalse(self.hits('todo', 'TODO: fix later'))
         self.assertFalse(self.hits('algo', 'the algo is off'))
+        self.assertIn('todos', swlib.UNMEASURABLE)  # English TODOs come in too many forms to tell apart
         self.assertFalse(self.hits('es', 'switch to ES modules'))
         self.assertFalse(self.hits('en', 'en route to prod'))
         self.assertFalse(self.hits('con', 'install conda'))
@@ -645,8 +648,9 @@ class Scale(Home):
                 self.assertIn(f'the first {n} words of my Spanish Weave list (it starts with y, pero', about)
                 # French Weave's budget was 3,100 bytes. Spanish glosses run a little longer, accented letters take 2
                 # bytes each, and the usage guards (es vs está, esto vs este, sino, bien...) add about 600 bytes once
-                # every word is in use, so this budget is 3,900 (about 3,800 at 1,000 known words).
-                self.assertLess(len(brief.encode()), 3900, known)
+                # every word is in use, and the longer 0.3.3 list puts a few more noted words among the learning ones,
+                # so this budget is 4,200 (3,850 to 4,050 at 1,000 known words, depending on which words are learning).
+                self.assertLess(len(brief.encode()), 4200, known)
         # The longest export: just under the band cutoff, every known word is named.
         self.assertLess(len(export.claude_ai(grown(swlib.COLLAPSE_AT - 1))), make_blocks.CLAUDE_AI_MAX)
 
@@ -891,7 +895,7 @@ class Placement(Home):
         state = swlib.new_state('2026-10-01')
         items = placement.items(state)
         number = lambda pick: [n for n, (_, band) in enumerate(items, 1) if pick(band)]
-        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1040)  # every real word
+        self.assertEqual(placement.estimate(state, number(lambda band: band is not None))[0], 1135)  # every real word, never more than the list
         self.assertEqual(placement.estimate(state, number(lambda band: True))[0], 0)  # yes to everything is no signal
         half_first = number(lambda band: band == 0)[:4] + number(lambda band: band is None)[:2]
         self.assertEqual(placement.estimate(state, half_first), (40, 4, 2))  # (4/8 - 3/14) / (1 - 3/14) of 100 words
@@ -1039,7 +1043,8 @@ class Unattended(Home):
             out = json.loads(self.run_hook({'session_id': 't', 'transcript_path': str(log), 'prompt': notice}))
             context = out['hookSpecificOutput']['additionalContext']
             self.assertIn('Spanish Weave (Stage 1)', context)
-            self.assertNotIn('Recall:', context)
+            self.assertNotIn('open it with "Recall:', context)
+            self.assertIn('No recall cue in this reply', context)  # models otherwise repeat the last cue
         self.assertEqual(swlib.read_json(self.home / 'sw' / 'sessions.json')['t']['n'], 1)
         self.assertIsNone(weave.prompt_source('What does a <task-notification> tag mean?'))  # typed: only a lead counts
         self.assertIsNone(weave.prompt_source('Can you explain <scheduled-task > tags?'))
@@ -1061,8 +1066,22 @@ class Blocks(unittest.TestCase):
         read = lambda level: (ROOT / 'blocks' / f'level-{level:02d}.md').read_text(encoding='utf-8')
         claude = read(4).split('```text\n', 1)[1].split('\n```', 1)[0]
         known = claude.split(' | Known (use freely; never gloss): ', 1)[1].rsplit(' | ', 1)[0]
-        self.assertEqual(known.split(', '), [w['es'] for w in swlib.load_lexicon()[:75]])  # all 75, newest included
+        order = make_blocks.level_order(swlib.load_lexicon())
+        self.assertEqual(known.split(', '), [w['es'] for w in order[:75]])  # all 75, newest included
         self.assertIn('the first 175 words of my Spanish Weave list', read(8))
+
+    def test_levels_keep_their_words_when_words_are_added(self):
+        # Words with a since version come after the others, so a pasted level never gains untaught Known words.
+        lexicon = swlib.load_lexicon()
+        order = make_blocks.level_order(lexicon)
+        later = [w['es'] for w in order[-92:]]
+        self.assertEqual(sorted(w['es'] for w in order), sorted(w['es'] for w in lexicon))
+        self.assertIn('sino', later)
+        self.assertNotIn('sino', [w['es'] for w in order[:1043]])
+        self.assertEqual([w['es'] for w in order[:20]], [w['es'] for w in lexicon[:20]])
+        levels = make_blocks.level_words(lexicon)
+        self.assertEqual([len(level) for level in levels[41:]], [18, 25, 25, 25, 17])  # 0.3.2's last level keeps its 18
+        self.assertEqual(make_blocks.version_tuple('0.3.10') > make_blocks.version_tuple('0.3.9'), True)
 
 
 class Codex(Home):
@@ -1965,8 +1984,89 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class UpstreamPorts(unittest.TestCase):
-    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2."""
+class UpstreamPorts(Home):
+    """Improvements ported from French Weave (Jackie Oliver, MIT) in 0.3.2 and 0.3.3."""
+
+    def test_gap_words_are_listed_and_the_first_words_stay(self):
+        es = [w['es'] for w in swlib.load_lexicon()]
+        for word in ('sino', 'tampoco', 'tan', 'aunque', 'no funciona', 'el sistema', 'desplegar', 'chistoso'):
+            self.assertIn(word, es)
+        self.assertLess(es.index('sino'), 100)  # the pero note points to it
+        self.assertEqual(es[:5], ['y', 'pero', 'entonces', 'con', 'sin'])
+        self.assertIn('tan', swlib.UNMEASURABLE)  # "a tan coat" is English
+
+    def test_a_phrase_is_counted_before_the_words_inside_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chat = root / 'proj' / 'a.jsonl'
+            chat.parent.mkdir()
+            chat.write_text(line('The fix is small, es decir one line, and vale la pena.') + '\n')
+            index = swlib.scan(['es decir', 'decir', 'vale la pena', 'la pena', 'resolver'], {}, root, start='2026-09-19')
+            self.assertEqual(index['words']['es decir']['n'], 1)
+            self.assertEqual(index['words']['decir']['n'], 0)  # only inside "es decir"
+            self.assertEqual(index['words']['la pena']['n'], 0)
+            self.assertNotIn('resolver', index['words'])  # "the DNS resolver" is English
+
+    def test_each_use_goes_to_the_word_spelled_like_it(self):
+        words = ['mañana', 'la mañana', 'al final', 'el final', 'es decir', 'decir']
+        patterns = {es: swlib.pattern(es) for es in words}
+        count = lambda text: swlib.uses(swlib.norm(text), patterns)[0]
+        self.assertEqual(count('See you mañana, then.'), {'mañana': 1})
+        self.assertEqual(count('Early in la mañana it rains.'), {'la mañana': 1})
+        self.assertEqual(count('It worked al final.'), {'al final': 1})
+        self.assertEqual(count('Read el final first.'), {'el final': 1})
+        self.assertEqual(count('One line, es decir small.'), {'es decir': 1})
+        self.assertEqual(count('Hard to decir.'), {'decir': 1})
+
+    def test_quiz_keeps_una_vez_and_la_vez_apart(self):
+        once = {'es': 'una vez', 'en': 'once'}
+        time_ = {'es': 'la vez', 'en': 'the time (occasion)'}
+        self.assertTrue(swlib.check(once, 'una vez', 'produce'))
+        self.assertFalse(swlib.check(once, 'la vez', 'produce'))
+        self.assertFalse(swlib.check(once, 'vez', 'produce'))
+        self.assertFalse(swlib.check(time_, 'una vez', 'produce'))
+        self.assertTrue(swlib.check(time_, 'vez', 'produce'))  # a missing article is fine for a noun
+        self.assertFalse(swlib.check({'es': 'un poco', 'en': 'a little'}, 'poco', 'produce'))
+        # A bare answer that is also another listed word: the learner decides ("mañana" is tomorrow too).
+        self.assertIsNone(swlib.check({'es': 'la mañana', 'en': 'the morning'}, 'mañana', 'produce'))
+        self.assertTrue(swlib.check({'es': 'la mañana', 'en': 'the morning'}, 'la mañana', 'produce'))
+
+    def test_unaccented_donde_marks_the_dónde_being_learned(self):
+        import sw
+        state = swlib.new_state('2026-10-01')
+        dónde = swlib.find(state, 'dónde')
+        dónde.update(status='active', added='2026-10-01')
+        swlib.save_state(state)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.mark('asked')(argparse.Namespace(words=['donde'], command='learn'))
+        self.assertEqual(out.getvalue().strip(), 'Back to learning: dónde')
+        state = swlib.load_state()
+        self.assertEqual(swlib.find(state, 'dónde')['status'], 'shaky')
+        self.assertEqual(swlib.find(state, 'donde')['status'], 'queue')
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.mark('known')(argparse.Namespace(words=['donde'], command='known'))
+        self.assertEqual(out.getvalue().strip(), 'Known: dónde')  # known too: the word in use
+        # A typed accent keeps the exact spelling: with donde in use, "known dónde" marks dónde, never donde.
+        state = swlib.new_state('2026-10-01')
+        swlib.find(state, 'donde').update(status='active', added='2026-10-01')
+        swlib.save_state(state)
+        with contextlib.redirect_stdout(io.StringIO()):
+            sw.mark('known')(argparse.Namespace(words=['dónde'], command='known'))
+        state = swlib.load_state()
+        self.assertEqual(swlib.find(state, 'dónde')['status'], 'known')
+        self.assertEqual(swlib.find(state, 'donde')['status'], 'active')
+
+    def test_export_can_copy_the_claude_ai_block(self):
+        import sw
+        from unittest import mock
+        with mock.patch.object(sw.shutil, 'which', lambda cmd: '/usr/bin/pbcopy' if cmd == 'pbcopy' else None), \
+                mock.patch.object(sw.subprocess, 'run') as run:
+            self.assertTrue(sw.copy_to_clipboard('block'))
+        self.assertEqual(run.call_args.args[0], ['pbcopy'])
+        self.assertEqual(run.call_args.kwargs['input'], b'block')  # UTF-8 bytes, read under a UTF-8 locale
+        self.assertEqual(run.call_args.kwargs['env']['LC_ALL'], 'en_US.UTF-8')
+        with mock.patch.object(sw.shutil, 'which', lambda cmd: None):
+            self.assertFalse(sw.copy_to_clipboard('block'))  # no clipboard tool: the printed block still works
 
     def test_new_sense_guards_appear_with_their_words(self):
         import weave

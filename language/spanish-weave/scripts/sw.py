@@ -54,6 +54,7 @@ import platform
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 
@@ -491,7 +492,6 @@ def state_fix(error):
 def check(_args):
     """Prints one line per check; exits 1 if any failed."""
     import struct
-    import subprocess
     home, ok = swlib.home(), True
 
     def report(passed, what):
@@ -736,6 +736,13 @@ def mark(kind):
                         found = swlib.find(state, phrase)
                         if found:
                             break
+                    if found and found['status'] == 'queue' and swlib.fold(phrase) == swlib.key(phrase):
+                        # "donde" typed without the accent while dónde is in use: the word in use, not its unaccented
+                        # twin from the queue (the printed line shows the accent). A typed accent keeps the exact word.
+                        twin = next((w for w in state['words'] if w['status'] != 'queue' and w['es'] != found['es']
+                                     and swlib.fold(w['es']) == swlib.fold(found['es'])), None)
+                        if twin:
+                            found, phrase = twin, twin['es']
                     if found and swlib.apply_event(state, phrase, kind):
                         done.append(found['es'])  # the list's spelling, accents included: "tambien" -> también
                     else:
@@ -798,8 +805,25 @@ def export_cmd(args):
         block = export.claude_ai(state)
         print(f'claude.ai > Settings > "Instructions for Claude" (older layouts: personal preferences). Replace the old '
               f'Spanish Weave block ({len(block)} characters):\n\n{block}')
+        if args.copy and copy_to_clipboard(block):
+            print('\n(Also copied to your clipboard, ready to paste.)')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
+
+
+def copy_to_clipboard(text):
+    """Best effort: pbcopy (macOS), wl-copy or xclip (Linux). True when one of them took the text. From French Weave
+    by Jackie Oliver (MIT)."""
+    for cmd in (['pbcopy'], ['wl-copy'], ['xclip', '-selection', 'clipboard']):
+        if shutil.which(cmd[0]):
+            try:  # UTF-8 bytes, and a UTF-8 locale so pbcopy doesn't read them as a legacy encoding (LC_ALL=C)
+                env = dict(os.environ, LC_ALL='en_US.UTF-8', LANG='en_US.UTF-8')
+                subprocess.run(cmd, input=text.encode('utf-8'), check=True, timeout=5, env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
 
 
 def log_chat_day(_args):
@@ -1128,6 +1152,7 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
                    type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
     p.set_defaults(run=export_cmd)

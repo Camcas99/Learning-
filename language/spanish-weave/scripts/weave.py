@@ -28,11 +28,12 @@ OUTPUT_EVERY = 5  # with output practice on, every fifth reply invites the user 
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
 LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
 # Spanish grammar words on no list: several in one reply mean it slipped into Spanish sentences.
-# Left out on purpose: words English also uses (son, era, he, has, me, a, no, de, del, la, los, las, su, mi).
+# Left out on purpose: words English also uses (son, era, he, has, me, a, no, de, del, la, los, las, su, mi, and todos,
+# as in "the TODOs").
 GRAMMAR = set("yo tú él ella nosotros nosotras ellos ellas usted ustedes una unos unas eres somos están estamos "
               "estaban estuvo fue fueron sido estoy está tiene tienen tenemos hemos han hizo hace hacen puede pueden "
               "podría debe nuestro nuestra nuestros nuestras estos estas aquel aquella les nos se lo le que por tu voy "
-              "todos donde cual".split())
+              "donde cual".split())
 ACCENTED = re.compile('[áéíóúñü]')  # an off-list word with one of these is Spanish too (counted from Stage 3)
 RECALL, GLOSS = re.compile(r'\s*\**recall:', re.I), re.compile(r'\s=\s')  # recall cue and footer gloss lines (see extra)
 # Words that are easy to swap in the wrong sense, and the guard for each; a guard is in the brief once any of its
@@ -53,6 +54,7 @@ GUARDS = [
     (('muy', 'mucho'), 'muy before an adjective or adverb, "very much" is mucho'),
     (('si', 'sí'), 'si is if, sí is yes'),
     (('aquí',), 'aquí never for "here\'s"'),
+    (('cualquier',), 'cualquier never after not or in a question'),
     (('ya',), 'ya means already, never "just"'),
     (('como',), 'como never for the verb "like"'),
 ]
@@ -140,6 +142,8 @@ def brief(state, seen, recall=None, output=False):
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["es"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["es"]} = {recall["en"]}, "{recall["hint"]}"')
+    else:  # without this, models repeat the last recall cue on every turn (from French Weave by Jackie Oliver, MIT)
+        text += '\nNo recall cue in this reply: no "Recall:" lines, even if an earlier reply had one.'
     if (state.get('prefs') or {}).get('output_practice'):
         text += ('\nOutput practice is on: if the user\'s message answers your last "Your turn" line, open with one short line '
                  'of feedback (their Spanish, corrected if needed), then answer as usual.')
@@ -225,15 +229,13 @@ def share(text, words):
     prose = '\n'.join(line for line in prose.split('\n') if not extra(line))
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     spanish = learning = 0
-    rest = prose
-    # Longest first, each match removed before the next search: "faire attention" is not also "faire".
-    for word in sorted(words, key=lambda w: -len(w['es'])):
-        if swlib.norm(word['es']) not in swlib.UNMEASURABLE:
-            regex = swlib.pattern(word['es'])
-            uses = len(regex.findall(rest))
-            spanish += uses * len(word['es'].split())
-            learning += uses if word['status'] != 'known' else 0
-            rest = regex.sub(' ', rest)
+    # Non-overlapping uses, the longest first: "sin embargo" is not also "sin" (swlib.uses).
+    measured = [w for w in words if swlib.norm(w['es']) not in swlib.UNMEASURABLE]
+    counts, rest = swlib.uses(prose, {w['es']: swlib.pattern(w['es']) for w in measured})
+    for word in measured:
+        n = counts.get(word['es'], 0)
+        spanish += n * len(word['es'].split())
+        learning += n if word['status'] != 'known' else 0
     tokens = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest)
     grammar = sum(token in GRAMMAR for token in tokens)
     offlist = sum(token in GRAMMAR or bool(ACCENTED.search(token)) for token in tokens)

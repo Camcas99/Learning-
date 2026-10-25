@@ -50,7 +50,7 @@ SEED_SPREAD = 28       # words seeded known (setup, placement) get a first check
 
 # Same spelling as an English word with another meaning, so Spanish use can't be told apart in English prose:
 # never counted. (Words English borrowed with the same meaning, like gratis or loco, still count.)
-UNMEASURABLE = {'solo', 'mayor', 'sensible'}
+UNMEASURABLE = {'solo', 'mayor', 'sensible', 'tan', 'resolver', 'todos'}  # todos: English TODOs come in too many forms
 DETERMINER = (r"(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|estos|estas|ese|esa|esos|esas|mi|mis|tu|tus|su|sus"
               r"|nuestro|nuestra|nuestros|nuestras)\s+")
 ARTICLE = r"(?:el|la|los|las) "
@@ -689,8 +689,16 @@ def check(word, answer, way):
     if not given:
         return False
     if way == 'produce':
-        if bare_fold(given) == bare_fold(word['es']):
+        if fold(given) == fold(word['es']):
             return True
+        if bare_fold(given) == bare_fold(word['es']):
+            if re.match(r'(un|una|unos|unas) ', key(word['es'])):
+                return False  # the un/una is part of the phrase: "poco" is not "un poco", "la vez" not "una vez"
+            if any(fold(w['es']) == fold(given) for w in load_lexicon()):
+                # Another listed word: "una vez" (once) for la vez is wrong; a bare "mañana" for la mañana is also
+                # tomorrow, so the learner decides.
+                return False if article_of(given) else None
+            return True  # a missing or different article
         return None if listed_meanings().get(bare_fold(given), set()) & meanings(word['en']) else False
     english = re.sub(r'^(the|to|a|an) ', '', given)
     if english in meanings(word['en']):
@@ -756,8 +764,10 @@ def pattern(es):
     noun = re.match(ARTICLE + '(.+)', word)
     if noun:
         noun = noun.group(1)
-        # An unaccented noun can be English too ("error", "idea"), so it needs a Spanish determiner in front.
-        lead = r"(?<!\w)" + (DETERMINER if noun.isascii() else '')
+        # An unaccented noun can be English too ("error", "idea"), so it needs a Spanish determiner in front. An accented
+        # one takes its determiner into the match when there is one, so "la mañana" (the morning) is a longer use than
+        # "mañana" (tomorrow) and wins it in uses().
+        lead = r"(?<!\w)" + (DETERMINER if noun.isascii() else f'(?:{DETERMINER})?')
         return re.compile(lead + re.escape(noun) + r"(?:es|s)?(?!\w)")
     before, after = SPECIAL.get(word, ('', ''))
     if len(word) == 1:  # y, o: also not in y'all, x/y, x.y, y-axis or O(n)
@@ -765,6 +775,26 @@ def pattern(es):
     else:
         lead, tail = r"(?<![\w'-])", r"(?![\w'-])"
     return re.compile(lead + before + re.escape(word) + tail + after)
+
+
+def uses(prose, patterns):
+    """How often each word is used in prose, and prose with those uses blanked out. patterns: {es: pattern(es)}.
+    Uses never overlap: the longest matched text wins, and of two the same length the word spelled exactly like the
+    text ("al final" over el final's "al final", "mañana" alone over la mañana's "mañana"). So "es decir" is not also a
+    use of decir, and "vale la pena" not of la pena."""
+    found = sorted(((m.end() - m.start(), norm(m.group(0)) != norm(es), m.start(), m.end(), es)
+                    for es, regex in patterns.items() for m in regex.finditer(prose)),
+                   key=lambda f: (-f[0], f[1], f[2]))
+    taken, counts = [], {}
+    for _, _, start, end, es in found:
+        if any(start < e and s < end for s, e in taken):
+            continue
+        taken.append((start, end))
+        counts[es] = counts.get(es, 0) + 1
+    rest = list(prose)
+    for start, end in taken:
+        rest[start:end] = ' ' * (end - start)
+    return counts, ''.join(rest)
 
 
 def codex_home():
@@ -888,13 +918,12 @@ def scan(words, index, roots=None, start='0000-00-00'):
             if digest in recent:
                 continue  # forked and resumed chats copy old replies
             recent[digest] = day
-            prose = norm(CODE.sub(' ', text))
-            for es, regex in patterns.items():
-                if regex.search(prose):
-                    entry = counts[es]
-                    entry['n'] += 1
-                    if day not in entry['days']:
-                        entry['days'] = sorted(entry['days'] + [day])[-60:]
+            # Non-overlapping uses, as the hook's share() counts them: "es decir" is not also decir (see uses).
+            for es in uses(norm(CODE.sub(' ', text)), patterns)[0]:
+                entry = counts[es]
+                entry['n'] += 1
+                if day not in entry['days']:
+                    entry['days'] = sorted(entry['days'] + [day])[-60:]
         offsets[name] = lines.offset
         if mark[0] is not None:
             typed[name] = mark[0]

@@ -13,7 +13,12 @@ New here? Read [START-HERE.md](START-HERE.md). Claude sessions picking this up: 
 Adapted from [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver (MIT license): same
 design and code, with a new Spanish word list, sound hints, grammar rules and prompts. Version 0.3.2 also ports
 later French Weave improvements: wider default-off sites, a sensitive-title guard, no swaps inside contractions or
-ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses.
+ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guards and glosses. Version 0.3.3 adds
+92 more words (sino, tampoco, aunque, no funciona...), a check that each web swap matches its word's meaning, faster
+swaps while scrolling, a wait for Gemini's daily quota, a hover gloss pages can't clip, Claude Haiku as an optional
+model, and a clipboard copy of the claude.ai export. With the plugin, the new words come in at their place in the
+list, so if you already know many words, a few basic new ones (sino, tampoco, incluso...) come up for learning first.
+The paste-in levels keep their words: the new words fill new levels 43 to 46.
 
 ## Set up
 
@@ -56,7 +61,7 @@ Then you do up to four things (your agent tells you when):
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/spanish-weave:export` (or `/spanish-weave:export --chatgpt`)
-and paste what it prints:
+and paste what it prints (on a Mac, or Linux with wl-copy or xclip, the claude.ai block is also put on your clipboard):
 - claude.ai: Settings > "Instructions for Claude" (older layouts call it "What personal preferences should Claude
   consider in responses?"). Replace any older Spanish Weave block.
 - ChatGPT: Settings > Personalization: one block in the "Custom instructions" box, the other in "More about you"
@@ -68,7 +73,8 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
-block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through level 42.
+block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
+(46). A level never changes its words: words added to the list later go into new levels after the last one.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
@@ -106,7 +112,11 @@ the installed plugin, and `check` also flags a local folder the marketplace was 
   Hover for the meaning, click to flip back, Alt+click to hear it. On for every site by default, except email,
   messaging, AI chat and local addresses; turn sites off from the toolbar popup, or set it to only the sites you turn
   on. Swaps are chosen by Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more
-  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere.
+  than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere. When Google's
+  own daily free quota runs out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is
+  asked until then. With a paid Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it
+  makes fewer wrong swaps and Anthropic bills it per use. It never falls back to Gemini, so with Claude picked no page
+  text goes to Google, even when a Gemini key is saved.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -267,7 +277,7 @@ z and soft c sound like s.
 
 ## How words advance
 
-Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,000 Spanish words and short phrases in
+Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,100 Spanish words and short phrases in
 frequency/usefulness order (connectors and adverbs first, then everyday phrases, nouns, adjectives and verbs, and
 coding words at the end), each with a gloss and a sound hint.
 
@@ -279,7 +289,8 @@ coding words at the end), each with a gloss and a sound hint.
   known word you don't recognize in the quiz. A **peek** (hovering until the meaning shows) holds back a learning
   word; a known word peeked on 2 days within a week, both since it became known, turns shaky. **Shaky -> known**
   after 7 days with no flip, peek or quiz miss, once you've really seen the word again since the last one (days
-  counted by `log-chat-day` don't count; solo, mayor and sensible, which chat can't count, need only the week).
+  counted by `log-chat-day` don't count; solo, mayor, sensible, tan, resolver and todos, which chat can't count, need
+  only the week).
 - **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
   native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
@@ -308,10 +319,11 @@ with any Spanish adjective next to it agreeing (la idea nueva). The extension's 
 ChatGPT block, kept under the 1,500-character limit of the Free and Go plans, carries the most common ones.
 
 **Spanish that is also English.** Counting a word in a chat reply means telling the Spanish use from the English
-one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor` and
-`sensible` are never counted from chat, since English uses them with other meanings (the quiz, the extension or
-`known` can still move them); and a few words skip their English
-uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`.
+one. Unaccented nouns need a Spanish article in front ("el error" counts, "the error" doesn't); `solo`, `mayor`,
+`sensible`, `tan`, `resolver` and `todos` (English TODOs) are never counted from chat, since English uses them with
+other meanings (the quiz, the extension or `known` can still move them); and a few words skip their English
+uses: TODO, "the algo", `sin(x)`, ES modules, "en route", "x and y" and `O(n)`. A phrase is counted before the words
+inside it, so "es decir" is not also a sighting of decir.
 
 **Chats that can't be scanned** (claude.ai, ChatGPT) don't count toward exposure. If you mostly read Spanish there,
 `sw.py log-chat-day` (or `export --log-day`) counts today as exposure for your learning words. It's off by default
@@ -352,9 +364,12 @@ What Spanish Weave keeps, and what it sends:
   and stage. With a free-tier key, Google may use that text to improve its products, human reviewers may read it,
   and Google asks that no personal or sensitive information be sent; in the EEA, UK and Switzerland the paid-tier
   data terms apply.
+- **Sent to Anthropic's API with each page instead**, only if you pick Claude Haiku in the popup and paste a Claude
+  key there: the same page text, word lists and stage, under Anthropic's API terms.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
-- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key, a cache of
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if you
+  pasted one), a cache of
   chosen swaps with a few words of page text around each, and today's count of model calls for each site. Removing the extension deletes them; deleting
   `~/.spanish-weave` doesn't.
 
@@ -390,7 +405,7 @@ commands/         /spanish-weave:* slash commands
 scripts/          swlib.py (state, rules, transcript scan), weave.py (hook), sw.py (CLI, setup),
                   sw_host.py (native host), export.py (claude.ai / ChatGPT blocks), make_blocks.py (blocks/),
                   hints.py (sound hints), placement.py (placement test)
-data/lexicon.csv  ranked words: es, en, sound hint
+data/lexicon.csv  ranked words: es, en, sound hint, since (the version that added a later word)
 data/notes.csv    usage notes (false friends) by word
 blocks/           ready-made claude.ai / ChatGPT blocks, one per level (generated)
 extension/        Chrome MV3 extension (no build step, no runtime dependencies)
@@ -417,8 +432,10 @@ When you change anything the plugin runs (scripts, commands, data, the extension
 copies only update when the version changes. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
 or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
 
-To add a word, append a row `es,en,` to `data/lexicon.csv` (in the rank where it belongs), run
-`python3 scripts/hints.py --fill` to generate its hint, then `python3 scripts/make_blocks.py`.
+To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
+in the since column (`quizás,perhaps,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then
+`python3 scripts/make_blocks.py`. The plugin queues the word at its rank; the paste-in levels put each version's words
+in new levels after the last one, so a level someone already pasted never changes.
 
 ## License
 

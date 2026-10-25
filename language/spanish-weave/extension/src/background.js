@@ -1,14 +1,15 @@
-// Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
+// Service worker: word state and the Gemini key from the Claude Code plugin (native host), a pasted Claude key, site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
 // Keys stay here; pages only get a config without them.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
+import { isClaude } from './anthropic.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess, swapSettings } from './settings.js';
 import { resolveLevel, exactEs, isZeroSpanish, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { swapRevision } from './revision.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { quotaError, countCall } from './quota.js';
+import { quotaError, countCall, spentToday, saveSpent } from './quota.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -21,7 +22,13 @@ const ALARM = 'sync';
 const SYNC_MINUTES = 10;
 const STALE_MS = 120000;
 const FLUSH_DELAY_MS = 10000;
-const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
+// Per set of keys: model -> cooldown end, and model -> why. Worker memory is enough. Keyed by the keys in use, so a
+// late error from a key that was just replaced never holds back the new one.
+const cooldowns = new Map();
+const cooldownFor = (id) => {
+  if (!cooldowns.has(id)) cooldowns.set(id, { until: new Map(), why: new Map() });
+  return cooldowns.get(id);
+};
 
 const serial = () => {
   let chain = Promise.resolve();
@@ -46,17 +53,26 @@ const ready = (async () => {
 // for those, and cached swaps stay good, so toggling them costs no model calls.
 async function context() {
   await ready;
-  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
+  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'claudeKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
   const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites, state?.sitesAt) };
   const level = resolveLevel(saved, state?.stage).effective;
-  const hasKey = !!(data.apiKey || data.hostKey);
+  // A key for the chosen model: Claude Haiku needs the Claude key (it never falls back to Gemini), the others Gemini's.
+  const hasKey = isClaude(settings.model) ? !!data.claudeKey : !!(data.apiKey || data.hostKey);
   const paused = !!state?.paused;
-  const { origins = [] } = await chrome.permissions.getAll();
+  const origins = await siteOrigins();
   const revision = swapRevision({ extension: chrome.runtime.getManifest?.()?.version || '', epoch: data.epoch || '',
     settings: swapSettings(settings), level, words: state?.version || '', hasKey });
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
+}
+
+// Granted site origins, without the API hosts the manifest itself asks for (Gemini, Anthropic): those are never sites
+// to run on, so api.anthropic.com doesn't get the content script or count as an allowed site.
+async function siteOrigins() {
+  const api = new Set(chrome.runtime.getManifest?.()?.host_permissions || []);
+  const { origins = [] } = await chrome.permissions.getAll();
+  return origins.filter((o) => !api.has(o));
 }
 
 const activeOn = (ctx, url) => ctx.hasKey && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
@@ -94,6 +110,11 @@ async function swaps(msg, sender) {
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
+  let keys = ''; // the hash of the keys this request used
+  const sameKeys = async () => {
+    const k = await store.get(['apiKey', 'hostKey', 'claudeKey']);
+    return hashKey(`${k.apiKey || k.hostKey || ''}\n${k.claudeKey || ''}`) === keys;
+  };
   try {
     const fresh = await modelCall(async () => {
       const now = await context();
@@ -101,10 +122,24 @@ async function swaps(msg, sender) {
       const host = new URL(sender.url).host;
       const over = await quotaError(chromeStorage, host);
       if (over) throw new Error(over);
-      const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
+      const { wordState, apiKey, hostKey, claudeKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'claudeKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage, undefined, host); return fetch(...args); };
-      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
-        shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+      const geminiKey = apiKey || hostKey;
+      const keyId = geminiKey ? hashKey(geminiKey) : '';
+      const daily = await spentToday(chromeStorage, keyId);
+      const loaded = new Map(daily);
+      keys = hashKey(`${geminiKey || ''}\n${claudeKey || ''}`);
+      const cool = cooldownFor(keys);
+      try {
+        return await requestSwaps({ apiKey: geminiKey, claudeKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
+          shownToday: await shownToday(chromeStorage), cooldown: cool.until, why: cool.why, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+      } finally {
+        await locked(async () => {
+          const stored = await store.get(['apiKey', 'hostKey']);
+          const current = stored.apiKey || stored.hostKey;
+          await saveSpent(chromeStorage, daily, loaded, keyId, current ? hashKey(current) : '');
+        });
+      }
     });
     // Turned off, paused or changed during the request: nothing is cached or painted.
     return await locked(async () => {
@@ -116,7 +151,8 @@ async function swaps(msg, sender) {
     });
   } catch (e) {
     const error = e?.message || 'Model request failed';
-    await store.set({ modelStatus: { at: Date.now(), error } });
+    // An error from a key that was replaced meanwhile isn't the new key's: the popup keeps the fresh start.
+    if (!keys || await sameKeys()) await store.set({ modelStatus: { at: Date.now(), error } });
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
 }
@@ -144,9 +180,16 @@ async function record(msg, sender) {
 // itself reaches pages through broadcast(), which stops or starts them.
 async function syncWords() {
   await flush();
+  const { hostKey: before = '' } = await store.get('hostKey');
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
-  await broadcast();
+  const { hostKey: after = '' } = await store.get('hostKey');
+  if (before !== after) {
+    // Setup stored a new Gemini key: a fresh start, as for a pasted one (save).
+    cooldowns.clear();
+    await store.set({ modelStatus: null });
+    await broadcast('retry');
+  } else await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
 
@@ -159,9 +202,10 @@ async function clearCache() {
   return { ok: true, removed };
 }
 
-// msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey.
+// msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey;
+// msg.claudeKey.
 async function save(msg) {
-  await locked(async () => {
+  const newKey = await locked(async () => {
     const saved = await store.get('settings');
     const merged = { ...saved.settings, ...msg.settings };
     // Timed, so whichever of this and setup's --sites came last wins (newSitesDefault).
@@ -175,18 +219,33 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
+      // A paste, even of the same key, lifts a spent day: after billing is turned on, Google takes the key again.
+      patch.dailyQuota = null;
+    }
+    if (typeof msg.claudeKey === 'string') {
+      if (msg.claudeKey.length > 500) throw new Error('Key is too long');
+      patch.claudeKey = msg.claudeKey.trim();
+    }
+    const fresh = 'apiKey' in patch || 'claudeKey' in patch;
+    if (fresh) {
+      // A new key gets a fresh start: no cooldown or old error, and open pages ask again at once instead of waiting out
+      // the old key's retry (an hour for a refused key, until midnight Pacific for a spent day). A new Gemini key has
+      // no spent day of its own, because quota.js ties that record to the key.
+      cooldowns.clear();
+      patch.modelStatus = null;
     }
     await store.set(patch);
+    return fresh;
   });
-  await broadcast();
+  await broadcast(newKey ? 'retry' : 'config');
   return { ok: true };
 }
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'claudeKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null };
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, claudeKey: !!data.claudeKey, modelStatus: data.modelStatus || null };
 }
 
 // Pages may only ask for config, swaps and events; everything else is popup-only.
@@ -213,9 +272,9 @@ const manifestSites = () => chrome.runtime.getManifest().content_scripts.flatMap
 let registrations = Promise.resolve();
 function registerSites() {
   const p = registrations.then(async () => {
-    const { origins = [] } = await chrome.permissions.getAll();
+    const origins = await siteOrigins();
     const matches = [...new Set(origins.flatMap((o) => o === '<all_urls>' ? ['http://*/*', 'https://*/*'] : [o]))]
-      .filter((o) => /^(https?|\*):\/\//.test(o) && !o.includes('googleapis.com'));
+      .filter((o) => /^(https?|\*):\/\//.test(o));
     const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['weave-sites'] });
     if (!matches.length) {
       if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: ['weave-sites'] });
