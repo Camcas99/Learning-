@@ -22,7 +22,13 @@ const ALARM = 'sync';
 const SYNC_MINUTES = 10;
 const STALE_MS = 120000;
 const FLUSH_DELAY_MS = 10000;
-const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
+// Per set of keys: model -> cooldown end, and model -> why. Worker memory is enough. Keyed by the keys in use, so a
+// late error from a key that was just replaced never holds back the new one.
+const cooldowns = new Map();
+const cooldownFor = (id) => {
+  if (!cooldowns.has(id)) cooldowns.set(id, { until: new Map(), why: new Map() });
+  return cooldowns.get(id);
+};
 
 const serial = () => {
   let chain = Promise.resolve();
@@ -104,6 +110,11 @@ async function swaps(msg, sender) {
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
+  let keys = ''; // the hash of the keys this request used
+  const sameKeys = async () => {
+    const k = await store.get(['apiKey', 'hostKey', 'claudeKey']);
+    return hashKey(`${k.apiKey || k.hostKey || ''}\n${k.claudeKey || ''}`) === keys;
+  };
   try {
     const fresh = await modelCall(async () => {
       const now = await context();
@@ -117,9 +128,11 @@ async function swaps(msg, sender) {
       const keyId = geminiKey ? hashKey(geminiKey) : '';
       const daily = await spentToday(chromeStorage, keyId);
       const loaded = new Map(daily);
+      keys = hashKey(`${geminiKey || ''}\n${claudeKey || ''}`);
+      const cool = cooldownFor(keys);
       try {
         return await requestSwaps({ apiKey: geminiKey, claudeKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
-          shownToday: await shownToday(chromeStorage), cooldown, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+          shownToday: await shownToday(chromeStorage), cooldown: cool.until, why: cool.why, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await locked(async () => {
           const stored = await store.get(['apiKey', 'hostKey']);
@@ -138,7 +151,8 @@ async function swaps(msg, sender) {
     });
   } catch (e) {
     const error = e?.message || 'Model request failed';
-    await store.set({ modelStatus: { at: Date.now(), error } });
+    // An error from a key that was replaced meanwhile isn't the new key's: the popup keeps the fresh start.
+    if (!keys || await sameKeys()) await store.set({ modelStatus: { at: Date.now(), error } });
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
 }
@@ -172,7 +186,7 @@ async function syncWords() {
   const { hostKey: after = '' } = await store.get('hostKey');
   if (before !== after) {
     // Setup stored a new Gemini key: a fresh start, as for a pasted one (save).
-    cooldown.clear();
+    cooldowns.clear();
     await store.set({ modelStatus: null });
     await broadcast('retry');
   } else await broadcast();
@@ -205,6 +219,8 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
+      // A paste, even of the same key, lifts a spent day: after billing is turned on, Google takes the key again.
+      patch.dailyQuota = null;
     }
     if (typeof msg.claudeKey === 'string') {
       if (msg.claudeKey.length > 500) throw new Error('Key is too long');
@@ -215,7 +231,7 @@ async function save(msg) {
       // A new key gets a fresh start: no cooldown or old error, and open pages ask again at once instead of waiting out
       // the old key's retry (an hour for a refused key, until midnight Pacific for a spent day). A new Gemini key has
       // no spent day of its own, because quota.js ties that record to the key.
-      cooldown.clear();
+      cooldowns.clear();
       patch.modelStatus = null;
     }
     await store.set(patch);

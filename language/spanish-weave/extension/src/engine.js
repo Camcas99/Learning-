@@ -4,7 +4,8 @@ import { buildRequest, callGemini, FALLBACK_MODEL } from './gemini.js';
 import { buildClaudeRequest, callClaude, isClaude } from './anthropic.js';
 import { validateSwaps, capSwaps } from './levels.js';
 
-// cooldown: Map<model, until ms>. Rate-limited or overloaded models are skipped until then, so the
+// cooldown: Map<model, until ms>, plus why: Map<model, the error that started it>. Rate-limited or overloaded models
+// (and a refused key's) are skipped until then, with that error repeated, so the
 // free tier's per-minute limit does not cost every batch a failed request before the fallback.
 export const COOLDOWN_MS = { 429: 60000, 500: 30000, 503: 30000, 529: 30000, timeout: 30000 };
 
@@ -14,7 +15,7 @@ export const resumeAt = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'num
 // daily: Map<model, until ms> for models whose daily quota is spent. The caller keeps it in storage, since it outlives
 // the worker; requestSwaps adds to it. apiKey: the Gemini key; claudeKey: the Claude key. A model whose key is missing
 // is skipped.
-export async function requestSwaps({ apiKey, claudeKey, model, level, batch, words, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now }) {
+export async function requestSwaps({ apiKey, claudeKey, model, level, batch, words, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), why = new Map(), daily = new Map(), now = Date.now }) {
   const system = buildSystemPrompt(level, words, shownToday);
   const user = buildUserContent(batch);
   const body = buildRequest({ system, user, schema: RESPONSE_SCHEMA });
@@ -31,7 +32,9 @@ export async function requestSwaps({ apiKey, claudeKey, model, level, batch, wor
   const models = candidates.filter((m) => !(cooldown.get(m) > now()) && !(daily.get(m) > now()));
   const errors = [];
   if (!models.length) {
-    const error = new Error('Model rate limit; retrying shortly');
+    // The reason the first model is waiting (a refused key, no credit, a rate limit), so the popup keeps saying why.
+    const reason = candidates.filter((m) => cooldown.get(m) > now()).map((m) => why.get(m)).find(Boolean);
+    const error = new Error(reason || 'Model rate limit; retrying shortly');
     error.retryAfterMs = Math.max(1000, Math.min(...candidates.map((m) => Math.max(cooldown.get(m) || 0, daily.get(m) || 0))) - now());
     throw error;
   }
@@ -52,7 +55,7 @@ export async function requestSwaps({ apiKey, claudeKey, model, level, batch, wor
       const timeout = e?.name === 'TimeoutError';
       const wait = e?.retryAfterMs || COOLDOWN_MS[timeout ? 'timeout' : e?.status];
       if (e?.daily) daily.set(m, now() + wait);
-      else if (wait) cooldown.set(m, now() + wait);
+      else if (wait) { cooldown.set(m, now() + wait); why.set(m, `${m}: ${e?.message || 'unavailable'}`); }
       errors.push(`${m}: ${timeout ? 'timeout' : e?.daily ? 'daily quota used up' : e?.message || e}`);
     }
   }
