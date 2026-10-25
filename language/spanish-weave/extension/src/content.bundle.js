@@ -1052,8 +1052,9 @@ return { TWEET, INSTAGRAM, PROSE, SITES, siteFor, selector, textRoot, readable }
 // ---- speech.js
 const m_speech = (() => {
 'use strict';
-// Pronunciation through the Web Speech API: Alt+click (Option+click) or Alt+Enter on a swap, and the gloss when
-// the popup's "Say words aloud when the meaning shows" is on. synth and Utterance are injectable, so tests use fakes.
+// Pronunciation through the Web Speech API: Alt+click (Option+click) or Alt+Enter on a swap, the speaker in a gloss
+// opened by a tap, and the gloss when the popup's "Say words aloud when the meaning shows" is on. synth and Utterance
+// are injectable, so tests use fakes.
 const RATE = 0.9; // a touch slower than normal speech, for a learner
 const LATAM = ['es-mx', 'es-us', 'es-419'];
 const tag = (voice) => String(voice?.lang || '').replace(/_/g, '-').toLowerCase(); // Android says es_MX
@@ -1257,7 +1258,8 @@ function placeTip(span, withSpeaker = false) {
     tipBox.setAttribute('aria-hidden', 'true');
     document.documentElement.append(tipBox);
   }
-  tipBox.textContent = `${span.getAttribute('data-es') || ''} = ${span.getAttribute('data-tip') || ''}`; // drops a speaker
+  // Setting the text also drops the speaker a tapped gloss had; only a tap puts it back.
+  tipBox.textContent = `${span.getAttribute('data-es') || ''} = ${span.getAttribute('data-tip') || ''}`;
   tipBox.classList.toggle('sw-gloss-touch', withSpeaker);
   if (withSpeaker && canSpeak()) {
     // The one part of the box that takes the pointer. It sits inside the box, so it never covers the word.
@@ -1519,19 +1521,20 @@ function onPointerDown(e) {
   press.timer = setTimeout(() => longPress(span), LONG_PRESS_MS);
 }
 function onPointerMove(e) {
-  if (!e.isTrusted) return;
+  if (!e.isTrusted || orphaned) return;
   notePointer(e); // a real mouse moving ends the touch window at once, so a laptop with a touchscreen hovers again
-  if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP_PX) cancelPress();
+  const moved = press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP_PX;
+  if (moved) cancelPress(); // a scroll or a drag, not a long press
 }
 function onPointerEnd(e) { // pointerup, and pointercancel when the browser takes the finger for a scroll or a zoom
-  if (!e.isTrusted) return;
+  if (!e.isTrusted || orphaned) return;
   notePointer(e);
   if (e.type === 'pointerup' && down.span) down.at = clock(); // the click comes after the lift
   if (press && e.pointerId === press.id) cancelPress();
 }
 function longPress(span) {
   if (!press || press.span !== span || press.fired || !span.isConnected || !on()) return;
-  press.fired = true; // kept until the finger lifts, so the click that may follow is eaten
+  press.fired = true; // kept until the finger lifts or slides away; cancelPress() then eats the click that may follow
   flip(span);
 }
 // A click on a word a finger just pressed. Engines disagree on a tap's click.pointerType (Safari's click has been a
