@@ -31,7 +31,8 @@ Plugins are for paid plans. On the free plan, keep using the paste-in blocks in
    your words, and `/spanish-weave:export chat exact` your own word list instead.
 5. Start a new chat. When the words feel easy, type "next level": Claude gives you the new line to paste.
 
-The plugins sync to your account, so this works in the Claude phone apps once it is set up.
+Plugins belong to your account rather than a device, so once this is set up it should reach the Claude phone apps
+too (see the first point below).
 
 ## Good to know
 

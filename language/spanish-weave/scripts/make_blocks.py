@@ -14,8 +14,8 @@ drift from it.
 It also writes the chat-only plugin next to this one (../spanish-weave-chat), for claude.ai and the Claude apps: its
 plugin.json (with this plugin's version), LICENSE (a copy of this one), skills/spanish-weave/SKILL.md (the same rules)
 and one file per level holding that level's state line. Only its README.md is written by hand.
-Usage: python3 scripts/make_blocks.py [--check]   (--check: fail if blocks/ or the chat plugin is out of date, a block is
-                                                   too long, or the two plugins' versions differ)
+Usage: python3 scripts/make_blocks.py [--check]   (--check: fail if blocks/ or the chat plugin is out of date, a
+                                                   block is too long, or the two plugins' versions differ)
 """
 import argparse
 import csv
@@ -246,7 +246,8 @@ def chat_problems(files, version, root=CHAT):
     stale = [name for name, text in files.items()
              if not (root / name).is_file() or (root / name).read_text(encoding='utf-8') != text]
     if stale:
-        problems.append(f'out of date: {", ".join(stale[:4])}' + (f' and {len(stale) - 4} more' if len(stale) > 4 else ''))
+        more = f' and {len(stale) - 4} more' if len(stale) > 4 else ''
+        problems.append(f'out of date: {", ".join(stale[:4])}{more}')
     folder = root / SKILL / 'references' / 'levels'
     extra = sorted(p.name for p in folder.iterdir() if f'{SKILL}/references/levels/{p.name}' not in files) \
         if folder.is_dir() else []
@@ -268,6 +269,8 @@ def main():
     lexicon = swlib.load_lexicon()
     levels = len(level_words(lexicon))
     version = plugin_version()
+    if not version:
+        sys.exit(f'no version in {swlib.PLUGIN_ROOT / ".claude-plugin" / "plugin.json"}')
     files = chat_files(lexicon, levels, version)
     problems = skill_problems(files[f'{SKILL}/SKILL.md'])
     if problems:

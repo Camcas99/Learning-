@@ -2190,8 +2190,9 @@ class ChatSkill(Home):
         self.assertIn('in the Spanish Weave state line found by step 2 or 3 above.', body)
         # What make_blocks refuses to write.
         self.assertEqual(make_blocks.skill_problems(text), [])
-        broken = [text.replace(fields['description'], 'x' * 201), text.replace('name: spanish-weave', 'name: claude-weave'),
-                  text.replace('license: MIT', 'license: <MIT>'), text.replace(fields['description'], 'Note: words'),
+        broken = [text.replace(fields['description'], 'x' * 201), text.replace(fields['description'], 'Note: words'),
+                  text.replace('name: spanish-weave', 'name: claude-weave'),
+                  text.replace('license: MIT', 'license: <MIT>'),
                   text.replace('## Rules', '\n' * 500 + '## Rules')]
         for bad in broken:
             self.assertTrue(make_blocks.skill_problems(bad))
@@ -2206,7 +2207,8 @@ class ChatSkill(Home):
             self.assertEqual((text.count('\n'), text[-1]), (1, '\n'), path.name)  # one line
             line = text[:-1]
             block = (ROOT / 'blocks' / f'level-{n:02d}.md').read_text(encoding='utf-8')
-            pasted = block.split('```text\n', 1)[1].split('\n```', 1)[0].rsplit('\n\n', 1)[1]  # the claude.ai state line
+            claude_ai = block.split('```text\n', 1)[1].split('\n```', 1)[0]  # the first block on the page
+            pasted = claude_ai.rsplit('\n\n', 1)[1]  # its state line, after the rules
             self.assertTrue(pasted.startswith('Spanish weave state — '), n)
             # The same line, without the block's placeholder dates (1/1) and its link to the next block's file.
             self.assertEqual(line, re.sub(r' \(\d+/\d+\)| \(next: level-\d+\.md\)', '', pasted), n)
@@ -2229,7 +2231,8 @@ class ChatSkill(Home):
     def test_versions_match_and_check_catches_a_stale_plugin(self):
         version = main_version()
         manifest = json.loads((CHAT / '.claude-plugin' / 'plugin.json').read_text())
-        self.assertEqual((manifest['name'], manifest['version'], manifest['license']), ('spanish-weave-chat', version, 'MIT'))
+        self.assertEqual((manifest['name'], manifest['version'], manifest['license']),
+                         ('spanish-weave-chat', version, 'MIT'))
         self.assertEqual(sorted(p.name for p in CHAT.iterdir()), ['.claude-plugin', 'LICENSE', 'README.md', 'skills'])
         self.assertEqual((CHAT / 'LICENSE').read_text(), (ROOT / 'LICENSE').read_text())
         lexicon = swlib.load_lexicon()
@@ -2291,7 +2294,8 @@ class ChatSkill(Home):
         levels = len(make_blocks.level_words(swlib.load_lexicon()))
         self.assertIn(f'level 1 of {levels} is the nearest to your words', out)
         self.assertTrue(out.endswith('\n\n' + export.chat_line(1) + '\n'))
-        self.assertEqual({k: swlib.load_state()['exported'][k] for k in ('target', 'level')}, {'target': 'chat', 'level': 1})
+        exported = swlib.load_state()['exported']
+        self.assertEqual((exported['target'], exported['level']), ('chat', 1))
         line = export.chat_line(1)
         self.assertLess(len(line), 400)
         self.assertNotIn('\n', line)
@@ -2313,7 +2317,8 @@ class ChatSkill(Home):
         self.assertEqual(export.parse_state_line(state_line)['stage'], swlib.stage_for(state))
         self.assertEqual(state['exported']['target'], 'chat-exact')
         self.assertNotIn('level', state['exported'])
-        self.assertEqual(self.sw('export', 'chat', 'exact').rsplit(' | ', 1)[0], out.rsplit(' | ', 1)[0])  # bar the time
+        again = self.sw('export', 'chat', 'exact')
+        self.assertEqual(again.rsplit(' | ', 1)[0], out.rsplit(' | ', 1)[0])  # all but the time stamp
         for argv in (['export', '--exact'], ['export', 'chat', 'chatgpt'], ['export', '--chat', '--claude-ai']):
             with mock.patch('sys.stderr', new=io.StringIO()), self.assertRaises(SystemExit):
                 sw.main(argv)
@@ -2334,7 +2339,8 @@ class ChatSkill(Home):
         self.sw('export', 'chat', 'exact')
         with swlib.editing() as state:
             swlib.apply_event(state, order[60]['es'], 'known')
-        self.assertIn('/spanish-weave:export chat exact', weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400))
+        notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)
+        self.assertIn('/spanish-weave:export chat exact', notice)
 
     def test_check_notes_the_chat_plugin_and_changes_nothing(self):
         def check():
@@ -2360,7 +2366,8 @@ class ChatSkill(Home):
         for name, entry in entries.items():
             self.assertEqual(entry['source'], f'./language/{name}')
             self.assertNotIn('version', entry)  # only in each plugin.json
-            self.assertEqual(json.loads((REPO / entry['source'] / '.claude-plugin' / 'plugin.json').read_text())['name'], name)
+            manifest = REPO / entry['source'] / '.claude-plugin' / 'plugin.json'
+            self.assertEqual(json.loads(manifest.read_text())['name'], name)
         self.assertTrue(entries['spanish-weave']['description'].startswith(
             'For Claude Code on your computer (uses hooks). On claude.ai or the Claude apps, add spanish-weave-chat '
             'instead.'))

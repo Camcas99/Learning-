@@ -74,7 +74,8 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
 block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
-(46). A level never changes its words: words added to the list later go into new levels after the last one.
+(46). A level never changes its words: words added to the list later go into new levels after the last one. On a
+Pro or Max plan, claude.ai can take one short line instead: see "On claude.ai and the Claude apps" below.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
@@ -458,8 +459,9 @@ PROFILE=/tmp/sw-profile node tests/extension_e2e.mjs       # Playwright Chromium
 When you change anything the plugin runs (scripts, commands, data, the extension), raise `version` in
 `.claude-plugin/plugin.json`, `extension/manifest.json` and `extension/package.json`, all three the same: installed
 copies only update when the version changes. Then run `python3 scripts/make_blocks.py`, which gives the chat plugin
-(`../spanish-weave-chat`) the same version; `make_blocks.py --check` fails while the two differ. To test with your own state folder, point `SPANISH_WEAVE_HOME` at a new
-or empty folder you own (setup refuses one that holds other things, and the hook and commands write nothing there).
+(`../spanish-weave-chat`) the same version; `make_blocks.py --check` fails while the two differ. To test with your
+own state folder, point `SPANISH_WEAVE_HOME` at a new or empty folder you own (setup refuses one that holds other
+things, and the hook and commands write nothing there).
 
 To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
 in the since column (`quizás,perhaps,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then

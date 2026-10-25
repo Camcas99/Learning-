@@ -115,9 +115,9 @@ def rules(short=False, skill=False):
 # every time and carries a few default swaps for a chat where it still doesn't load.
 CHAT_LOAD = ('At the start of every conversation, before your first reply, load the spanish-weave skill and follow it '
              'for the whole chat.')
-CHAT_FALLBACK = ('Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat '
-                 'replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one '
-                 'footer line.')
+CHAT_FALLBACK = ('Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into '
+                 'chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in '
+                 'one footer line.')
 
 
 def chat_line(level):
