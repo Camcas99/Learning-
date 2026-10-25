@@ -1,6 +1,6 @@
 // Content script: watch readable text (tweets on X, captions, comments and bios on Instagram, prose elsewhere), ask
-// the background for swaps, paint them, handle the delayed gloss, click/Enter flip, Alt+click/Alt+Enter speech and
-// seen/peek/flip events. Every async reply belongs to one config generation.
+// the background for swaps, paint them, handle the delayed gloss, click/Enter flip, Alt+click/Alt+Enter speech, taps
+// and long presses on touchscreens, and seen/peek/flip events. Every async reply belongs to one config generation.
 import { flatten, applySwaps, revert, toggle, isSwap, swapWord, showGender, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
@@ -41,6 +41,23 @@ const changes = new WeakMap(); // element -> times its text changed lately
 const settling = new WeakMap(); // element -> timer that looks at it again once it holds still
 const texts = new WeakMap(); // element -> the text last looked at, to tell a real change from a re-render
 let tipTimer = null;
+// Touch. A tap shows the gloss at once (a peek); a second tap on the same word, or a long press, flips it (a flip). A
+// finger also sends emulated mouseover, focus and click events, which must never take the mouse path: on a phone
+// that made every tap a flip. Each gesture is judged by the pointerType of the trusted pointerdown that started it.
+const LONG_PRESS_MS = 500; // above the 350 ms WebKit watches timers for during a tap, so iOS never reads it as hover
+const TOUCH_GRACE_MS = 1000; // a finger's emulated mouse events, focus and click arrive after its pointerup
+const SLOP_PX = 10; // Chrome on Android sends pointermove while the finger holds still
+let lastType = ''; // pointerType of the latest trusted pointer event of any kind
+let lastAt = -Infinity;
+let down = { type: '', span: null, at: -Infinity }; // the latest trusted pointerdown; pointerup refreshes `at`
+let press = null; // { span, id, x, y, timer, fired }: a finger held on a word
+let swallow = null; // { span, until }: a long press flipped this word; its trailing click and menu do nothing
+let tipBy = ''; // how the open gloss was opened: 'hover', 'focus' or 'tap'
+let sayBox = null; // the speaker inside a tapped gloss
+const fingery = (type) => type === 'touch' || type === 'pen';
+const clock = () => performance.now();
+// A finger is down, or lifted less than TOUCH_GRACE_MS ago: mouseover, mouseout and focus events are its echoes.
+const touching = () => fingery(lastType) && (press !== null || clock() - lastAt < TOUCH_GRACE_MS);
 // When the extension is reloaded or updated, this copy of the script stays on pages that were already open, cut off
 // from the extension: chrome.runtime.id is gone and sendMessage throws "Extension context invalidated". It then retires:
 // the page goes back to English and nothing more is sent or logged. The new copy runs on pages opened from then on.
@@ -85,7 +102,31 @@ function record(span, event) {
 let tipBox = null;
 let tipSpan = null; // the word the box belongs to: when the page removes or reverts it, the box goes too
 const TIP_GAP = 4;
-function placeTip(span) {
+const canSpeak = () => typeof globalThis.speechSynthesis?.speak === 'function';
+// The speaker for a gloss opened by a tap, since a finger has no Alt+click. The icon is inline SVG built here, so a
+// page's content security policy can't block it the way it could an image file.
+function speaker() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const box = document.createElement('sw-say');
+  box.className = 'sw-say';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  const cone = document.createElementNS(NS, 'path');
+  cone.setAttribute('d', 'M3 9h4l5-4v14l-5-4H3z');
+  cone.setAttribute('fill', 'currentColor');
+  const waves = document.createElementNS(NS, 'path');
+  waves.setAttribute('d', 'M14 8.5a4 4 0 0 1 0 7M16 5.5a7.5 7.5 0 0 1 0 13');
+  waves.setAttribute('fill', 'none');
+  waves.setAttribute('stroke', 'currentColor');
+  waves.setAttribute('stroke-width', '2');
+  waves.setAttribute('stroke-linecap', 'round');
+  svg.append(cone, waves);
+  box.append(svg);
+  return box;
+}
+function placeTip(span, withSpeaker = false) {
   tipSpan = span;
   if (!tipBox?.isConnected) {
     tipBox = document.createElement('sw-gloss');
@@ -93,7 +134,13 @@ function placeTip(span) {
     tipBox.setAttribute('aria-hidden', 'true');
     document.documentElement.append(tipBox);
   }
-  tipBox.textContent = `${span.getAttribute('data-es') || ''} = ${span.getAttribute('data-tip') || ''}`;
+  tipBox.textContent = `${span.getAttribute('data-es') || ''} = ${span.getAttribute('data-tip') || ''}`; // drops a speaker
+  tipBox.classList.toggle('sw-gloss-touch', withSpeaker);
+  if (withSpeaker && canSpeak()) {
+    // The one part of the box that takes the pointer. It sits inside the box, so it never covers the word.
+    if (!sayBox) sayBox = speaker();
+    tipBox.append(sayBox);
+  }
   tipBox.classList.add('sw-gloss-on');
   const word = span.getBoundingClientRect();
   const box = tipBox.getBoundingClientRect();
@@ -108,8 +155,10 @@ function hideTip() {
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.sw-tip`)) el.classList.remove('sw-tip');
   tipBox?.classList.remove('sw-gloss-on');
   tipSpan = null;
+  tipBy = '';
 }
 function armTip(e) {
+  if (touching()) return; // a finger's emulated mouseover or focus: the tap decides, and nothing may change here (iOS)
   const span = swapFor(e);
   if (!span || !on() || span.classList.contains('sw-tip')) return;
   hideTip();
@@ -118,11 +167,13 @@ function armTip(e) {
     if (!span.isConnected || span.classList.contains('sw-en')) return;
     span.classList.add('sw-tip');
     placeTip(span);
+    tipBy = e.type === 'mouseover' ? 'hover' : 'focus';
     if (config.settings.speak) say(span);
     if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
   }, TIP_DELAY_MS);
 }
 function disarmTip(e) {
+  if (touching()) return; // iOS sends the word a mouseout and focusout when the next tap lands elsewhere, the speaker too
   const span = swapFor(e);
   if (span && !span.contains(e.relatedTarget)) hideTip();
 }
@@ -278,7 +329,7 @@ function stop() {
   observer?.disconnect(); observer = null;
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null;
-  pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip(); cancelPress(); swallow = null;
   batchesOut = 0;
   for (const el of tracked) { revert(el); keys.delete(el); }
   tracked.clear(); visibleWords.clear();
@@ -307,20 +358,116 @@ function reveal(e) {
     say(span);
     return;
   }
+  flip(span);
+}
+function flip(span) {
   hideTip();
   if (toggle(span)) record(span, 'flip');
   observer?.takeRecords();
 }
+// --- Touch -------------------------------------------------------------------------------------------------------
+// Pointer listeners only watch (they are passive and never cancel), so scrolling, zooming and the page's own handlers
+// go on as before. Nothing visible changes on pointerdown or mouseover except closing an open gloss, and no timer
+// shorter than LONG_PRESS_MS starts there: iOS turns a tap that changes the page into a hover and drops its click.
+// There are no touch* listeners either; with them, iOS VoiceOver would activate a word with simulated touches.
+function cancelPress() {
+  if (!press) return;
+  clearTimeout(press.timer);
+  // A press that already flipped its word still has a click to come when the finger lifts: that one does nothing.
+  if (press.fired) swallow = { span: press.span, until: clock() + TOUCH_GRACE_MS };
+  press = null;
+}
+function notePointer(e) {
+  if (!e.isTrusted || orphaned) return;
+  lastType = e.pointerType || '';
+  lastAt = clock();
+}
+function onPointerDown(e) {
+  if (!e.isTrusted || orphaned) return;
+  notePointer(e);
+  const span = swapFor(e);
+  down = { type: e.pointerType || '', span, at: clock() };
+  // A press anywhere but the open word or its speaker closes the gloss (a finger has no mouseout).
+  if (tipSpan && !tipSpan.contains(e.target) && !sayBox?.contains(e.target)) hideTip();
+  cancelPress();
+  swallow = null;
+  if (!fingery(e.pointerType) || !e.isPrimary || !span || !on()) return; // a mouse, a second finger, or not a word
+  press = { span, id: e.pointerId, x: e.clientX, y: e.clientY, timer: null, fired: false };
+  press.timer = setTimeout(() => longPress(span), LONG_PRESS_MS);
+}
+function onPointerMove(e) {
+  if (!e.isTrusted) return;
+  notePointer(e); // a real mouse moving ends the touch window at once, so a laptop with a touchscreen hovers again
+  if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP_PX) cancelPress();
+}
+function onPointerEnd(e) { // pointerup, and pointercancel when the browser takes the finger for a scroll or a zoom
+  if (!e.isTrusted) return;
+  notePointer(e);
+  if (e.type === 'pointerup' && down.span) down.at = clock(); // the click comes after the lift
+  if (press && e.pointerId === press.id) cancelPress();
+}
+function longPress(span) {
+  if (!press || press.span !== span || press.fired || !span.isConnected || !on()) return;
+  press.fired = true; // kept until the finger lifts, so the click that may follow is eaten
+  flip(span);
+}
+// A click on a word a finger just pressed. Engines disagree on a tap's click.pointerType (Safari's click has been a
+// PointerEvent only since 18.2), so that pointerdown decides. A click with none before it (a mouse, the keyboard,
+// VoiceOver, TalkBack, switch control) keeps its old meaning.
+const tapped = (span) => fingery(down.type) && down.span === span && clock() - down.at < TOUCH_GRACE_MS;
+function onClick(e) {
+  if (e.isTrusted && sayBox?.contains(e.target)) { // the speaker in a tapped gloss: sound only, nothing recorded
+    e.preventDefault(); e.stopPropagation();
+    if (on() && tipSpan?.isConnected) say(tipSpan); // inside the click: iOS speaks only during a user gesture
+    return;
+  }
+  const span = swapFor(e);
+  if (!span || !on()) return;
+  if (swallow?.span === span && clock() < swallow.until) { // the click that trails a long press
+    swallow = null;
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  if (!tapped(span)) { reveal(e); return; } // not a finger: as it always was
+  e.preventDefault(); e.stopPropagation(); // the page's own handler (a post that opens on click) stays out of it
+  if (e.altKey) { clearTimeout(tipTimer); tipTimer = null; say(span); return; } // Option+tap with an iPad keyboard
+  if (span.classList.contains('sw-en') || (tipSpan === span && tipBy === 'tap')) { flip(span); return; }
+  hideTip(); // also drops a gloss the tap's emulated focus may have queued
+  span.classList.add('sw-tip');
+  placeTip(span, true);
+  tipBy = 'tap';
+  if (config.settings.speak) say(span);
+  record(span, 'peek'); // once a day per word, like a hover
+}
+function onContextMenu(e) {
+  const span = swapFor(e);
+  if (!span || !on()) return;
+  const finger = fingery(e.pointerType) || press?.span === span || (swallow?.span === span && clock() < swallow.until);
+  if (!finger) return; // a right-click or the menu key keeps the page's menu
+  e.preventDefault(); e.stopPropagation();
+  if (press?.span === span && !press.fired) { clearTimeout(press.timer); longPress(span); } // Android's own long press
+}
+function onSelectStart(e) {
+  if (e.isTrusted && press?.span.contains(e.target)) e.preventDefault(); // no text selection from a held word
+}
 chrome.runtime.onMessage.addListener((msg) => {
   if (['config', 'retry'].includes(msg?.type)) update(msg.config, msg.type === 'retry');
 });
-document.addEventListener('click', reveal, true);
+const watch = { capture: true, passive: true };
+document.addEventListener('pointerover', notePointer, watch);
+document.addEventListener('pointerdown', onPointerDown, watch);
+document.addEventListener('pointermove', onPointerMove, watch);
+document.addEventListener('pointerup', onPointerEnd, watch);
+document.addEventListener('pointercancel', onPointerEnd, watch);
+document.addEventListener('contextmenu', onContextMenu, true);
+document.addEventListener('selectstart', onSelectStart, true);
+document.addEventListener('click', onClick, true);
 document.addEventListener('keydown', reveal, true);
 document.addEventListener('mouseover', armTip, true);
 document.addEventListener('focusin', armTip, true);
 document.addEventListener('mouseout', disarmTip, true);
 document.addEventListener('focusout', disarmTip, true);
-window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+window.addEventListener('scroll', () => { hideTip(); cancelPress(); }, { passive: true, capture: true });
 document.addEventListener('visibilitychange', seenVisible);
 window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
 // SPA navigation can reuse DOM nodes without changing their text.

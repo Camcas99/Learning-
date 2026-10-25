@@ -64,3 +64,43 @@ sw-gloss.sw-gloss.sw-gloss-on {
 @media (prefers-reduced-motion: reduce) {
   .sw-word.sw-new { animation: none; }
 }
+/* Phones and tablets (the main input can't hover): a held finger flips the word, so the browser must not start a text
+   selection or open its callout over it. On a computer, selecting and copying text still takes the word along. No
+   touch-action here: it does nothing on inline text, and scrolling stays the browser's job. */
+@media (hover: none) {
+  .sw-word {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+/* A gloss opened by a tap: larger text and a speaker (a finger has no Alt+click). The box still never takes the
+   pointer; only the speaker does, and it sits inside the box, so it never covers the word a second tap must reach.
+   About 44px tall, the smallest comfortable tap target. */
+sw-gloss.sw-gloss.sw-gloss-touch.sw-gloss-on {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px 6px 10px;
+  font-size: 15px;
+}
+sw-say.sw-say {
+  all: initial;
+  display: inline-flex !important;
+  visibility: visible !important; /* like the box: sw-say is never defined, so :not(:defined) rules can't hide it */
+  opacity: 1 !important;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer; /* iOS Safari sends click to a listener on the document only for elements that look clickable */
+  pointer-events: auto !important;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+sw-say.sw-say svg { display: block; width: 18px; height: 18px; pointer-events: none; }
