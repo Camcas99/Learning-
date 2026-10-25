@@ -57,7 +57,10 @@ and relay the estimate and stage in plain English.
 If they picked the preferences block, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export` and
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export --chatgpt` after the placement test (if any), so the block
 includes the words the test marked known, and show each block exactly as printed, in its own code block, with where
-to paste it.
+to paste it. Then add, in a line or two of plain English, that on a Pro or Max plan claude.ai and the Claude apps can
+use one short line instead of the claude.ai block: add the marketplace Camcas99/Learning- in Customize > Plugins,
+install spanish-weave-chat there, and paste the line `/spanish-weave:export chat` prints (it gets rule fixes as
+plugin updates, but hasn't been tried on an iPhone yet). Don't run that export unless they ask.
 
 Commands that run after the user's next message (the placement answers, and the blocks when they come after the
 test) are in a later turn, where Claude Code asks before running them. That is expected: when you ask for the

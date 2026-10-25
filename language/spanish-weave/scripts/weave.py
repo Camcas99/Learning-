@@ -394,8 +394,18 @@ STALE_EXPORT_DAYS = 7
 
 
 def export_notice(state, now=None):
-    """Once per export: a nudge when a pasted claude.ai / ChatGPT block is over a week behind the word state."""
+    """Once per export: a nudge when a pasted claude.ai / ChatGPT block is over a week behind the word state. A chat
+    line naming a level (`sw.py export --chat`) changes only with the level, so it gets one nudge per new level."""
     exported = state.get('exported') or {}
+    if exported.get('target') == 'chat' and exported.get('level'):
+        import make_blocks  # only here: it reads the word list again, which the hook needs for no one else
+        level = make_blocks.nearest_level(state)
+        if level in (exported['level'], exported.get('noticed_level')):
+            return None
+        with swlib.editing() as fresh:
+            fresh.setdefault('exported', {})['noticed_level'] = level
+        return (f'Spanish Weave: your claude.ai level is now {level}. Change the number in your Spanish Weave line in '
+                'claude.ai Settings > "Instructions for Claude" (or run /spanish-weave:export chat).')
     if not exported.get('at') or exported.get('noticed') or exported.get('version') == swlib.version(state):
         return None
     now = now or time.time()
@@ -403,6 +413,9 @@ def export_notice(state, now=None):
         return None
     with swlib.editing() as fresh:
         fresh.setdefault('exported', {})['noticed'] = True
+    if exported.get('target') == 'chat-exact':
+        return ('Spanish Weave: the word list you pasted into claude.ai is over a week behind your words. Run '
+                '/spanish-weave:export chat exact to refresh it.')
     return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
             'Run /spanish-weave:export to refresh it.')
 
