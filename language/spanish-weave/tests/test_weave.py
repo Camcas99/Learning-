@@ -2372,6 +2372,44 @@ class PhoneSync(Home):
         self.assertEqual(sw.local_time('garbled'), 'garbled')
 
 
+class IphoneRecipe(unittest.TestCase):
+    """IPHONE.md's Shortcut must fold typed answers exactly as phone_fold folds the accepted ones."""
+
+    def fold_steps(self):
+        text = (ROOT / 'IPHONE.md').read_text(encoding='utf-8')
+        block = re.search(r'4\. Fold the answer(.+?)\*\*Set Variable\*\* `Norm`', text, re.S).group(1)
+        steps = re.findall(r"`([^`]+)` with (?:`([^`]*)`|(nothing)|(a space))", block)
+        # Shortcuts uses ICU regular expressions; Python's re has no \p{M}, so use its combining-mark range here.
+        return [(pattern.replace(r'\p{M}', '[\u0300-\u036f]'), ' ' if space else '' if nothing else replacement)
+                for pattern, replacement, nothing, space in steps]
+
+    def test_the_shortcut_folds_answers_exactly_as_the_mac_does(self):
+        import unicodedata
+        steps = self.fold_steps()
+        self.assertEqual(len(steps), 11)
+
+        def shortcut(text):
+            text = text.lower()
+            for pattern, replacement in steps:
+                text = re.sub(pattern, replacement, text)
+            return text
+        lexicon = swlib.load_lexicon()
+        typed = [w['es'] for w in lexicon] + [m for w in lexicon for m in swlib.meanings(w['en'])]
+        typed += ['También!', '  so / then ', "it's", 'don’t', '¿Cómo?', 'garçon', 'ÁRBOL', 'Ñandú']
+        for text in typed + [unicodedata.normalize('NFD', t) for t in typed]:  # NFD: an accent typed as its own mark
+            self.assertEqual(shortcut(text), phone.phone_fold(text), text)
+
+    def test_the_done_marker_and_the_judge_use_the_right_variables(self):
+        text = (ROOT / 'IPHONE.md').read_text(encoding='utf-8')
+        self.assertEqual(set(re.findall(r'phone/\[(\w+)\]-done\.txt', text)), {'Label'})  # read and written the same
+        self.assertLess(text.index('`Label`'), text.index('phone/[Label]-done.txt'))  # made before the check reads it
+        self.assertIn('Correct answers: [AcceptList]', text)  # not the reject list's Combined Text
+        name = re.search(r'Text\*\* `Spanish Weave/inbox/(\[Label\]-\[Stamp\]-\[Rand\])\.jsonl`', text).group(1)
+        for label in ('iphone', '-ngela', 'Cam-s-phone'):  # what step 2 makes of "iphone", "Ángela", "Cam's phone"
+            file = name.replace('[Label]', label).replace('[Stamp]', '20261025-080000').replace('[Rand]', '4821')
+            self.assertTrue(phone.INBOX_NAME.match(file + '.jsonl'), file)
+
+
 CHAT = ROOT.parent / 'spanish-weave-chat'
 SKILL_DIR = CHAT / 'skills' / 'spanish-weave'
 REPO = ROOT.parent.parent

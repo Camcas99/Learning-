@@ -96,8 +96,11 @@ skill, so you paste one line instead of a 6 to 7 KB block, and fixes to the rule
 
 1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, enter
    `Camcas99/Learning-`, and install **spanish-weave-chat** from it (the other plugin there, spanish-weave, is this
-   Claude Code one). Turn on its automatic sync if offered.
-2. In Settings > "Instructions for Claude", replace any Spanish Weave block with this line, with your level in place
+   Claude Code one). Turn on its automatic sync if offered. If you also use this Claude Code plugin, update it to
+   0.3.5 or later first: its hook then tells a synced copy of the skill to stay out of Claude Code.
+2. In Settings > Capabilities, leave "Code execution and file creation" on (newer apps call it "Create and edit
+   files"); skills need it.
+3. In Settings > "Instructions for Claude", replace any Spanish Weave block with this line, with your level in place
    of 1. With the Claude Code plugin, `/spanish-weave:export chat` prints it with the level nearest to your words,
    and `/spanish-weave:export chat exact` with your own word list instead.
 
@@ -105,7 +108,7 @@ skill, so you paste one line instead of a 6 to 7 KB block, and fixes to the rule
    Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.
    ```
 
-3. When the words feel easy, type "next level" in a chat: Claude gives you the line for the next level.
+4. When the words feel easy, type "next level" in a chat: Claude gives you the line for the next level.
 
 The Free plan has no plugins, so keep using the paste-in blocks there. This hasn't been tested on an iPhone yet. And
 Claude loads a skill when it chooses to: the line asks for it in every chat, but a chat can still start without it,

@@ -21,8 +21,9 @@ Protection is on (Settings > your name > iCloud > Advanced Data Protection).
 
 ### 1. Turn it on, on the Mac
 
-In Claude Code, run `/spanish-weave:phone on` (or `python3 ~/.spanish-weave/app/scripts/sw.py phone on` in
-Terminal; macOS may ask once whether it can use iCloud Drive). This creates the folder **iCloud Drive > Shortcuts >
+In Claude Code, run `/spanish-weave:phone on`. (In Terminal it is `python3 ~/.spanish-weave/app/scripts/sw.py phone on`;
+macOS may ask once whether it can use iCloud Drive. That copy is updated by `/spanish-weave:setup`, so after updating
+the plugin run setup again first.) This creates the folder **iCloud Drive > Shortcuts >
 Spanish Weave** with `snapshot.json` (today's words) and an `inbox` folder for your answers.
 
 The Mac updates the list in the background while you use Claude Code. `/spanish-weave:phone sync` does it at once, and
@@ -39,32 +40,35 @@ Expression, turn that option on in the action.
 
 **Setup**
 
-1. **Text** `iphone`, then **Set Variable** `DeviceLabel`. (A short name for this phone; letters and digits only.)
-2. **Text** `off`, then **Set Variable** `Judge`. (Change to `on` later to let Apple Intelligence grade close answers.)
+1. **Text** `iphone`, then **Set Variable** `DeviceLabel`. (A short name for this device: plain letters a to z and
+   digits, starting with a letter, such as `iphone` or `ipad2`. Give each device its own.)
+2. **Replace Text**: in `DeviceLabel`, replace `[^A-Za-z0-9]+` with `-` (Regular Expression), then **Set Variable**
+   `Label`. (This keeps file names safe if the name has spaces or accents.)
+3. **Text** `off`, then **Set Variable** `Judge`. (Change it to `on` only on an iPhone with Apple Intelligence turned
+   on, iPhone 15 Pro or later: Apple's on-device model then grades close answers. On other phones that step stops
+   the shortcut.)
 
 **Read today's list**
 
-3. **Get File from Folder**: Folder **Shortcuts**, Path `Spanish Weave/snapshot.json`. Turn **Error If Not Found** off.
-4. **If** File **does not have any value**: **Show Alert** "No word list yet. On your Mac run /spanish-weave:phone
+4. **Get File from Folder**: Folder **Shortcuts**, Path `Spanish Weave/snapshot.json`. Turn **Error If Not Found** off.
+5. **If** File **does not have any value**: **Show Alert** "No word list yet. On your Mac run /spanish-weave:phone
    sync, then try again.", then **Stop This Shortcut**. **End If**.
-5. **Get Dictionary from Input** (the File), then **Set Variable** `Snap`.
-6. **Get Dictionary Value** for `version` in `Snap`. **If** it is not `1`: **Show Alert** "Update the Spanish Weave Quiz
+6. **Get Dictionary from Input** (the File), then **Set Variable** `Snap`.
+7. **Get Dictionary Value** for `version` in `Snap`. **If** it is not `1`: **Show Alert** "Update the Spanish Weave Quiz
    shortcut (see IPHONE.md).", then **Stop This Shortcut**. **End If**.
-7. **Date** (Current Date), **Format Date**: Custom, `yyyy-MM-dd`, then **Set Variable** `Today`.
-8. **Format Date** (Current Date): Custom, `yyyyMMdd-HHmmss`, then **Set Variable** `Stamp`.
-9. **Get Dictionary Value** for `day` in `Snap`. **If** it is not `Today`: **Show Alert** "This list is from [Dictionary
+8. **Date** (Current Date), **Format Date**: Custom, `yyyy-MM-dd`, then **Set Variable** `Today`.
+9. **Format Date** (Current Date): Custom, `yyyyMMdd-HHmmss`, then **Set Variable** `Stamp`.
+10. **Get Dictionary Value** for `day` in `Snap`. **If** it is not `Today`: **Show Alert** "This list is from [Dictionary
    Value]: your Mac hasn't synced today. Quiz anyway?" with Show Cancel Button on. **End If**.
-10. **Get Dictionary Value** for `made` in `Snap`, then **Set Variable** `Made`.
-11. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[DeviceLabel]-done.txt`, Error If Not Found off.
+11. **Get Dictionary Value** for `made` in `Snap`, then **Set Variable** `Made`.
+12. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[Label]-done.txt`, Error If Not Found off.
     **If** File **has any value**: **Get Text from Input**; **If** Text **is** `Made`: **Show Alert** "Already done today.
     Your Mac picks up your answers on its next sync.", then **Stop This Shortcut**. **End If**, **End If**.
-12. **Get Dictionary Value** for `items` in `Snap`, **Set Variable** `Items`, **Count** (Items). **If** Count **is** 0:
+13. **Get Dictionary Value** for `items` in `Snap`, **Set Variable** `Items`, **Count** (Items). **If** Count **is** 0:
     **Show Alert** "Nothing due today.", then **Stop This Shortcut**. **End If**.
 
 **Prepare the answer file**
 
-13. **Replace Text**: in `DeviceLabel`, replace `[^A-Za-z0-9]+` with `-` (Regular Expression), then **Set Variable**
-    `Label`.
 14. **Random Number** between 1000 and 9999, then **Set Variable** `Rand`.
 15. **Text** `Spanish Weave/inbox/[Label]-[Stamp]-[Rand].jsonl`, then **Set Variable** `InboxPath`.
 
@@ -73,20 +77,22 @@ Expression, turn that option on in the action.
 16. **Repeat with Each** item in `Items`:
     1. **Get Dictionary Value** for `es`, `en`, `hint` and `ask` in Repeat Item, setting variables `Word`, `Meaning`,
        `Hint` and `Ask`.
-    2. **Get Dictionary Value** for `accept` in Repeat Item, **Combine Text** with Custom separator `|`, then **Text**
-       `|[Combined Text]|`, **Set Variable** `AcceptBar`. Do the same for `reject` into `RejectBar`.
+    2. **Get Dictionary Value** for `accept` in Repeat Item, **Combine Text** with Custom separator `|`, **Set
+       Variable** `AcceptList`, then **Text** `|[AcceptList]|`, **Set Variable** `AcceptBar`. Do the same for `reject`:
+       **Get Dictionary Value**, **Combine Text** with `|`, **Set Variable** `RejectList`, **Text** `|[RejectList]|`,
+       **Set Variable** `RejectBar`.
     3. **Ask for Input**: Text, Prompt `[Ask]`. **Set Variable** `Typed`.
     4. Fold the answer the way the Mac folded the accepted answers: **Change Case** (lowercase) on `Typed`, then one
        **Replace Text** action for each of these, in order, each with Regular Expression on:
        `[áàâäã]` with `a`; `[éèêë]` with `e`; `[íìîï]` with `i`; `[óòôöõ]` with `o`; `[úùûü]` with `u`; `ñ` with `n`;
-       `ç` with `c`; `['’]` with nothing; `[^a-z0-9]+` with a space; and `^ +| +$` with nothing.
+       `ç` with `c`; `\p{M}` with nothing; `['’]` with nothing; `[^a-z0-9]+` with a space; and `^ +| +$` with nothing.
        **Set Variable** `Norm`.
     5. **Text** `|[Norm]|`, **Set Variable** `NormBar`. **Text** `unsure`, **Set Variable** `Result`.
     6. **If** `Norm` **does not have any value**: **Text** `wrong`, **Set Variable** `Result`. **Otherwise**: **If**
        `AcceptBar` **contains** `NormBar`: **Text** `right`, **Set Variable** `Result`. **End If**. **If** `RejectBar`
        **contains** `NormBar`: **Text** `wrong`, **Set Variable** `Result`. **End If**. **End If**.
     7. Optional judge: **If** `Result` **is** `unsure` and `Judge` **is** `on`: **Use Model** (On-Device) with the prompt
-       "You grade a Spanish vocabulary quiz. Question: [Ask]. Correct answers: [Combined Text]. Learner wrote: [Typed].
+       "You grade a Spanish vocabulary quiz. Question: [Ask]. Correct answers: [AcceptList]. Learner wrote: [Typed].
        Is it correct in meaning, ignoring spelling slips and accents? Answer only yes or no." **If** the response
        contains `yes`: **Text** `right`, **Set Variable** `Result`. **End If**. **End If**.
     8. **If** `Result` **is** `unsure`: **Choose from Menu** with the prompt "You wrote: [Typed]. Answer: [Word] =
@@ -132,9 +138,11 @@ Then make it run every morning:
 
 - **Not tested on a real iPhone yet.** The steps follow Apple's Shortcuts guide; if an action name differs on your
   phone, search for the nearest match. Please report what you find.
-- **Answers are counted once.** Each run writes its own answer file, the Mac reads each line once, and a word you
-  already answered that day (on the Mac or the phone) isn't counted twice. Only words the Mac offered count.
+- **Answers are counted once.** Each run writes its own answer file and the Mac reads each line once. A word counts
+  once a day, on the Mac or the phone, and a list counts only for words you haven't answered since the Mac made it,
+  so quizzing an old list never counts a word twice. Only words the Mac offered count.
 - **Nothing due?** Words come up the day after you first meet them, then at growing gaps, as in `/spanish-weave:quiz`.
-- **The list didn't change?** The Mac updates it in the background while you use Claude Code, about every half hour.
-  `/spanish-weave:phone sync` updates it now.
+- **The list didn't change?** The Mac updates it in the background while you use Claude Code (also while Spanish
+  Weave is paused), about every half hour. `/spanish-weave:phone sync` updates it now, and `/spanish-weave:phone
+  status` shows when it last synced, the last answers it got, and any answer file it had to skip.
 - **Turn it off** with `/spanish-weave:phone off`. The folder stays in iCloud Drive until you delete it.

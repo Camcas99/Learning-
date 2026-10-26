@@ -156,15 +156,18 @@ Weave as a skill. You paste one short line instead of the long block, and fixes 
 
 1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, type
    `Camcas99/Learning-`, and click Add. From its list, install **spanish-weave-chat** (not spanish-weave: that one
-   is for Claude Code on a computer). If there's a switch to sync it automatically, turn it on.
-2. In Settings > "Instructions for Claude", delete any Spanish Weave block and paste this line, with your level in
+   is for Claude Code on a computer). If there's a switch to sync it automatically, turn it on. If you also use
+   Spanish Weave in Claude Code, update that plugin to 0.3.5 or later first.
+2. In Settings > Capabilities, leave "Code execution and file creation" on (newer apps call it "Create and edit
+   files"). Skills need it.
+3. In Settings > "Instructions for Claude", delete any Spanish Weave block and paste this line, with your level in
    place of 1:
 
    ```text
    Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.
    ```
 
-3. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
+4. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
 
 With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know.
 

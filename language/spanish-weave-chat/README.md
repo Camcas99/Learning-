@@ -19,7 +19,8 @@ Plugins are for paid plans. On the free plan, keep using the paste-in blocks in
    `Camcas99/Learning-`, then Add. Turn on syncing for it if offered, so updates arrive by themselves.
 2. In its list, add **spanish-weave-chat**. (The other one, spanish-weave, is the Claude Code plugin for your
    computer.)
-3. Settings > Capabilities: leave "Code execution and file creation" on (it is on by default); skills need it.
+3. Settings > Capabilities: leave "Code execution and file creation" on (newer apps call it "Create and edit
+   files"; it is on by default). Skills need it.
 4. Settings > "Instructions for Claude": delete any old Spanish Weave block and paste this one line, with your level
    in place of 1:
 
@@ -35,6 +36,10 @@ Plugins belong to your account rather than a device, so once this is set up it s
 too (see the first point below).
 
 ## Good to know
+
+- **Using Spanish Weave in Claude Code too?** Update that plugin to 0.3.5 or later before adding this one. Its hook
+  tells a copy of this skill synced into Claude Code to stay out; an older hook doesn't, so the two could both add
+  Spanish there.
 
 - **Not yet tested on an iPhone.** The setup above follows Anthropic's docs; a test run on the phone is still to come.
 - **Claude decides when to load a skill.** The line asks for it in every chat, but a chat can still start without it.

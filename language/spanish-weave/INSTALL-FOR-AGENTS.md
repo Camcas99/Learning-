@@ -187,13 +187,16 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
    about once a week. On a paid Claude plan they can instead add the spanish-weave-chat plugin in claude.ai
    (Customize > Plugins, marketplace Camcas99/Learning-) and paste the one line `python3 "$SW" export --chat` prints.
-6b. iPhone quiz (Mac only, opt-in): if they want it, run `python3 "$SW" phone on` and point them to IPHONE.md for the
-   Shortcut. Only today's quiz words go to iCloud Drive.
+6b. iPhone quiz (Mac only, opt-in): on a Mac, ask one more question at the hand-over, "Quiz on your iPhone too?"
+   (default No; it needs iCloud Drive on the Mac and the Shortcuts app on the iPhone). On Yes, run
+   `python3 "$SW" phone on` and point them to IPHONE.md to build the Shortcut. Only today's quiz words go to iCloud
+   Drive.
 7. Commands, which they type themselves (Claude can't start them, except status): `/spanish-weave:status`,
    `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`, `/spanish-weave:stage 1-4|auto`,
    `/spanish-weave:pause`, `/spanish-weave:resume`, `/spanish-weave:quiz`, `/spanish-weave:placement`,
-   `/spanish-weave:anki`, `/spanish-weave:output on|off`, and `/spanish-weave:export` for a claude.ai or ChatGPT
-   preferences block.
+   `/spanish-weave:anki`, `/spanish-weave:output on|off`, `/spanish-weave:export` for a claude.ai or ChatGPT
+   preferences block (`/spanish-weave:export chat` for the chat plugin's line), and on a Mac
+   `/spanish-weave:phone on|off|sync|status` for the iPhone quiz.
 8. Updates: the steps in "Update" below. `/spanish-weave:status` says when the copies in `~/.spanish-weave` are
    behind the plugin.
 
