@@ -221,7 +221,10 @@ def write_snapshot(folder, body):
                 file.write(body)
                 file.flush()
                 os.fsync(file.fileno())  # plain fsync; F_FULLFSYNC can stall the whole system
-            os.replace(temporary, target)
+            try:
+                os.replace(temporary, target)
+            except PermissionError as error:
+                raise _denied(folder, error) from None
             temporary = None
         finally:
             if temporary is not None:

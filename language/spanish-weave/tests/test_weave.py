@@ -2302,6 +2302,10 @@ class PhoneSync(Home):
         with mock.patch.object(phone, 'sync', side_effect=RuntimeError('a bug')):
             phone.background_sync()
         self.assertIn('unexpected RuntimeError', phone.settings(swlib.load_state())['problem'])
+        self.sync()  # quiet syncs later, status still names the file set aside
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.main(['phone', 'status'])
+        self.assertIn('1 answer file set aside', out.getvalue())
 
     def test_files_already_read_do_not_use_up_the_files_read_per_run(self):
         self.sync()
@@ -2431,6 +2435,10 @@ class PhoneSync(Home):
                 with self.assertRaises(phone.Unavailable) as caught:
                     self.sync()
             self.assertIn(says, str(caught.exception))
+        with mock.patch.object(phone.os, 'replace', side_effect=PermissionError(errno.EPERM, 'denied')), \
+                self.assertRaises(phone.Unavailable) as caught:
+            phone.write_snapshot(self.folder, b'{}\n')
+        self.assertIn('phone sync', str(caught.exception))
         self.assertIn(f'python3 "{ROOT / "scripts" / "sw.py"}" phone sync', str(phone._denied(self.folder, PermissionError(
             errno.EPERM, 'denied'))))
 

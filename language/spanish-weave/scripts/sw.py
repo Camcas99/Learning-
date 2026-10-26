@@ -930,6 +930,11 @@ def phone_line(state):
     if last.get('skipped_files'):
         parts.append(f'{plural(last["skipped_files"], "file")} in the inbox skipped (an unexpected name, too large or '
                      'unreadable)')
+    aside = sum(bool(e.get('failed') or e.get('rewritten')) for e in (state.get('phone_inbox') or {}).values()
+                if isinstance(e, dict))
+    if aside:
+        parts.append(f'{plural(aside, "answer file")} set aside (changed after it was read, or unreadable): its answers '
+                     "don't count until it is replaced")
     return 'iPhone sync: on, ' + '; '.join(parts)
 
 
