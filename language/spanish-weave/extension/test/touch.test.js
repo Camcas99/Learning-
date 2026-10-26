@@ -327,3 +327,64 @@ test('touch: a tap after the extension is reloaded retires the page instead of r
     await t.close();
   }
 }, 10000);
+
+test('touch: a finger click is a tap even when the pointerdown record misses it; a pen hovers and right-clicks as before', async () => {
+  const t = await touchPage(() => import('../src/content.js?touch-gaps'));
+  const { win, events, P, M, fire, caption, y, casa, gloss } = t;
+  try {
+    // A. The click's own pointerType (Chrome, Safari 18.2+) decides when the pointerdown record can't:
+    // A1, the page is busy for over a second between the lift and the click.
+    fire(y, [P('pointerdown'), P('pointerup')]);
+    await wait(1100);
+    const late = fire(y, [P('click')])[0];
+    expect(late.defaultPrevented).toBe(true);
+    expect([y.textContent, gloss()?.textContent, events]).toEqual(['y', 'y = and · "ee"', ['y:peek']]);
+    // A2, the page stops pointerdown in a window capture listener, so the document never sees it.
+    const stop = (e) => e.stopPropagation();
+    win.addEventListener('pointerdown', stop, true);
+    fire(casa, [P('pointerdown'), P('pointerup'), P('click')]);
+    win.removeEventListener('pointerdown', stop, true);
+    expect([casa.textContent, events]).toEqual(['casa', ['y:peek', 'la casa:peek']]);
+    await wait(1100);
+    // A3, before Safari 18.2 (a MouseEvent click): the next finger lands elsewhere before this tap's late click. The
+    // lift is kept per word, so the click is still this word's tap, not a flip.
+    fire(y, [P('pointerdown'), P('pointerup')]);
+    fire(caption, [P('pointerdown', { pointerId: 3 }), P('pointerup', { pointerId: 3 })]);
+    fire(y, [M('click')]);
+    expect(y.textContent).toBe('y');
+    expect(events.filter((e) => e.endsWith(':flip'))).toEqual([]);
+    // A mouse, the keyboard or VoiceOver (pointerType '' or 'mouse') with no finger before it still flips, as always.
+    await wait(1100);
+    fire(casa, [M('click')]);
+    expect([casa.textContent, events.at(-1)]).toEqual(['house', 'la casa:flip']);
+    const flipped = events.length;
+    fire(casa, [M('click')]); // back to Spanish, which records nothing
+    expect([casa.textContent, events.length]).toEqual(['casa', flipped]);
+    await wait(1100);
+
+    // B. A pen on a computer. B1, hovering (no button down) shows the gloss like a mouse.
+    const pen = { pointerType: 'pen', pointerId: 7 };
+    win.document.body.dispatchEvent(M('mouseover'));
+    fire(y, [P('pointerover', { ...pen, buttons: 0 }), P('pointermove', { ...pen, buttons: 0 }), M('mouseover')]);
+    await wait(800);
+    expect(gloss()?.textContent).toBe('y = and · "ee"');
+    fire(y, [M('mouseout')]);
+    // B2, the barrel button held on a word is a right-click: no long press, no flip, and the page's menu stays.
+    const before = events.length;
+    fire(y, [P('pointerdown', { ...pen, button: 2, buttons: 2 })]);
+    await wait(600);
+    const menu = fire(y, [P('contextmenu', pen)])[0];
+    fire(y, [P('pointerup', { ...pen, button: 2 })]);
+    expect([y.textContent, menu.defaultPrevented, events.length]).toEqual(['y', false, before]);
+    // B3, a quick pen right-click keeps the menu too; B4, a pen tip held on a word still flips it.
+    expect(fire(casa, [P('contextmenu', pen)])[0].defaultPrevented).toBe(false);
+    await wait(1100);
+    fire(y, [P('pointerdown', { ...pen, button: 0, buttons: 1 })]);
+    await wait(600);
+    fire(y, [P('pointerup', pen)]);
+    expect(y.textContent).toBe('and');
+    expect(events.at(-1)).toBe('y:flip');
+  } finally {
+    await t.close();
+  }
+}, 30000);

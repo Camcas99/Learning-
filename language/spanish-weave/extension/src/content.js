@@ -50,6 +50,7 @@ const SLOP_PX = 10; // Chrome on Android sends pointermove while the finger hold
 let lastType = ''; // pointerType of the latest trusted pointer event of any kind
 let lastAt = -Infinity;
 let down = { type: '', span: null, at: -Infinity }; // the latest trusted pointerdown; pointerup refreshes `at`
+const lifted = new WeakMap(); // word -> when a finger last lifted off it, which a later pointerdown elsewhere keeps
 let press = null; // { span, id, x, y, timer, fired }: a finger held on a word
 let swallow = null; // { span, until }: a long press flipped this word; its trailing click and menu do nothing
 let tipBy = ''; // how the open gloss was opened: 'hover', 'focus' or 'tap'
@@ -380,7 +381,9 @@ function cancelPress() {
 }
 function notePointer(e) {
   if (!e.isTrusted || orphaned) return;
-  lastType = e.pointerType || '';
+  // A pen hovering above the screen (no button down) points like a mouse, so its hover shows the gloss as before.
+  const hovering = e.pointerType === 'pen' && !e.buttons && (e.type === 'pointermove' || e.type === 'pointerover');
+  lastType = hovering ? 'mouse' : e.pointerType || '';
   lastAt = clock();
 }
 function onPointerDown(e) {
@@ -392,7 +395,8 @@ function onPointerDown(e) {
   if (tipSpan && !tipSpan.contains(e.target) && !sayBox?.contains(e.target)) hideTip();
   cancelPress();
   swallow = null;
-  if (!fingery(e.pointerType) || !e.isPrimary || !span || !on()) return; // a mouse, a second finger, or not a word
+  // A mouse, a second finger, a pen's barrel or eraser button, or not a word: no long press.
+  if (!fingery(e.pointerType) || !e.isPrimary || e.button !== 0 || !span || !on()) return;
   press = { span, id: e.pointerId, x: e.clientX, y: e.clientY, timer: null, fired: false };
   press.timer = setTimeout(() => longPress(span), LONG_PRESS_MS);
 }
@@ -405,7 +409,10 @@ function onPointerMove(e) {
 function onPointerEnd(e) { // pointerup, and pointercancel when the browser takes the finger for a scroll or a zoom
   if (!e.isTrusted || orphaned) return;
   notePointer(e);
-  if (e.type === 'pointerup' && down.span) down.at = clock(); // the click comes after the lift
+  if (e.type === 'pointerup' && down.span) { // the click comes after the lift
+    down.at = clock();
+    if (fingery(down.type)) lifted.set(down.span, down.at);
+  }
   if (press && e.pointerId === press.id) cancelPress();
 }
 function longPress(span) {
@@ -413,10 +420,13 @@ function longPress(span) {
   press.fired = true; // kept until the finger lifts or slides away; cancelPress() then eats the click that may follow
   flip(span);
 }
-// A click on a word a finger just pressed. Engines disagree on a tap's click.pointerType (Safari's click has been a
-// PointerEvent only since 18.2), so that pointerdown decides. A click with none before it (a mouse, the keyboard,
-// VoiceOver, TalkBack, switch control) keeps its old meaning.
-const tapped = (span) => fingery(down.type) && down.span === span && clock() - down.at < TOUCH_GRACE_MS;
+// A click from a finger: its own pointerType says so where the click is a PointerEvent (Chrome, Safari 18.2 and later),
+// which holds even when the page is slow or swallowed the pointerdown; otherwise a finger pressed or lifted off this
+// word just before (the latest pointerdown, or its lift kept per word, since the next finger can land before an iOS
+// tap's late click). A click with none of these (a mouse, the keyboard, VoiceOver, TalkBack, switch control, whose
+// pointerType is '' or 'mouse') keeps its old meaning.
+const tapped = (span, e) => (e.isTrusted && fingery(e.pointerType)) || (fingery(down.type) && down.span === span &&
+  clock() - down.at < TOUCH_GRACE_MS) || clock() - (lifted.get(span) ?? -Infinity) < TOUCH_GRACE_MS;
 function onClick(e) {
   if (e.isTrusted && sayBox?.contains(e.target)) { // the speaker in a tapped gloss: sound only, nothing recorded
     e.preventDefault(); e.stopPropagation();
@@ -430,7 +440,7 @@ function onClick(e) {
     e.preventDefault(); e.stopPropagation();
     return;
   }
-  if (!tapped(span)) { reveal(e); return; } // not a finger: as it always was
+  if (!tapped(span, e)) { reveal(e); return; } // not a finger: as it always was
   e.preventDefault(); e.stopPropagation(); // the page's own handler (a post that opens on click) stays out of it
   if (e.altKey) { clearTimeout(tipTimer); tipTimer = null; say(span); return; } // Option+tap with an iPad keyboard
   if (span.classList.contains('sw-en') || (tipSpan === span && tipBy === 'tap')) { flip(span); return; }
@@ -444,7 +454,8 @@ function onClick(e) {
 function onContextMenu(e) {
   const span = swapFor(e);
   if (!span || !on()) return;
-  const finger = fingery(e.pointerType) || press?.span === span || (swallow?.span === span && clock() < swallow.until);
+  // A pen counts only while it holds the word: a quick barrel-button press is its right-click.
+  const finger = e.pointerType === 'touch' || press?.span === span || (swallow?.span === span && clock() < swallow.until);
   if (!finger) return; // a right-click or the menu key keeps the page's menu
   e.preventDefault(); e.stopPropagation();
   if (press?.span === span && !press.fired) { clearTimeout(press.timer); longPress(span); } // Android's own long press
