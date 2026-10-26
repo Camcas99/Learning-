@@ -2224,10 +2224,12 @@ class PhoneSync(Home):
         self.assertEqual(swlib.find(state, 'sin')['reviews'][-1][:2], [day, 0])
         self.assertNotIn('pero', [i['es'] for i in self.snapshot()['items']])  # answered: off today's list
         self.assertEqual(self.sync()['answers'], 0)  # read once
-        # A line still being written (no newline yet) waits; once the file stops growing it counts.
+        # A whole line with no newline after it counts at once (Shortcuts may put the newline before each line); a line
+        # still being written waits, and once the file stops growing a broken one is ignored.
         self.answer('iphone-20261025-2-5678.jsonl', [line('entonces', 'right')], end='')
-        self.assertEqual(self.sync()['answers'], 0)
         self.assertEqual(self.sync()['answers'], 1)
+        self.answer('iphone-20261025-2-9999.jsonl', [line('con', 'right')[:-9]], end='')
+        self.assertEqual((self.sync()['answers'], self.sync()['ignored']), (0, 1))
 
     def test_a_file_whose_read_part_changed_is_never_applied_again(self):
         self.sync()
@@ -2335,6 +2337,34 @@ class PhoneSync(Home):
         self.assertEqual(self.sync()['answers'], 1)
         self.assertEqual(swlib.find(swlib.load_state(), 'entonces')['box'], 1)
 
+    def test_a_day_the_mac_cant_use_counts_as_today(self):
+        self.sync()
+        made, today = self.snapshot()['made'], swlib.today()
+        yesterday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
+        self.answer('iphone-20261025-140000-4000.jsonl', [
+            self.quiz_line('pero', day='0008-10-25'),  # an iPhone set to the Japanese calendar
+            self.quiz_line('con', day=yesterday),      # a phone in an earlier time zone, on a list the Mac made today
+        ])
+        self.assertEqual(self.sync()['answers'], 2)
+        state = swlib.load_state()
+        self.assertEqual([swlib.find(state, w)['reviews'][-1][0] for w in ('pero', 'con')], [today, today])
+
+    def test_a_failed_phone_command_keeps_it_on_and_says_why(self):
+        with swlib.editing() as state:
+            phone.enable(state, False)
+        with mock.patch.object(phone, 'shortcuts_folder', side_effect=phone.Unavailable('iCloud Drive is off')), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            sw.main(['phone', 'on'])
+        self.assertIn('It stays on and tries again in the background', str(caught.exception))
+        settings = phone.settings(swlib.load_state())
+        self.assertEqual((settings['on'], settings['problem']), (True, 'iCloud Drive is off'))
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.main(['phone', 'status'])
+        self.assertIn('the last try failed: iCloud Drive is off', out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()):
+            sw.main(['phone', 'sync'])  # works again: the problem goes
+        self.assertNotIn('problem', phone.settings(swlib.load_state()))
+
     def test_labels_that_start_with_a_dash_and_permission_errors(self):
         self.sync()
         self.answer('-ngela-20261026-080000-1234.jsonl', [self.quiz_line('pero')])  # the Shortcut's Ángela
@@ -2404,6 +2434,8 @@ class IphoneRecipe(unittest.TestCase):
         self.assertEqual(set(re.findall(r'phone/\[(\w+)\]-done\.txt', text)), {'Label'})  # read and written the same
         self.assertLess(text.index('`Label`'), text.index('phone/[Label]-done.txt'))  # made before the check reads it
         self.assertIn('Correct answers: [AcceptList]', text)  # not the reject list's Combined Text
+        self.assertIn('**Allow Multiple Lines** off', text)  # or Return adds a line instead of answering
+        self.assertEqual(text.count('phone/[Label]-done.txt'), 3)  # the quiz reads and writes it; the reminder reads it
         name = re.search(r'Text\*\* `Spanish Weave/inbox/(\[Label\]-\[Stamp\]-\[Rand\])\.jsonl`', text).group(1)
         for label in ('iphone', '-ngela', 'Cam-s-phone'):  # what step 2 makes of "iphone", "Ángela", "Cam's phone"
             file = name.replace('[Label]', label).replace('[Stamp]', '20261025-080000').replace('[Rand]', '4821')

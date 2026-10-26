@@ -10,7 +10,7 @@ the new ones in a footer line:
 Instead of pasting a 6 to 7 KB block into your settings, you paste one line, and fixes to the rules reach you as
 plugin updates.
 
-## Install (Pro or Max plan)
+## Install (paid plan)
 
 Plugins are for paid plans. On the free plan, keep using the paste-in blocks in
 [`../spanish-weave/blocks/`](../spanish-weave/blocks/level-01.md).

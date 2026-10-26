@@ -10,7 +10,8 @@ Three ways to use Spanish Weave on an iPhone, from least to most setup:
 ## The daily quiz
 
 Your Mac puts today's due quiz words in iCloud Drive. A Shortcut on your iPhone asks them, and your answers go back
-to the Mac through iCloud Drive, where they count exactly like answers to `/spanish-weave:quiz`.
+to the Mac through iCloud Drive, where they count like answers to `/spanish-weave:quiz` (graded against the list's
+answers or by you, without the quiz's el/la check).
 
 **You need:** a Mac with the Spanish Weave plugin set up and iCloud Drive on, and an iPhone signed in to the same Apple
 Account with the Shortcuts app. The Mac does the bookkeeping; with no Mac, use the pasted blocks instead.
@@ -81,7 +82,8 @@ Expression, turn that option on in the action.
        Variable** `AcceptList`, then **Text** `|[AcceptList]|`, **Set Variable** `AcceptBar`. Do the same for `reject`:
        **Get Dictionary Value**, **Combine Text** with `|`, **Set Variable** `RejectList`, **Text** `|[RejectList]|`,
        **Set Variable** `RejectBar`.
-    3. **Ask for Input**: Text, Prompt `[Ask]`. **Set Variable** `Typed`.
+    3. **Ask for Input**: Text, Prompt `[Ask]`, **Allow Multiple Lines** off (so Return answers). **Set Variable**
+       `Typed`.
     4. Fold the answer the way the Mac folded the accepted answers: **Change Case** (lowercase) on `Typed`, then one
        **Replace Text** action for each of these, in order, each with Regular Expression on:
        `[áàâäã]` with `a`; `[éèêë]` with `e`; `[íìîï]` with `i`; `[óòôöõ]` with `o`; `[úùûü]` with `u`; `ñ` with `n`;
@@ -122,10 +124,17 @@ Add the shortcut to your Home Screen, a widget or the Action button to start it 
 
 Build a second shortcut, **Spanish Weave Reminder**:
 
-1. **Get File from Folder**: Shortcuts, `Spanish Weave/snapshot.json`, Error If Not Found off. **If** File **does not
+1. **Text** with the same device name as in the quiz shortcut, **Replace Text** `[^A-Za-z0-9]+` with `-` (Regular
+   Expression), then **Set Variable** `Label`.
+2. **Get File from Folder**: Shortcuts, `Spanish Weave/snapshot.json`, Error If Not Found off. **If** File **does not
    have any value**: **Stop This Shortcut**. **End If**.
-2. **Get Dictionary from Input**, **Get Dictionary Value** for `items`, **Count**, **Set Variable** `Due`.
-3. **If** `Due` **is greater than** 0: **Show Notification**, title "Spanish Weave", body "[Due] words due today. Open
+3. **Get Dictionary from Input**, **Set Variable** `Snap`. **Get Dictionary Value** for `made` in `Snap`, **Set
+   Variable** `Made`.
+4. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[Label]-done.txt`, Error If Not Found off. **If**
+   File **has any value**: **Get Text from Input**; **If** Text **is** `Made`: **Stop This Shortcut** (today's quiz is
+   done). **End If**, **End If**.
+5. **Get Dictionary Value** for `items` in `Snap`, **Count**, **Set Variable** `Due`.
+6. **If** `Due` **is greater than** 0: **Show Notification**, title "Spanish Weave", body "[Due] words to quiz. Open
    Spanish Weave Quiz." **End If**.
 
 Then make it run every morning:

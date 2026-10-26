@@ -335,31 +335,35 @@ def read_file(folder, name, max_bytes):
     return b''.join(chunks)
 
 
+def _record(raw):
+    """One JSON line as a dict, or None. Curly quotes (Smart Punctuation in the Shortcut's text action) are
+    straightened first."""
+    if len(raw) > MAX_LINE or raw.count(b'[') + raw.count(b'{') > MAX_NESTING:
+        return None
+    try:
+        item = json.loads(raw.decode('utf-8').translate({0x201C: '"', 0x201D: '"', 0x2018: "'", 0x2019: "'"}))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    return item if isinstance(item, dict) else None
+
+
 def new_records(data, start=0, final_line_ok=False, max_records=swlib.MAX_EVENTS):
-    """Parses the complete JSON lines of data after byte start. Returns (records, end, bad): end is how far the ledger
-    may mark the file read. A last line without a newline waits for a later run unless final_line_ok (the file's size
-    hasn't changed since the last run, so it is finished). Curly quotes (Smart Punctuation in the Shortcut's text
-    action) are straightened first."""
-    stop = len(data) if final_line_ok else data.rfind(b'\n') + 1
+    """Parses the JSON lines of data after byte start. Returns (records, end, bad): end is how far the ledger may mark
+    the file read. A last line without a newline counts when it is a whole JSON object (Shortcuts may put the newline
+    before each appended line, not after it); one that isn't yet waits for a later run, unless final_line_ok (the
+    file's size hasn't changed since the last run, so it is finished, and a broken line is bad)."""
     records, bad, pos = [], 0, start
-    while pos < stop and len(records) < max_records:
-        newline = data.find(b'\n', pos, stop)
-        line_end = stop if newline < 0 else newline + 1
-        raw, pos = data[pos:line_end].strip(), line_end
-        if not raw:
-            continue
-        if len(raw) > MAX_LINE or raw.count(b'[') + raw.count(b'{') > MAX_NESTING:
-            bad += 1
-            continue
-        try:
-            text = raw.decode('utf-8').translate({0x201C: '"', 0x201D: '"', 0x2018: "'", 0x2019: "'"})
-            item = json.loads(text)
-        except (UnicodeDecodeError, ValueError, RecursionError):
-            bad += 1
-            continue
-        if isinstance(item, dict):
+    while pos < len(data) and len(records) < max_records:
+        newline = data.find(b'\n', pos)
+        line_end = newline + 1 if newline >= 0 else len(data)
+        raw = data[pos:line_end].strip()
+        item = _record(raw) if raw else None
+        if raw and item is None and newline < 0 and not final_line_ok:
+            break  # still being written
+        pos = line_end
+        if item is not None:
             records.append(item)
-        else:
+        elif raw:
             bad += 1
     return records, pos, bad
 
@@ -455,9 +459,11 @@ def enable(state, on=True):
 
 def _answer(record, snaps):
     """A phone record as an apply_events event, or None: only a quiz result for a word one of the Mac's recent
-    snapshots offered (the "snap" stamp names which), dated no earlier than that snapshot's day. The event carries the
-    snapshot's day as "since", so an answer counts only if the word has no answer from that day on: each list's offer
-    is used once, and a list from yesterday can't add a second answer for a word the Mac already quizzed."""
+    snapshots offered (the "snap" stamp names which). The event carries the snapshot's day as "since", so an answer
+    counts only if the word has no answer from that day on: each list's offer is used once, and a list from yesterday
+    can't add a second answer for a word the Mac already quizzed. A day the Mac can't use (before that snapshot's day,
+    as a phone in an earlier time zone may write, or not a Gregorian date within OLDEST days, as a phone set to
+    another calendar may write) becomes this Mac's today."""
     if record.get('kind') != 'quiz' or record.get('result') not in ('right', 'wrong'):
         return None
     word, snap, day = record.get('word'), record.get('snap'), record.get('day')
@@ -465,8 +471,8 @@ def _answer(record, snaps):
     words, since = (offered.get('words') or (), offered.get('day')) if isinstance(offered, dict) else (offered or (), None)
     if not isinstance(word, str) or word not in words:
         return None
-    if isinstance(since, str) and isinstance(day, str) and day < since:
-        return None
+    if not swlib.event_day(day, swlib.today()) or (isinstance(since, str) and day < since):
+        day = None
     return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'since': since}
 
 

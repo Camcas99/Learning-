@@ -57,10 +57,11 @@ and relay the estimate and stage in plain English.
 If they picked the preferences block, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export` and
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export --chatgpt` after the placement test (if any), so the block
 includes the words the test marked known, and show each block exactly as printed, in its own code block, with where
-to paste it. Then add, in a line or two of plain English, that on a Pro or Max plan claude.ai and the Claude apps can
-use one short line instead of the claude.ai block: add the marketplace Camcas99/Learning- in Customize > Plugins,
-install spanish-weave-chat there, and paste the line `/spanish-weave:export chat` prints (it gets rule fixes as
-plugin updates, but hasn't been tried on an iPhone yet). Don't run that export unless they ask.
+to paste it. Then add, in a line or two of plain English, that on a paid plan (Pro, Max, Team or Enterprise)
+claude.ai and the Claude apps can use one short line instead of the claude.ai block: add the marketplace
+Camcas99/Learning- in Customize > Plugins, install spanish-weave-chat there, and paste the line
+`/spanish-weave:export chat` prints (it gets rule fixes as plugin updates, but hasn't been tried on an iPhone yet).
+Don't run that export unless they ask.
 
 If the plan shows `platform` darwin, after setup (and the placement test, if any) ask one more question in its own
 AskUserQuestion call: "Quiz on your iPhone too? A Shortcut on the phone asks today's due words, and your answers come

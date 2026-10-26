@@ -75,23 +75,25 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
 block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
 (46). A level never changes its words: words added to the list later go into new levels after the last one. On a
-Pro or Max plan, claude.ai can take one short line instead: see "On claude.ai and the Claude apps" below.
+paid plan, claude.ai can take one short line instead: see "On claude.ai and the Claude apps" below.
 
 Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
 **Updates.** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning` (or
 `/plugin marketplace update learning` and `/plugin update spanish-weave@learning` in chat). Then restart Claude Code
-(the update reaches new sessions only) and rerun `/spanish-weave:setup`, picking the same places as the first time
-and keeping the default "Keep the current site choice" for the websites question (a site answer would override a
-later "Other sites" choice in the popup): the extension folder, native host and Codex hook run from copies in
+(the update reaches new sessions only) and rerun `/spanish-weave:setup`, picking the same places as the first time and
+keeping the default "Keep the current site choice" for the websites question (a site answer would override a later
+"Other sites" choice in the popup): the extension folder, native host and Codex hook run from copies in
 `~/.spanish-weave` that only setup refreshes, and it never resets your progress. Last, click the reload arrow on
-Spanish Weave in `chrome://extensions`, then reload the tabs you had open: until then they show English (before 0.3.4
-they logged "Extension context invalidated" errors instead). `/spanish-weave:status` and `sw.py check` say when those copies are behind
-the installed plugin, and `check` also flags a local folder the marketplace was added from that has gone missing.
+Spanish Weave in `chrome://extensions`, then reload the tabs you had open: until you do, an open tab goes back to
+English the first time you scroll or touch a word there (before 0.3.4 they logged "Extension context invalidated"
+errors instead). `/spanish-weave:status` and `sw.py check` say when those copies are behind the installed plugin, and
+`check` also flags a local folder the marketplace was added from that has gone missing.
 
 ### On claude.ai and the Claude apps
 
-On a Pro or Max plan, claude.ai and the Claude apps (web, desktop, iPhone and Android) can load Spanish Weave as a
+On a paid plan (Pro, Max, Team or Enterprise; on Team and Enterprise an Owner may need to allow plugins), claude.ai
+and the Claude apps (web, desktop, iPhone and Android) can load Spanish Weave as a
 skill, so you paste one line instead of a 6 to 7 KB block, and fixes to the rules arrive as plugin updates:
 
 1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, enter
@@ -126,33 +128,37 @@ account doesn't double the Spanish; `sw.py check` notes when Claude Code has it.
   `/remote-control` in a local Code session in the Claude desktop app), then open the session under Code in the
   Claude app. The computer has to stay on. The hook runs on your computer, so progress is kept. A cloud session
   started from the phone begins on a fresh machine each time, so its word state wouldn't last.
-- **A daily quiz on the iPhone** (Mac only, opt-in): `/spanish-weave:phone on` puts today's due words in iCloud Drive >
-  Shortcuts > Spanish Weave, and a Shortcut you build on the phone asks them and sends the answers back, where they
-  count like `/spanish-weave:quiz` answers. Only those words, their meanings and hints go to iCloud Drive. Steps:
-  [IPHONE.md](IPHONE.md). Not yet tested on a real iPhone.
+- **A daily quiz on the iPhone** (Mac only, opt-in): `/spanish-weave:phone on` puts today's due words in
+  iCloud Drive > Shortcuts > Spanish Weave, and a Shortcut you build on the phone asks them and sends the answers
+  back, where they count like `/spanish-weave:quiz` answers (graded against the list's answers or by you, without the
+  quiz's el/la check). Only those words, their meanings and hints go to iCloud Drive. Steps: [IPHONE.md](IPHONE.md).
+  Not yet tested on a real iPhone.
 - **Chrome extension:** computers only. Chrome on Android and iPhone doesn't run extensions. Some other Android
-  browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one, and without the native host it
-  would only use its built-in word lists.
+  browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one. Without the native host every site
+  would start off, its words would come from the built-in lists, and nothing it shows would count toward your
+  progress.
 
 ## What it does
 
 - **Claude Code and Codex**: a prompt hook gives the model your stage and word lists every turn, plus a line on how
   much Spanish its last reply in that chat had, judged by the same stage rules. Sentences stay English sentences
-  (Stages 3 and 4 add a few short Spanish ones), new words get a one-line gloss with a sound hint at the end, and
-  every third reply opens with a recall cue. Never in code, files, commits or anything meant to be shared, and never in scripted
-  runs (`claude -p`, `codex exec`).
+  (Stages 3 and 4 add a few short Spanish ones), new words get a one-line gloss at the end (with a sound hint at
+  Stages 1 and 2), and every third reply opens with a recall cue. Never in code, files, commits or anything meant to
+  be shared, and never in scripted runs (`claude -p`, `codex exec`).
 - **claude.ai and ChatGPT**: the same rules as a pasted preferences block. No hooks there, so the block is static
   until you refresh it.
 - **Any website in Chrome** (extension), including X and Instagram: a few English words on the page become Spanish.
-  Hover for the meaning, click to flip back, Alt+click to hear it; on a touchscreen, tap for the meaning and tap
-  again or press and hold to flip back. On for every site by default, except email, messaging, AI chat and local
-  addresses; turn sites off from the toolbar popup, or set it to only the sites you turn on. Swaps are chosen by
-  Gemini on your own key, at most 1,000 calls a day (8 passages each), and no one site more than half of them, so a
-  page that keeps changing can't use up your key or stop Spanish everywhere. When Google's own daily free quota runs
-  out, the popup says when Spanish resumes (just after midnight Pacific) and nothing is asked until then. With a paid
-  Claude API key you can pick Claude Haiku 5.5 as the model in the popup instead: it makes fewer wrong swaps and
-  Anthropic bills it per use. It never falls back to Gemini, so with Claude picked no page text goes to Google, even
-  when a Gemini key is saved.
+  Hover for the meaning, click to flip back, Alt+click to hear it; on a touchscreen, tap for the meaning and tap again
+  or press and hold to flip back. On for every site by default, except email, messaging, AI chat and local addresses;
+  turn sites off from the toolbar popup, or set it to only the sites you turn on. Swaps are chosen by Gemini on your
+  own key, at most 1,000 model calls a day (8 passages each; Claude Haiku and fallback calls count too), and no one
+  site more than half of them, so a page that keeps changing can't use up your key or stop Spanish everywhere. When
+  Google's own daily free quota for the default model runs out, swaps move to Gemini 3.5 Flash-Lite; once that is
+  spent too, the popup says when Spanish resumes (just after midnight Pacific, shown in your time) and nothing is
+  asked until then. Pasting the key again (for example after turning on billing) lifts the wait. With a paid Claude
+  API key you can pick Claude Haiku 5.5 as the model in the popup instead: it makes fewer wrong swaps and Anthropic
+  bills it per use. It never falls back to Gemini, so with Claude picked no page text goes to Google, even when a
+  Gemini key is saved.
 
 All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
@@ -166,7 +172,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 - **Noun gender:** masculine nouns get a teal underline and feminine nouns a rose one, fainter once you know the
   word, and the gloss says "masc." or "fem." (el agua and el alma are feminine despite "el"). Turn it off with
   "Color noun gender" in the popup.
-- **Notes:** false friends show their note after the gloss: `long · "LAHR-goh" · not 'large' (that's grande)`.
+- **Notes:** false friends show their note after the gloss: `largo = long · "LAHR-goh" · not 'large' (that's grande)`.
 - **Hear it:** Alt+click (Option+click on a Mac) or Alt+Enter says the word aloud, preferring a Latin American
   voice and one installed on your computer, without flipping it. Chrome's own "Google" voices are online: when one
   is used, the word goes to Google. "Say words aloud when the meaning shows" in the popup speaks every gloss. Chrome
@@ -195,7 +201,8 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/spanish-weave:phone [on\|off\|sync\|status]` | Daily quiz on the iPhone through iCloud Drive, Mac only (see [IPHONE.md](IPHONE.md)) |
 
 You type these yourself: Claude can't start them for you, except status. The same commands work from a terminal as
-`python3 ~/.spanish-weave/app/scripts/sw.py <command>`.
+`python3 ~/.spanish-weave/app/scripts/sw.py <command>`, except setup, which runs from the plugin
+(`/spanish-weave:setup`).
 
 ## Reading the sound hints
 
@@ -240,9 +247,10 @@ Code, the answers are saved together at the end, so Claude Code asks at most onc
 - Known words come back too: a week after they graduate, two weeks after you mark them known, and words set by
   setup or the placement test get a first check spread over four weeks. Every other "Recall:" cue in chat picks a
   known word that is due.
-- Missing accents, ñ typed as n, capitals and a wrong el/la don't count against you; the answer line shows the
-  right spelling and article, and says when the accent makes it a different word (si is "if", sí is "yes"). When
-  you answer with another Spanish word for the same meaning (recordar for acordarse), you decide if it counts.
+- Missing accents, ñ typed as n, capitals and a wrong or missing el/la don't count against you (un and una belong to
+  their phrase: un poco needs its un); the answer line shows the right spelling and article, and says when the accent
+  makes it a different word (si is "if", sí is "yes"). When you answer with another Spanish word for the same meaning
+  (recordar for acordarse), you decide if it counts.
 - One exception for el/la: when a noun's ending doesn't give its gender away (el problema, el día, la mano, la
   clase), the wrong article still counts as recalled, but the word stays in its box and comes back at the same gap,
   because that gender has to be remembered. On la casa, whose -a says feminine, it's only a slip.
@@ -265,7 +273,7 @@ any you miss go back to learning. Setup offers it as "Not sure: take a 2-minute 
 
 Words that look like English but mean something else carry a note: `el éxito = success — not 'exit' (that's la
 salida)`. Notes show in chat glosses, `/spanish-weave:status`, the quiz, the Chrome tooltip and the Anki export.
-They live in [`data/notes.csv`](data/notes.csv): 48 of them. Most are false friends, including 11 classic ones added
+They live in [`data/notes.csv`](data/notes.csv): 49 of them. Most are false friends, including 11 classic ones added
 to the list for this reason (embarazada, la librería, realizar, asistir, actualmente, recordar, sensible, el
 pariente, la fábrica, el colegio, la lectura). The rest mark words that are easy to use in the wrong sense: es is
 what something is, while a state or place takes está; "not X but Y" is sino, not pero; question words like dónde
@@ -412,10 +420,11 @@ What Spanish Weave keeps, and what it sends:
   is on.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived), stage and sync time.
-- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if you
-  pasted one), a cache of
-  chosen swaps with a few words of page text around each, and today's count of model calls for each site. Removing the extension deletes them; deleting
-  `~/.spanish-weave` doesn't.
+- **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if
+  you pasted one), a cache of chosen swaps with a few words of page text around each, today's count of model calls for
+  each site, a copy of your word list and stage from Claude Code, the words shown or peeked at today and any not yet
+  passed to Claude Code, and the last model error. Removing the extension deletes them; deleting `~/.spanish-weave`
+  doesn't.
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites
 (Gmail, Outlook, iCloud Mail, Yahoo Mail, Proton Mail, WhatsApp Web, Messenger, Telegram, Slack, Discord, Teams,

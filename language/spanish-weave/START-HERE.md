@@ -143,6 +143,7 @@ You type these yourself: Claude can't start them for you (except status).
 | `/spanish-weave:export` | get an up-to-date block for claude.ai or ChatGPT (refresh it weekly) |
 | `/spanish-weave:export chat` | get the one line for the claude.ai chat plugin (see "On claude.ai and the Claude apps") |
 | `/spanish-weave:anki` | export your words to Anki, if you use it |
+| `/spanish-weave:phone on` | (Mac) quiz on your iPhone too: see [IPHONE.md](IPHONE.md) |
 
 With the pasted block in claude.ai or ChatGPT, you can type a word with a question mark ("pero?") for a quick
 translation, "quiz" for a three-word quiz, "story" (claude.ai only) to retell the last answer as a short story at
@@ -151,8 +152,9 @@ commands above.
 
 ## On claude.ai and the Claude apps
 
-Have a Pro or Max plan? Then claude.ai and the Claude apps (including the iPhone and Android apps) can use Spanish
-Weave as a skill. You paste one short line instead of the long block, and fixes to the rules reach you on their own:
+Have a paid plan (Pro, Max, Team or Enterprise)? Then claude.ai and the Claude apps (including the iPhone and Android
+apps) can use Spanish Weave as a skill. You paste one short line instead of the long block, and fixes to the rules
+reach you on their own:
 
 1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, type
    `Camcas99/Learning-`, and click Add. From its list, install **spanish-weave-chat** (not spanish-weave: that one
@@ -207,7 +209,7 @@ Now and then there's a new version with fixes. In Claude Code, type these one at
 `/spanish-weave:setup` again (it keeps your progress): pick the same places as the first time, and for the websites
 question keep the default, "Keep the current site choice", so a choice you made later in the extension's popup
 stays. Then in Chrome open `chrome://extensions` and click the reload arrow on Spanish Weave, and reload the tabs you
-had open (until then they show English).
+had open (until then, an open tab goes back to English the first time you scroll or touch a word there).
 `/spanish-weave:status` tells you when the copies setup made are behind the plugin, which means it's time to rerun
 setup. With only a pasted block, copy your level's block again now and then to pick up fixes.
 
@@ -228,8 +230,9 @@ What's kept where, and what gets sent:
   paste a paid Claude API key there, that same page text goes to Anthropic's API instead of Gemini. With Claude picked
   nothing goes to Gemini, even if a Gemini key is saved; without a Claude key the extension waits for one.
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
-- **In Chrome:** the extension keeps its settings, your key and a small cache of swapped words with a few words of
-  page text around each, in Chrome's own storage. Removing the extension deletes them.
+- **In Chrome:** the extension keeps its settings, your key, a copy of your word list, today's seen words and a small
+  cache of swapped words with a few words of page text around each, in Chrome's own storage. Removing the extension
+  deletes them.
 
 Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, WhatsApp Web, Messenger, Slack,
 Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others), Google Docs and Drive, password managers, big banks,

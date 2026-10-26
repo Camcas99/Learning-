@@ -29,8 +29,9 @@ except ImportError:  # Windows: no locking (untested platform)
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
 NOTES = PLUGIN_ROOT / 'data' / 'notes.csv'
-# A line at the end of the hook's brief. The skill of the chat-only plugin (spanish-weave-chat), which can reach Claude
-# Code through a claude.ai account, stands down when it sees it, so a reply never gets two word lists.
+# A line in the hook's brief (also the short one while paused). The skill of the chat-only plugin (spanish-weave-chat),
+# which can reach Claude Code through a claude.ai account, stands down when it sees it, so a reply never gets two word
+# lists.
 HOOK_MARKER = 'spanish-weave-hook: on'
 
 # ---- promotion rules (documented in README "How words advance") ----

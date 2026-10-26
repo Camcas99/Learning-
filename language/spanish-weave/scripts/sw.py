@@ -833,7 +833,7 @@ def export_cmd(args):
                              'chatgpt' if args.chatgpt else 'claude-ai', level, stage)
     if args.chat:
         text = export.chat_exact(state) if args.exact else export.chat_line(level, stage)
-        where = ('claude.ai and the Claude apps, with the spanish-weave-chat plugin added (Pro or Max: Customize > '
+        where = ('claude.ai and the Claude apps, with the spanish-weave-chat plugin added (paid plans: Customize > '
                  'Plugins). Paste into Settings > "Instructions for Claude" in place of any older Spanish Weave block '
                  'or line')
         if args.exact:
@@ -947,6 +947,7 @@ def phone_cmd(args):
         print('iPhone sync is off. The Spanish Weave folder in iCloud Drive > Shortcuts is left as it is; delete it in '
               'Finder or the Files app if you no longer want it.')
         return
+    failed = None
     with swlib.editing() as state:
         if action == 'on':
             phone.enable(state, True)
@@ -961,8 +962,11 @@ def phone_cmd(args):
                       'take turns overwriting it: turn it off there with /spanish-weave:phone off.')
             report = phone.sync(state)
         except (phone.Unavailable, phone.NotReady, phone.TooBig, OSError) as error:
+            failed = error  # leave the block normally, so "on" and the problem are saved, then exit
             phone.settings(state)['problem'] = str(error)[:300]
-            sys.exit(f'iPhone sync: {error}')
+    if failed is not None:
+        sys.exit(f'iPhone sync: {failed}' + ('\nIt stays on and tries again in the background; '
+                                            '/spanish-weave:phone sync tries now.' if action == 'on' else ''))
     print(f'iPhone sync is on. Synced: {report["answers"]} answers from the phone recorded'
           + (f', {report["ignored"]} lines ignored' if report['ignored'] else '')
           + (f', {plural(report["waiting"], "answer file")} still downloading from iCloud' if report['waiting'] else '')
