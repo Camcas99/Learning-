@@ -100,6 +100,16 @@ def nearest_level(state, lexicon=None):
     return best
 
 
+def chat_level(state, lexicon=None):
+    """(level, stage) for the chat line: nearest_level, and the learner's stage when it is above that level's own
+    (None otherwise). The 0.3.3 words fill levels 43 to 46 but sit among the first words in a learner's list, so just
+    past 40, 150 or 400 known words the nearest level can be a stage behind the learner."""
+    lexicon = lexicon or swlib.load_lexicon()
+    level = nearest_level(state, lexicon)
+    stage = swlib.stage_for(state)
+    return level, (stage if stage > swlib.stage_for(level_state(level, lexicon)) else None)
+
+
 def block(level, levels, lexicon):
     state = level_state(level, lexicon)
     stage = swlib.stage_for(state)
@@ -165,12 +175,13 @@ turns. The rules below are in the learner's voice: "I" and "me" mean the user.
 2. If the user's preferences contain a line starting `Spanish weave state`, that line is the state line; skip step 3.
 3. Otherwise take N from "Spanish Weave level N" in the user's preferences (1 to {levels}; use 1 if there is none) and
    read `references/levels/level-NN.md`, with N as two digits (level 7: `references/levels/level-07.md`). Its one
-   line is the state line.
+   line is the state line. If the preference line also names a stage ("Spanish Weave level 15, Stage 4"), use the
+   higher of that stage and the state line's.
 
 ## Moving up
 
 When the user types "next level", reply with the line below, with N replaced by their level plus one (at most
-{levels}), for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
+{levels}) and their ", Stage S" after it if their line has one, for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
 level's word list for the rest of this chat. At level {levels}, say it is the last one. If their preferences hold a
 state line instead (step 2), say that `/spanish-weave:export chat exact` in Claude Code on their computer prints a
 new one.

@@ -2607,6 +2607,55 @@ class ChatSkill(Home):
         notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)
         self.assertIn('/spanish-weave:export chat exact', notice)
 
+    def test_exact_line_falls_back_only_on_words_the_learner_has_met(self):
+        for known_top in (0, 3, 150):
+            with swlib.editing() as state:
+                state.clear()
+                state.update(swlib.new_state(known_top=known_top))
+            first = self.sw('export', 'chat', 'exact').rstrip('\n').split('\n')[-2]
+            fallback = re.search(r'still swap (.+?) into chat replies', first)
+            met = {w['es'] for w in swlib.load_state()['words'] if w['status'] in ('active', 'shaky', 'known')}
+            self.assertTrue(fallback, first)
+            self.assertLessEqual(set(fallback.group(1).split(', ')), met, known_top)
+
+    def test_chat_line_names_the_stage_when_the_level_is_a_stage_behind(self):
+        lexicon = swlib.load_lexicon()
+        for known_top, line in ((0, (1, None)), (150, (6, 3)), (160, (7, None)), (400, (15, 4)), (432, (17, None))):
+            state = swlib.new_state(known_top=known_top)
+            self.assertEqual(make_blocks.chat_level(state, lexicon), line, known_top)
+            level, stage = line
+            self.assertEqual(max(stage or 0, swlib.stage_for(make_blocks.level_state(level, lexicon))),
+                             swlib.stage_for(state))  # the skill's "higher of the two" is the learner's own stage
+        self.assertTrue(export.chat_line(6, 3).startswith('Spanish Weave level 6, Stage 3. At the start'))
+        self.assertEqual(export.chat_line(6, None), export.chat_line(6))
+        with swlib.editing() as state:
+            state.clear()
+            state.update(swlib.new_state(known_top=150))
+        out = self.sw('export', 'chat')
+        self.assertTrue(out.endswith('\n\n' + export.chat_line(6, 3) + '\n'), out)
+        self.assertIn('(with your Stage 3)', out)
+        skill = (SKILL_DIR / 'SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('("Spanish Weave level 15, Stage 4"), use the\n   higher of that stage', skill)
+        self.assertIn('and their ", Stage S" after it if their line has one', skill)
+
+    def test_each_export_target_keeps_its_own_reminder(self):
+        self.sw('export', '--chat')
+        self.sw('export', '--chatgpt')  # setup's flow exports a block too: the chat line's level nudge must survive it
+        order = make_blocks.level_order(swlib.load_lexicon())
+        with swlib.editing() as state:
+            for w in order[:25]:
+                swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
+        self.assertIn('your claude.ai level is now 2.', weave.export_notice(swlib.load_state()))
+        notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)  # and the block still ages
+        self.assertIn('the block you pasted into ChatGPT is over a week behind', notice)
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400))
+        with swlib.editing() as state:  # a state from before per-target records still gets its block reminder
+            state.pop('exports')
+            state['exported'] = {'at': time.time() - 9 * 86400, 'version': 'old', 'target': 'claude-ai'}
+        self.assertIn('pasted into claude.ai is over a week behind', weave.export_notice(swlib.load_state()))
+        doc = (ROOT / 'commands' / 'export.md').read_text(encoding='utf-8')
+        self.assertIn('with `--copy` only on the first of those runs', doc)  # the clipboard holds one thing
+
     def test_check_notes_the_chat_plugin_and_changes_nothing(self):
         def check():
             with mock.patch.object(Path, 'home', return_value=self.home), \
@@ -2621,6 +2670,7 @@ class ChatSkill(Home):
         out = check()
         self.assertIn('note spanish-weave-chat@learning (the chat-only plugin) is in Claude Code too. Nothing to do: '
                       f'the hook\'s brief carries the line "{swlib.HOOK_MARKER}"', out)
+        self.assertIn('turn it off in Claude Code only: claude plugin disable spanish-weave-chat@learning', out)
         self.assertEqual(files(), before)  # read only: setup and check never write Claude Code's settings
         self.assertFalse((self.home / 'claude' / 'settings.json').exists())
 

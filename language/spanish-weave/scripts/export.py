@@ -115,21 +115,30 @@ def rules(short=False, skill=False):
 # every time and carries a few default swaps for a chat where it still doesn't load.
 CHAT_LOAD = ('At the start of every conversation, before your first reply, load the spanish-weave skill and follow it '
              'for the whole chat.')
-CHAT_FALLBACK = ('Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into '
-                 'chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in '
-                 'one footer line.')
+FALLBACK_WORDS = ('y', 'pero', 'entonces', 'con', 'sin', 'muy', 'también', 'ahora', 'porque', 'para')  # level 1's
 
 
-def chat_line(level):
-    """The preference line for a published level: the skill reads that level's word list."""
-    return f'Spanish Weave level {level}. {CHAT_LOAD} {CHAT_FALLBACK}'
+def chat_fallback(words=FALLBACK_WORDS):
+    return (f'Without the skill, still swap {", ".join(words)} into chat replies (never in code or in health, legal, '
+            'money, safety or urgent answers) and gloss them in one footer line.')
+
+
+CHAT_FALLBACK = chat_fallback()
+
+
+def chat_line(level, stage=None):
+    """The preference line for a published level: the skill reads that level's word list. stage: the learner's own
+    stage, named only when it is above the level's (the skill then uses the higher one), so a learner whose words sit
+    between levels gets the level's words at their own Spanish share."""
+    return f'Spanish Weave level {level}{f", Stage {stage}" if stage else ""}. {CHAT_LOAD} {CHAT_FALLBACK}'
 
 
 def chat_exact(state, now=None):
     """The preference text for this learner's own words: the same line, then their state line (which the skill takes
-    in place of a level's)."""
-    return (f'Spanish Weave: my word list is the state line below. {CHAT_LOAD} {CHAT_FALLBACK}\n'
-            + state_line(state, now, dates=False))
+    in place of a level's). Its fallback swaps only words the learner has met."""
+    met = [es for es in FALLBACK_WORDS if (swlib.find(state, es) or {}).get('status') in ('active', 'shaky', 'known')]
+    return (f'Spanish Weave: my word list is the state line below. {CHAT_LOAD}'
+            + (f' {chat_fallback(met)}' if met else '') + '\n' + state_line(state, now, dates=False))
 
 
 def md(day):
@@ -248,11 +257,16 @@ def chatgpt(state, now=None, limit=None, tail=None):
     return line, rules(short=True)
 
 
-def mark_exported(state, target, level=None):
-    """Records an export, for the hook's reminder (weave.export_notice); level: the level a chat line named."""
-    state['exported'] = {'at': time.time(), 'version': swlib.version(state), 'target': target}
+def mark_exported(state, target, level=None, stage=None):
+    """Records an export, for the hook's reminders (weave.export_notice): one record per target, so exporting one
+    doesn't drop another's reminder; 'exported' keeps the latest. level and stage: what a chat line named."""
+    record = {'at': time.time(), 'version': swlib.version(state), 'target': target}
     if level:
-        state['exported']['level'] = level
+        record['level'] = level
+    if stage:
+        record['stage'] = stage
+    state.setdefault('exports', {})[target] = record
+    state['exported'] = dict(record)
 
 
 def log_chat_day(state, day=None):

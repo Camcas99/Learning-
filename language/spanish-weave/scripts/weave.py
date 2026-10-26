@@ -397,30 +397,44 @@ STALE_EXPORT_DAYS = 7
 
 
 def export_notice(state, now=None):
-    """Once per export: a nudge when a pasted claude.ai / ChatGPT block is over a week behind the word state. A chat
-    line naming a level (`sw.py export --chat`) changes only with the level, so it gets one nudge per new level."""
-    exported = state.get('exported') or {}
-    if exported.get('target') == 'chat' and exported.get('level'):
-        import make_blocks  # only here: it reads the word list again, which the hook needs for no one else
-        level = make_blocks.nearest_level(state)
-        if level in (exported['level'], exported.get('noticed_level')):
-            return None
+    """At most one nudge per prompt, each given once. A chat line naming a level (`sw.py export --chat`) changes only
+    with its level or stage, so it gets one nudge per change; a pasted word list (claude.ai, ChatGPT, chat exact) gets
+    one once it is over a week behind the word state. Each target has its own record (export.mark_exported), so one
+    export doesn't silence another's reminder."""
+    exports = dict(state.get('exports') or {})
+    legacy = state.get('exported') or {}
+    if legacy.get('target') and legacy['target'] not in exports:
+        exports[legacy['target']] = legacy  # recorded before per-target records
+
+    def noticed(target, key, value):
         with swlib.editing() as fresh:
-            fresh.setdefault('exported', {})['noticed_level'] = level
-        return (f'Spanish Weave: your claude.ai level is now {level}. Change the number in your Spanish Weave line in '
-                'claude.ai Settings > "Instructions for Claude" (or run /spanish-weave:export chat).')
-    if not exported.get('at') or exported.get('noticed') or exported.get('version') == swlib.version(state):
-        return None
+            fresh.setdefault('exports', {}).setdefault(target, dict(exports[target]))[key] = value
+
+    chat = exports.get('chat') or {}
+    if chat.get('level'):
+        import make_blocks  # only here: it reads the word list again, which the hook needs for no one else
+        level, stage = make_blocks.chat_level(state)
+        if [level, stage] not in ([chat['level'], chat.get('stage')], chat.get('noticed_line')):
+            noticed('chat', 'noticed_line', [level, stage])
+            named = f'level {level}, Stage {stage}' if stage else f'level {level}'
+            return (f'Spanish Weave: your claude.ai level is now {level}{f", at Stage {stage}" if stage else ""}. '
+                    f'Change your Spanish Weave line in claude.ai Settings > "Instructions for Claude" to start '
+                    f'"Spanish Weave {named}." (or run /spanish-weave:export chat).')
     now = now or time.time()
-    if now - exported['at'] < STALE_EXPORT_DAYS * 86400:
-        return None
-    with swlib.editing() as fresh:
-        fresh.setdefault('exported', {})['noticed'] = True
-    if exported.get('target') == 'chat-exact':
-        return ('Spanish Weave: the word list you pasted into claude.ai is over a week behind your words. Run '
-                '/spanish-weave:export chat exact to refresh it.')
-    return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
-            'Run /spanish-weave:export to refresh it.')
+    for target, text in (('chat-exact', 'the word list you pasted into claude.ai is over a week behind your words. '
+                                        'Run /spanish-weave:export chat exact to refresh it.'),
+                         ('claude-ai', 'the block you pasted into claude.ai is over a week behind your word list. Run '
+                                       '/spanish-weave:export to refresh it.'),
+                         ('chatgpt', 'the block you pasted into ChatGPT is over a week behind your word list. Run '
+                                     '/spanish-weave:export chatgpt to refresh it.')):
+        record = exports.get(target) or {}
+        if not record.get('at') or record.get('noticed') or record.get('version') == swlib.version(state):
+            continue
+        if now - record['at'] < STALE_EXPORT_DAYS * 86400:
+            continue
+        noticed(target, 'noticed', True)
+        return f'Spanish Weave: {text}'
+    return None
 
 
 def main(argv):
