@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 import unittest
 from unittest import mock
 
@@ -2459,23 +2460,23 @@ class IphoneRecipe(unittest.TestCase):
         text = (ROOT / 'IPHONE.md').read_text(encoding='utf-8')
         block = re.search(r'4\. Fold the answer(.+?)\*\*Set Variable\*\* `Norm`', text, re.S).group(1)
         steps = re.findall(r"`([^`]+)` with (?:`([^`]*)`|(nothing)|(a space))", block)
-        # Shortcuts uses ICU regular expressions; Python's re has no \p{M}, so use its combining-mark range here.
-        return [(pattern.replace(r'\p{M}', '[\u0300-\u036f]'), ' ' if space else '' if nothing else replacement)
-                for pattern, replacement, nothing, space in steps]
+        return [(pattern, ' ' if space else '' if nothing else replacement) for pattern, replacement, nothing, space in steps]
 
     def test_the_shortcut_folds_answers_exactly_as_the_mac_does(self):
-        import unicodedata
         steps = self.fold_steps()
         self.assertEqual(len(steps), 11)
 
         def shortcut(text):
             text = text.lower()
             for pattern, replacement in steps:
-                text = re.sub(pattern, replacement, text)
+                if pattern == r'\p{M}':  # ICU's every combining mark; Python's re has no \p{M}
+                    text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))
+                else:
+                    text = re.sub(pattern, replacement, text)
             return text
         lexicon = swlib.load_lexicon()
         typed = [w['es'] for w in lexicon] + [m for w in lexicon for m in swlib.meanings(w['en'])]
-        typed += ['También!', '  so / then ', "it's", 'don’t', '¿Cómo?', 'garçon', 'ÁRBOL', 'Ñandú']
+        typed += ['También!', '  so / then ', "it's", 'don’t', '¿Cómo?', 'garçon', 'ÁRBOL', 'Ñandú', 'a\u0951b', 'c\u1ab0d']
         for text in typed + [unicodedata.normalize('NFD', t) for t in typed]:  # NFD: an accent typed as its own mark
             self.assertEqual(shortcut(text), phone.phone_fold(text), text)
 
@@ -2486,6 +2487,19 @@ class IphoneRecipe(unittest.TestCase):
         self.assertIn('Correct answers: [AcceptList]', text)  # not the reject list's Combined Text
         self.assertIn('**Allow Multiple Lines** off', text)  # or Return adds a line instead of answering
         self.assertEqual(text.count('phone/[Label]-done.txt'), 3)  # the quiz reads and writes it; the reminder reads it
+        variables = set(re.findall(r'(?:Set|Add to)\s+Variable\*\*\s+`(\w+)`', text))
+        self.assertLessEqual({'Label', 'Made', 'Today', 'AcceptList', 'NormBar', 'Missed'}, variables)
+        compared = re.findall(r'\*\*(?:is|is not|contains)\*\*\s+`(\w+)`', text)
+        self.assertEqual([v for v in compared if v in variables], [])  # a variable on the right is written [Name]
+        quiz, reminder = text.split('### 3. Optional: a daily reminder')
+        self.assertLess(reminder.index('`Label`'), reminder.index('phone/[Label]-done.txt'))
+        self.assertLess(quiz.index('phone/[Label]-done.txt'), quiz.index('Get Dictionary Value** for `day`'))  # done first
+        # The answer line the recipe writes, filled in, is one the Mac counts.
+        template = re.search(r'`(\{"word":"\[Word\]".*?\})`', text).group(1)
+        line = (template.replace('[Word]', 'pero').replace('[Result]', 'right').replace('[Today]', swlib.today())
+                .replace('[Made]', '2026-10-26T08:00:00Z'))
+        snaps = {'2026-10-26T08:00:00Z': {'day': swlib.today(), 'words': ['pero']}}
+        self.assertIsNotNone(phone._answer(phone._record(line.encode()), snaps))
         name = re.search(r'Text\*\* `Spanish Weave/inbox/(\[Label\]-\[Stamp\]-\[Rand\])\.jsonl`', text).group(1)
         for label in ('iphone', '-ngela', 'Cam-s-phone'):  # what step 2 makes of "iphone", "Ángela", "Cam's phone"
             file = name.replace('[Label]', label).replace('[Stamp]', '20261025-080000').replace('[Rand]', '4821')

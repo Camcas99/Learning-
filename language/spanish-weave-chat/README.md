@@ -38,11 +38,10 @@ too (see the first point below).
 
 ## Good to know
 
+- **Not yet tested on an iPhone.** The setup above follows Anthropic's docs; a test run on the phone is still to come.
 - **Using Spanish Weave in Claude Code too?** Update that plugin to 0.3.5 or later before adding this one. Its hook
   tells a copy of this skill synced into Claude Code to stay out; an older hook doesn't, so the two could both add
   Spanish there.
-
-- **Not yet tested on an iPhone.** The setup above follows Anthropic's docs; a test run on the phone is still to come.
 - **Claude decides when to load a skill.** The line asks for it in every chat, but a chat can still start without it.
   The rest of the line keeps a few swaps going even then. If a chat has no Spanish, type / and pick spanish-weave.
 - **No Spanish in incognito chats**, which can't use skills, or where an organization turned skills off.

@@ -59,12 +59,12 @@ Expression, turn that option on in the action.
    shortcut (see IPHONE.md).", then **Stop This Shortcut**. **End If**.
 8. **Date** (Current Date), **Format Date**: Custom, `yyyy-MM-dd`, then **Set Variable** `Today`.
 9. **Format Date** (Current Date): Custom, `yyyyMMdd-HHmmss`, then **Set Variable** `Stamp`.
-10. **Get Dictionary Value** for `day` in `Snap`. **If** it is not `Today`: **Show Alert** "This list is from [Dictionary
-   Value]: your Mac hasn't synced today. Quiz anyway?" with Show Cancel Button on. **End If**.
-11. **Get Dictionary Value** for `made` in `Snap`, then **Set Variable** `Made`.
-12. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[Label]-done.txt`, Error If Not Found off.
-    **If** File **has any value**: **Get Text from Input**; **If** Text **is** `Made`: **Show Alert** "Already done today.
-    Your Mac picks up your answers on its next sync.", then **Stop This Shortcut**. **End If**, **End If**.
+10. **Get Dictionary Value** for `made` in `Snap`, then **Set Variable** `Made`.
+11. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[Label]-done.txt`, Error If Not Found off.
+    **If** File **has any value**: **Get Text from Input**; **If** Text **is** `[Made]`: **Show Alert** "You already did
+    this list. Your Mac picks up your answers on its next sync.", then **Stop This Shortcut**. **End If**, **End If**.
+12. **Get Dictionary Value** for `day` in `Snap`. **If** it is not `[Today]`: **Show Alert** "This list is from
+    [Dictionary Value]: your Mac hasn't synced today. Quiz anyway?" with Show Cancel Button on. **End If**.
 13. **Get Dictionary Value** for `items` in `Snap`, **Set Variable** `Items`, **Count** (Items). **If** Count **is** 0:
     **Show Alert** "Nothing due today.", then **Stop This Shortcut**. **End If**.
 
@@ -91,8 +91,8 @@ Expression, turn that option on in the action.
        **Set Variable** `Norm`.
     5. **Text** `|[Norm]|`, **Set Variable** `NormBar`. **Text** `unsure`, **Set Variable** `Result`.
     6. **If** `Norm` **does not have any value**: **Text** `wrong`, **Set Variable** `Result`. **Otherwise**: **If**
-       `AcceptBar` **contains** `NormBar`: **Text** `right`, **Set Variable** `Result`. **End If**. **If** `RejectBar`
-       **contains** `NormBar`: **Text** `wrong`, **Set Variable** `Result`. **End If**. **End If**.
+       `AcceptBar` **contains** `[NormBar]`: **Text** `right`, **Set Variable** `Result`. **End If**. **If** `RejectBar`
+       **contains** `[NormBar]`: **Text** `wrong`, **Set Variable** `Result`. **End If**. **End If**.
     7. Optional judge: **If** `Result` **is** `unsure` and `Judge` **is** `on`: **Use Model** (On-Device) with the prompt
        "You grade a Spanish vocabulary quiz. Question: [Ask]. Correct answers: [AcceptList]. Learner wrote: [Typed].
        Is it correct in meaning, ignoring spelling slips and accents? Answer only yes or no." **If** the response
@@ -131,7 +131,7 @@ Build a second shortcut, **Spanish Weave Reminder**:
 3. **Get Dictionary from Input**, **Set Variable** `Snap`. **Get Dictionary Value** for `made` in `Snap`, **Set
    Variable** `Made`.
 4. **Get File from Folder**: Shortcuts, Path `Spanish Weave/phone/[Label]-done.txt`, Error If Not Found off. **If**
-   File **has any value**: **Get Text from Input**; **If** Text **is** `Made`: **Stop This Shortcut** (today's quiz is
+   File **has any value**: **Get Text from Input**; **If** Text **is** `[Made]`: **Stop This Shortcut** (today's quiz is
    done). **End If**, **End If**.
 5. **Get Dictionary Value** for `items` in `Snap`, **Count**, **Set Variable** `Due`.
 6. **If** `Due` **is greater than** 0: **Show Notification**, title "Spanish Weave", body "[Due] words to quiz. Open
@@ -148,8 +148,8 @@ Then make it run every morning:
 - **Not tested on a real iPhone yet.** The steps follow Apple's Shortcuts guide; if an action name differs on your
   phone, search for the nearest match. Please report what you find.
 - **Answers are counted once.** Each run writes its own answer file and the Mac reads each line once. A word counts
-  once a day, on the Mac or the phone, and a list counts only for words you haven't answered since the Mac made it,
-  so quizzing an old list never counts a word twice. Only words the Mac offered count.
+  at most once a day, on the Mac or the phone, and a phone answer counts only on a day the word was due, so quizzing
+  an old list never counts a word early or twice. Only words the Mac offered count.
 - **Nothing due?** Words come up the day after you first meet them, then at growing gaps, as in `/spanish-weave:quiz`.
 - **The list didn't change?** The Mac updates it in the background while you use Claude Code (also while Spanish
   Weave is paused), about every half hour. `/spanish-weave:phone sync` updates it now, and `/spanish-weave:phone

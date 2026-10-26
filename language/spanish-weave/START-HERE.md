@@ -190,10 +190,10 @@ a few Spanish words (y, pero, entonces...). On the free plan there are no plugin
   press the spacebar and scan the QR code). Your computer has to stay on. It runs on your computer, so your words
   and progress are all there. A Claude Code session started in the cloud from your phone begins on a fresh computer
   every time, so it can't keep your progress.
-- **A daily quiz on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on your Mac, then build
-  a short Shortcut on your iPhone that asks your due words each day; your answers count on the Mac just like
-  `/spanish-weave:quiz`. Only today's quiz words go to iCloud Drive. The steps are in [IPHONE.md](IPHONE.md); it hasn't
-  been tried on a real iPhone yet.
+- **A daily quiz on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on your Mac, then
+  build a short Shortcut on your iPhone that asks your due words each day; your answers count on the Mac like
+  `/spanish-weave:quiz` answers (without its el/la check). Only today's quiz words go to iCloud Drive. The steps are
+  in [IPHONE.md](IPHONE.md); it hasn't been tried on a real iPhone yet.
 - **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
   Spanish words on a computer.
 - **Instagram's website** (instagram.com in Chrome on a computer): should work, but it hasn't been tried on the real
@@ -231,6 +231,8 @@ What's kept where, and what gets sent:
   paste a paid Claude API key there, that same page text goes to Anthropic's API instead of Gemini. With Claude picked
   nothing goes to Gemini, even if a Gemini key is saved; without a Claude key the extension waits for one.
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
+- **Into iCloud Drive, only with the iPhone quiz:** today's due words, their meanings, sound hints and your stage; the
+  phone's answers come back as right or wrong. Apple can read them unless Advanced Data Protection is on.
 - **In Chrome:** the extension keeps its settings, your key, a copy of your word list, today's seen words and a small
   cache of swapped words with a few words of page text around each, in Chrome's own storage. Removing the extension
   deletes them.

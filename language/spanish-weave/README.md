@@ -426,7 +426,8 @@ What Spanish Weave keeps, and what it sends:
 - **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if
   you pasted one), a cache of chosen swaps with a few words of page text around each, today's count of model calls for
   each site, a copy of your word list and stage from Claude Code, the words shown or peeked at today and any not yet
-  passed to Claude Code, and the last model error. Removing the extension deletes them; deleting `~/.spanish-weave`
+  passed to Claude Code, the last model error, which models' daily free quota is spent (with a hash of the key), and a
+  random id that marks the cache's generation. Removing the extension deletes them; deleting `~/.spanish-weave`
   doesn't.
 
 Which sites: by default the extension runs on every site you allow, except email, messaging and AI chat sites

@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
@@ -403,7 +404,7 @@ def phone_fold(text):
     that isn't a letter or digit becomes a space, trimmed. The accept and reject lists use it, so a typed answer
     compares as the Shortcut folds it."""
     text = str(text).lower().translate(FOLD)
-    text = ''.join(c for c in text if not 0x300 <= ord(c) <= 0x36F)
+    text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))  # the Shortcut's \p{M}
     text = re.sub(r"['’]", '', text)
     return re.sub(r'[^a-z0-9]+', ' ', text).strip()
 
