@@ -266,19 +266,28 @@ def export_slot(target):
     return 'claude.ai' if target in CLAUDE_AI else target
 
 
+BLOCKS = ('claude-ai', 'chatgpt')
+PAIR_SECONDS = 600  # a claude.ai and a ChatGPT block exported this close together (setup does both) are a pair
+
+
 def mark_exported(state, target, level=None, stage=None, exact=False):
     """Records an export, for the hook's reminders (weave.export_notice): one record per place it is pasted
     (export_slot), so a ChatGPT export doesn't drop claude.ai's reminder; 'exported' keeps the latest, as before.
-    level, stage and exact: what a chat line named."""
+    level, stage and exact: what a chat line named. The two blocks exported together (setup's pair: the learner uses
+    whichever applies) are marked paired, and any later export to one place drops the other half, so nobody is reminded
+    of a block they never pasted. A 0.3.4 record (only 'exported') is simply replaced, as 0.3.4 did."""
+    now = time.time()
     exports = state.setdefault('exports', {})
-    legacy = state.get('exported') or {}
-    if legacy.get('target') and export_slot(legacy['target']) not in exports:
-        exports[export_slot(legacy['target'])] = dict(legacy)  # recorded before per-place records
-    record = {'at': time.time(), 'version': swlib.version(state), 'target': target}
+    for slot in [s for s, r in exports.items() if r.get('paired') and s != export_slot(target)]:
+        del exports[slot]
+    record = {'at': now, 'version': swlib.version(state), 'target': target}
     if level:
         record['level'] = level
     if stage:
         record.update(stage=stage, exact=bool(exact))
+    other = exports.get('chatgpt' if target == 'claude-ai' else 'claude.ai') if target in BLOCKS else None
+    if other and other.get('target') in BLOCKS and now - other.get('at', 0) < PAIR_SECONDS:
+        other['paired'] = record['paired'] = True
     exports[export_slot(target)] = record
     state['exported'] = dict(record)
 

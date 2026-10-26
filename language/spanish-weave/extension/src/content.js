@@ -49,6 +49,7 @@ const TOUCH_GRACE_MS = 1000; // a finger's emulated mouse events, focus and clic
 const SLOP_PX = 10; // Chrome on Android sends pointermove while the finger holds still
 let lastType = ''; // pointerType of the latest trusted pointer event of any kind
 let lastAt = -Infinity;
+let penHover = false; // a pen is hovering above the screen (no button down): its mouseout must not close a tapped gloss
 let down = { type: '', span: null, at: -Infinity }; // the latest trusted pointerdown; pointerup refreshes `at`
 const lifted = new WeakMap(); // word -> when a finger last lifted off it, for an iOS click that lands after the next touch
 let press = null; // { span, id, x, y, timer, fired }: a finger held on a word
@@ -176,9 +177,9 @@ function armTip(e) {
 }
 function disarmTip(e) {
   if (touching()) return; // iOS sends the word a mouseout and focusout when the next tap lands elsewhere, the speaker too
-  // A tapped gloss stays until the next press elsewhere, a scroll or a flip: a pen hovering off the word toward the
-  // speaker must not close it.
-  if (tipBy === 'tap') return;
+  // A pen hovering off a tapped word toward its speaker must not close the gloss; a real mouse or keyboard focus
+  // leaving the word still does.
+  if (tipBy === 'tap' && penHover) return;
   const span = swapFor(e);
   if (span && !span.contains(e.relatedTarget)) hideTip();
 }
@@ -386,6 +387,7 @@ function notePointer(e) {
   if (!e.isTrusted || orphaned) return;
   // A pen hovering above the screen (no button down) points like a mouse, so its hover shows the gloss as before.
   const hovering = e.pointerType === 'pen' && !e.buttons && (e.type === 'pointermove' || e.type === 'pointerover');
+  penHover = hovering;
   lastType = hovering ? 'mouse' : e.pointerType || '';
   lastAt = clock();
 }
@@ -429,11 +431,11 @@ function longPress(span) {
 // finger lifted off this word just before, since the next finger can land before an iOS tap's late click. A click
 // with none of these (a mouse, the keyboard, VoiceOver, TalkBack, switch control) keeps its old meaning.
 function tapped(span, e) {
-  if (e.isTrusted && fingery(e.pointerType)) return true;
-  if (fingery(down.type) && down.span === span && clock() - down.at < TOUCH_GRACE_MS) return true;
-  if (e.pointerType !== undefined || clock() - (lifted.get(span) ?? -Infinity) >= TOUCH_GRACE_MS) return false;
-  lifted.delete(span); // one late click per lift
-  return true;
+  const finger = (e.isTrusted && fingery(e.pointerType)) ||
+    (fingery(down.type) && down.span === span && clock() - down.at < TOUCH_GRACE_MS) ||
+    (e.pointerType === undefined && clock() - (lifted.get(span) ?? -Infinity) < TOUCH_GRACE_MS);
+  if (finger) lifted.delete(span); // the lift is spent by its tap's own click, whichever rule saw it
+  return finger;
 }
 function onClick(e) {
   if (e.isTrusted && sayBox?.contains(e.target)) { // the speaker in a tapped gloss: sound only, nothing recorded

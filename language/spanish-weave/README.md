@@ -106,8 +106,8 @@ skill, so you paste one line instead of a 6 to 7 KB block, and fixes to the rule
    files"); skills need it.
 3. In Settings > "Instructions for Claude", replace any Spanish Weave block with this line, with your level in place
    of 1. With the Claude Code plugin, `/spanish-weave:export chat` prints it with the level nearest to your words
-   (plus your stage when it differs from the level's: "Spanish Weave level 6, Stage 3."), and
-   `/spanish-weave:export chat exact` with your own word list instead.
+   (plus your stage when it is above the level's, or when you pinned a lower one: "Spanish Weave level 6, Stage 3."),
+   and `/spanish-weave:export chat exact` with your own word list instead.
 
    ```text
    Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.

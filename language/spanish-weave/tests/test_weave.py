@@ -2246,7 +2246,7 @@ class PhoneSync(Home):
         self.assertEqual(self.sync()['answers'], 1)
         self.answer(name, [json.dumps({'word': 'con', 'kind': 'quiz', 'result': 'right', 'day': day, 'snap': made})] * 3)
         report = self.sync()
-        self.assertEqual((report['answers'], report['skipped_files']), (0, 1))
+        self.assertEqual((report['answers'], report['set_aside'], report['skipped_files']), (0, 1, 0))
 
     def test_unavailable_off_a_mac_and_off_when_not_turned_on(self):
         self.assertRaises(phone.Unavailable, phone.shortcuts_folder, environ={}) if sys.platform != 'darwin' else None
@@ -2296,7 +2296,7 @@ class PhoneSync(Home):
         os.utime(self.folder / 'inbox' / 'odd-20261025-090000-1111.jsonl', (1, 1))  # oldest: read first
         with mock.patch.object(phone.swlib, 'apply_events', side_effect=flaky):
             report = self.sync()
-            self.assertEqual((report['answers'], report['skipped_files']), (1, 1))  # the file after it still counts
+            self.assertEqual((report['answers'], report['set_aside']), (1, 1))  # the file after it still counts
             self.assertEqual(self.sync()['answers'], 0)  # and the set-aside file isn't tried again until it changes
         self.assertEqual(len(calls), 2)
         with mock.patch.object(phone, 'sync', side_effect=RuntimeError('a bug')):
@@ -2383,6 +2383,35 @@ class PhoneSync(Home):
         report = self.sync()
         self.assertEqual((report['answers'], report['skipped_files']), (2, 0))
 
+    def test_an_answer_counts_when_the_word_was_due_whatever_happened_since(self):
+        self.sync()
+        today = swlib.today()
+        day = lambda n: (dt.date.fromisoformat(today) + dt.timedelta(days=n)).isoformat()
+        # The phone answered pero wrong today; before the Mac reads it, a third seen day promotes pero (box 2, due in a
+        # week). The answer was given while pero was due, so it still counts.
+        self.answer('iphone-20261026-120000-2000.jsonl', [self.quiz_line('pero', 'wrong')])
+        with swlib.editing() as state:
+            w = swlib.find(state, 'pero')
+            swlib.set_status(w, 'known', today)
+            swlib.schedule(w, today, 2)
+        self.assertEqual(self.sync()['answers'], 1)
+        self.assertEqual(swlib.find(swlib.load_state(), 'pero')['reviews'][-1][:2], [today, 0])
+        # A day the Mac can't use becomes the list's day, so a Mac answer from that day on still wins: con answered
+        # right on the Mac 3 days ago is due today, but the phone answered that same old list.
+        old = self.offer('con', day(-3))
+        with swlib.editing() as state:
+            swlib.review(state, 'con', True, day=day(-3))
+        self.answer('iphone-20261026-130000-2001.jsonl', [self.quiz_line('con', day='2569-10-23', snap=old)])
+        self.assertEqual(self.sync()['answers'], 0)
+        self.assertEqual(len(swlib.find(swlib.load_state(), 'con')['reviews']), 1)
+        # A permission error on one answer file (the inbox lists, but files can't be opened) says what to do.
+        self.answer('iphone-20261026-140000-2002.jsonl', [self.quiz_line('sin')])
+        import errno
+        with mock.patch.object(phone, 'read_file', side_effect=PermissionError(errno.EPERM, 'denied')), \
+                self.assertRaises(phone.Unavailable) as caught:
+            self.sync()
+        self.assertIn('phone sync', str(caught.exception))
+
     def test_phone_on_off_a_mac_stays_off(self):
         with swlib.editing() as state:
             phone.enable(state, False)
@@ -2391,6 +2420,9 @@ class PhoneSync(Home):
             sw.main(['phone', 'on'])
         self.assertEqual(str(caught.exception), 'iPhone sync: iPhone sync needs a Mac with iCloud Drive')
         self.assertFalse(phone.settings(swlib.load_state())['on'])
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.main(['phone', 'status'])
+        self.assertEqual(out.getvalue().strip(), 'iPhone sync: off (iPhone sync needs a Mac with iCloud Drive)')
 
     def test_a_day_the_mac_cant_use_counts_as_today(self):
         self.sync()
@@ -2497,7 +2529,7 @@ class IphoneRecipe(unittest.TestCase):
         self.assertEqual(text.count('phone/[Label]-done.txt'), 3)  # the quiz reads and writes it; the reminder reads it
         variables = set(re.findall(r'(?:Set|Add to)\s+Variable\*\*\s+`(\w+)`', text))
         self.assertLessEqual({'Label', 'Made', 'Today', 'AcceptList', 'NormBar', 'Missed'}, variables)
-        compared = re.findall(r'\*\*(?:is|is not|contains)\*\*\s+`(\w+)`', text)
+        compared = re.findall(r'(?:\*\*)?(?:is not|is greater than|is|contains)(?:\*\*)?\s+`(\w+)`', text)
         self.assertEqual([v for v in compared if v in variables], [])  # a variable on the right is written [Name]
         quiz, reminder = text.split('### 3. Optional: a daily reminder')
         self.assertLess(reminder.index('`Label`'), reminder.index('phone/[Label]-done.txt'))
@@ -2759,10 +2791,11 @@ class ChatSkill(Home):
         notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)  # and the block still ages
         self.assertIn('the block you pasted into ChatGPT is over a week behind', notice)
         self.assertIsNone(weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400))
-        with swlib.editing() as state:  # a state from before per-target records still gets its block reminder
+        with swlib.editing() as state:  # a 0.3.4 state (one record) gets 0.3.4's reminder
             state.pop('exports')
-            state['exported'] = {'at': time.time() - 9 * 86400, 'version': 'old', 'target': 'claude-ai'}
-        self.assertIn('pasted into claude.ai is over a week behind', weave.export_notice(swlib.load_state()))
+            state['exported'] = {'at': time.time() - 9 * 86400, 'version': 'old', 'target': 'chatgpt'}
+        self.assertIn('pasted into claude.ai or ChatGPT is over a week behind', weave.export_notice(swlib.load_state()))
+        self.assertIsNone(weave.export_notice(swlib.load_state()))
         doc = (ROOT / 'commands' / 'export.md').read_text(encoding='utf-8')
         self.assertIn('with `--copy` only on the first of those runs', doc)  # the clipboard holds one thing
 
@@ -2781,20 +2814,26 @@ class ChatSkill(Home):
         # Setup exports both blocks at once: one nudge for the pair, then quiet.
         self.sw('export')
         self.sw('export', '--chatgpt')
+        self.assertTrue(all(r.get('paired') for r in swlib.load_state()['exports'].values()))
         with swlib.editing() as state:
             swlib.apply_event(state, order[60]['es'], 'known')
         later = time.time() + 8 * 86400
         self.assertIn('claude.ai or ChatGPT is over a week behind', weave.export_notice(swlib.load_state(), now=later))
         self.assertIsNone(weave.export_notice(swlib.load_state(), now=later))
-        # A 0.3.4 chat record survives the first export of another target after the update, and its nudge isn't repeated.
+        # Any later export to one place drops the pair's other half: a claude.ai user who refreshes their block, or
+        # moves to the chat line, is never reminded of the ChatGPT block setup also printed.
+        for refresh in (['export'], ['export', '--chat']):
+            self.sw('export')
+            self.sw('export', '--chatgpt')
+            self.sw(*refresh)
+            self.assertEqual(list(swlib.load_state()['exports']), ['claude.ai'], refresh)
+        # A 0.3.4 record (setup left exported.target 'chatgpt') is replaced by the first export after the update.
         with swlib.editing() as state:
             state.pop('exports')
-            state['exported'] = {'at': time.time(), 'version': 'old', 'target': 'chat', 'level': 1, 'noticed_level': 2}
-        self.sw('export', '--chatgpt')
-        self.assertEqual(sorted(swlib.load_state()['exports']), ['chatgpt', 'claude.ai'])
-        self.assertIsNone(weave.export_notice(swlib.load_state()))  # level 2 was already nudged by 0.3.4
-        know(50)
-        self.assertIn('"Spanish Weave level 3."', weave.export_notice(swlib.load_state()))
+            state['exported'] = {'at': time.time() - 9 * 86400, 'version': 'old', 'target': 'chatgpt'}
+        self.sw('export', '--chat')
+        self.assertEqual(list(swlib.load_state()['exports']), ['claude.ai'])
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=later))
 
     def test_chat_line_nudges_follow_the_stage_down_and_back(self):
         with swlib.editing() as state:
@@ -2808,13 +2847,26 @@ class ChatSkill(Home):
             for w in known:
                 swlib.set_status(swlib.find(state, w['es']), 'shaky', '2026-01-02')
         self.assertNotIn('Stage', line())
-        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state()))
-        with swlib.editing() as state:  # known again: told to add it back
+        now, day = time.time(), 86400
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now))  # a stage change must hold into a later day
+        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state(), now=now + day))
+        with swlib.editing() as state:  # known again: told to add it back, a day later
             for w in known:
                 swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-03')
         self.assertIn(', Stage 3', line())
-        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state()))
-        self.assertIsNone(weave.export_notice(swlib.load_state()))
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now + day))
+        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state(), now=now + 2 * day))
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now + 3 * day))
+        # One word going shaky and back the same day never sends the learner to their settings.
+        with swlib.editing() as state:
+            for w in known:
+                swlib.set_status(swlib.find(state, w['es']), 'shaky', '2026-01-04')
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now + 4 * day))
+        with swlib.editing() as state:
+            for w in known:
+                swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-04')
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now + 4 * day))
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=now + 5 * day))
 
     def test_check_notes_the_chat_plugin_and_changes_nothing(self):
         def check():

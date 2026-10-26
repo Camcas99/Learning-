@@ -425,3 +425,26 @@ test('touch: mouse and assistive-tech clicks right after a finger still flip; a 
     await t.close();
   }
 }, 20000);
+
+test('touch: an old-Safari MouseEvent click after finger taps still flips; a real mouse leaving a tapped word closes it', async () => {
+  const t = await touchPage(() => import('../src/content.js?touch-spent'));
+  const { events, P, M, fire, y, casa, gloss } = t;
+  try {
+    // Safari before 18.2: each tap's own click is a MouseEvent. The tap's click spends its lift, so a trackpad or
+    // VoiceOver click (also a MouseEvent) on y right after a finger taps casa flips y as it always did.
+    fire(y, [P('pointerdown'), P('pointerup'), M('click')]);
+    fire(casa, [P('pointerdown'), P('pointerup'), M('click')]);
+    fire(y, [M('click')]);
+    expect([y.textContent, events.at(-1)]).toEqual(['and', 'y:flip']);
+    fire(y, [M('click')]);
+    await wait(1100);
+    // A touchscreen laptop: a finger taps y, then the real mouse moves off the word: the tapped gloss closes.
+    fire(y, [P('pointerdown'), P('pointerup'), P('click')]);
+    expect(gloss()).not.toBeNull();
+    await wait(1100);
+    fire(y, [P('pointermove', { pointerType: 'mouse', pointerId: 1 }), M('mouseout', { relatedTarget: casa })]);
+    expect(gloss()).toBeNull();
+  } finally {
+    await t.close();
+  }
+}, 15000);

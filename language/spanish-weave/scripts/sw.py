@@ -916,7 +916,7 @@ def phone_line(state):
     if not settings:
         return None
     if not settings.get('on'):
-        return 'iPhone sync: off (/spanish-weave:phone on)'
+        return f'iPhone sync: off ({settings.get("problem") or "/spanish-weave:phone on"})'
     if settings.get('problem'):
         return f'iPhone sync: on, but the last try failed: {settings["problem"]}'
     last, got = settings.get('last') or {}, settings.get('got') or {}
@@ -933,8 +933,9 @@ def phone_line(state):
     aside = sum(bool(e.get('failed') or e.get('rewritten')) for e in (state.get('phone_inbox') or {}).values()
                 if isinstance(e, dict))
     if aside:
-        parts.append(f'{plural(aside, "answer file")} set aside (changed after it was read, or unreadable): its answers '
-                     "don't count until it is replaced")
+        parts.append(f'{plural(aside, "answer file")} set aside (changed after it was read, or unreadable): '
+                     f'{"its" if aside == 1 else "their"} answers don\'t count; delete '
+                     f'{"it" if aside == 1 else "them"} from iCloud Drive > Shortcuts > Spanish Weave > inbox')
     return 'iPhone sync: on, ' + '; '.join(parts)
 
 
@@ -968,9 +969,9 @@ def phone_cmd(args):
             report = phone.sync(state)
         except (phone.Unavailable, phone.NotReady, phone.TooBig, OSError) as error:
             failed = error  # leave the block normally, so "on" and the problem are saved, then exit
-            phone.settings(state)['problem'] = str(error)[:300]
             if action == 'on' and not getattr(error, 'retry', True):
                 phone.enable(state, False)  # it can never work here (not a Mac): nothing to retry
+            phone.settings(state)['problem'] = str(error)[:300]
     if failed is not None:
         retrying = action == 'on' and getattr(failed, 'retry', True)
         sys.exit(f'iPhone sync: {failed}' + ('\nIt stays on and tries again in the background; '
@@ -980,6 +981,7 @@ def phone_cmd(args):
           + (f', {plural(report["waiting"], "answer file")} still downloading from iCloud' if report['waiting'] else '')
           + (f', {plural(report["later"], "answer file")} left for the next sync' if report['later'] else '')
           + (f', {plural(report["skipped_files"], "inbox file")} skipped' if report['skipped_files'] else '')
+          + (f', {plural(report["set_aside"], "answer file")} set aside' if report['set_aside'] else '')
           + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today '
           + ('written for the phone.' if report['written'] else '(the phone already has this list).'))
     for warning in report['warnings']:

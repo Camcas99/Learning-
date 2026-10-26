@@ -172,7 +172,8 @@ reach you on their own:
 4. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
 
 With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know. When
-your own stage differs from that level's, it adds it ("Spanish Weave level 6, Stage 3."), and the skill uses it.
+your own stage is above that level's, or you pinned a lower one, it adds it ("Spanish Weave level 6, Stage 3."), and the
+skill uses it.
 
 Two honest caveats. It hasn't been tested on an iPhone yet. And Claude decides for itself when to load a skill: the
 line asks for it in every chat, but a chat can still start without it, and then the rest of the line still gets you
@@ -233,8 +234,9 @@ What's kept where, and what gets sent:
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
 - **Into iCloud Drive, only with the iPhone quiz:** today's due words, their meanings, sound hints and your stage; the
   phone's answers come back as right or wrong. Apple can read them unless Advanced Data Protection is on.
-- **In Chrome:** the extension keeps its settings, your key, a copy of your word list, today's seen words and a small
-  cache of swapped words with a few words of page text around each, in Chrome's own storage. Removing the extension
+- **In Chrome:** the extension keeps its settings, your keys, a copy of your word list, today's seen words and any
+  not yet passed to Claude Code, model-call counts, the last model error, a quota record and a small cache of swapped
+  words with a few words of page text around each, in Chrome's own storage. Removing the extension
   deletes them.
 
 Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, WhatsApp Web, Messenger, Slack,

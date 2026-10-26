@@ -29,8 +29,8 @@ Plugins are for paid plans. On the free plan, keep using the paste-in blocks in
    ```
 
    With the Claude Code plugin on your Mac, `/spanish-weave:export chat` prints this line with the level nearest to
-   your words (plus your stage when it differs from the level's: "Spanish Weave level 6, Stage 3."), and
-   `/spanish-weave:export chat exact` your own word list instead.
+   your words (plus your stage when it is above the level's, or when you pinned a lower one: "Spanish Weave level 6,
+   Stage 3."), and `/spanish-weave:export chat exact` your own word list instead.
 5. Start a new chat. When the words feel easy, type "next level": Claude gives you the new line to paste.
 
 Plugins belong to your account rather than a device, so once this is set up it should reach the Claude phone apps
