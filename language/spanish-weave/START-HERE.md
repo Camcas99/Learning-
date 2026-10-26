@@ -171,7 +171,8 @@ reach you on their own:
 
 4. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
 
-With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know.
+With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know. When
+your own stage differs from that level's, it adds it ("Spanish Weave level 6, Stage 3."), and the skill uses it.
 
 Two honest caveats. It hasn't been tested on an iPhone yet. And Claude decides for itself when to load a skill: the
 line asks for it in every chat, but a chat can still start without it, and then the rest of the line still gets you

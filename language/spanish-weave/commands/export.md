@@ -18,4 +18,4 @@ Show its output to the user exactly as printed, inside one code block per pasted
 two lines chat exact prints are one field), with no Spanish and nothing added inside the blocks. After the blocks, one plain-English line: paste it where the output
 says (if an output says it was copied to the clipboard, say which one is ready to paste), and re-export about once
 a week.
-For chat without exact, say instead that the line only changes when their level does, and Claude Code says when.
+For chat without exact, say instead that the line only changes when their level or stage does, and Claude Code says when.

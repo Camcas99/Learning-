@@ -126,11 +126,12 @@ def chat_fallback(words=FALLBACK_WORDS):
 CHAT_FALLBACK = chat_fallback()
 
 
-def chat_line(level, stage=None):
+def chat_line(level, stage=None, exact=False):
     """The preference line for a published level: the skill reads that level's word list. stage: the learner's own
-    stage, named only when it is above the level's (the skill then uses the higher one), so a learner whose words sit
-    between levels gets the level's words at their own Spanish share."""
-    return f'Spanish Weave level {level}{f", Stage {stage}" if stage else ""}. {CHAT_LOAD} {CHAT_FALLBACK}'
+    stage when it differs from the level's (make_blocks.chat_level), so a learner whose words sit between levels gets
+    the level's words at their own Spanish share; exact for a stage pinned below the level's."""
+    named = f', Stage {stage}{" exactly" if exact else ""}' if stage else ''
+    return f'Spanish Weave level {level}{named}. {CHAT_LOAD} {CHAT_FALLBACK}'
 
 
 def chat_exact(state, now=None):
@@ -257,15 +258,28 @@ def chatgpt(state, now=None, limit=None, tail=None):
     return line, rules(short=True)
 
 
-def mark_exported(state, target, level=None, stage=None):
-    """Records an export, for the hook's reminders (weave.export_notice): one record per target, so exporting one
-    doesn't drop another's reminder; 'exported' keeps the latest. level and stage: what a chat line named."""
+CLAUDE_AI = ('claude-ai', 'chat', 'chat-exact')  # the forms of one claude.ai settings field: the latest replaces the rest
+
+
+def export_slot(target):
+    """Where an export's record lives: claude.ai's block, chat line and exact line share one, ChatGPT has its own."""
+    return 'claude.ai' if target in CLAUDE_AI else target
+
+
+def mark_exported(state, target, level=None, stage=None, exact=False):
+    """Records an export, for the hook's reminders (weave.export_notice): one record per place it is pasted
+    (export_slot), so a ChatGPT export doesn't drop claude.ai's reminder; 'exported' keeps the latest, as before.
+    level, stage and exact: what a chat line named."""
+    exports = state.setdefault('exports', {})
+    legacy = state.get('exported') or {}
+    if legacy.get('target') and export_slot(legacy['target']) not in exports:
+        exports[export_slot(legacy['target'])] = dict(legacy)  # recorded before per-place records
     record = {'at': time.time(), 'version': swlib.version(state), 'target': target}
     if level:
         record['level'] = level
     if stage:
-        record['stage'] = stage
-    state.setdefault('exports', {})[target] = record
+        record.update(stage=stage, exact=bool(exact))
+    exports[export_slot(target)] = record
     state['exported'] = dict(record)
 
 

@@ -61,6 +61,7 @@ GUARDS = [
 
 
 PAUSED = 'Spanish Weave is paused (/spanish-weave:resume turns it back on): no Spanish word swaps in replies.'
+OFF = 'Spanish Weave is off in this session (SPANISH_WEAVE_OFF=1): no Spanish word swaps in replies.'
 
 
 def exposure():
@@ -397,44 +398,57 @@ STALE_EXPORT_DAYS = 7
 
 
 def export_notice(state, now=None):
-    """At most one nudge per prompt, each given once. A chat line naming a level (`sw.py export --chat`) changes only
-    with its level or stage, so it gets one nudge per change; a pasted word list (claude.ai, ChatGPT, chat exact) gets
-    one once it is over a week behind the word state. Each target has its own record (export.mark_exported), so one
-    export doesn't silence another's reminder."""
+    """At most one nudge per prompt, each given once. The claude.ai settings field holds one form at a time (block,
+    chat line or exact line: the latest export replaces the others) and ChatGPT has its own (export.export_slot). A
+    chat line changes only with its level or stage, so it gets one nudge per change, judged against the line the
+    learner was last told to use; a pasted word list gets one once it is over a week behind the word state. The
+    claude.ai and ChatGPT blocks exported together (setup does) share one nudge."""
+    import export  # only here: the hook needs it for nothing else
     exports = dict(state.get('exports') or {})
     legacy = state.get('exported') or {}
-    if legacy.get('target') and legacy['target'] not in exports:
-        exports[legacy['target']] = legacy  # recorded before per-target records
+    if legacy.get('target') and export.export_slot(legacy['target']) not in exports:
+        exports[export.export_slot(legacy['target'])] = legacy  # recorded before per-place records
 
-    def noticed(target, key, value):
+    def noticed(slots, key, value):
         with swlib.editing() as fresh:
-            fresh.setdefault('exports', {}).setdefault(target, dict(exports[target]))[key] = value
+            for slot in slots:
+                fresh.setdefault('exports', {}).setdefault(slot, dict(exports[slot]))[key] = value
 
-    chat = exports.get('chat') or {}
-    if chat.get('level'):
+    page = exports.get('claude.ai') or {}
+    if page.get('target') == 'chat' and page.get('level'):
         import make_blocks  # only here: it reads the word list again, which the hook needs for no one else
-        level, stage = make_blocks.chat_level(state)
-        if [level, stage] not in ([chat['level'], chat.get('stage')], chat.get('noticed_line')):
-            noticed('chat', 'noticed_line', [level, stage])
-            named = f'level {level}, Stage {stage}' if stage else f'level {level}'
-            return (f'Spanish Weave: your claude.ai level is now {level}{f", at Stage {stage}" if stage else ""}. '
-                    f'Change your Spanish Weave line in claude.ai Settings > "Instructions for Claude" to start '
-                    f'"Spanish Weave {named}." (or run /spanish-weave:export chat).')
+        line = list(make_blocks.chat_level(state))
+        told = page.get('noticed_line') or ([page['noticed_level'], None, False] if page.get('noticed_level') else
+                                            [page['level'], page.get('stage'), bool(page.get('exact'))])
+        if line != told:
+            noticed(['claude.ai'], 'noticed_line', line)
+            level, stage, exact = line
+            start = export.chat_line(level, stage, exact).split('. ')[0]
+            return (f'Spanish Weave: your claude.ai line is now "{start}." Change your Spanish Weave line in claude.ai '
+                    'Settings > "Instructions for Claude" to start with that (or run /spanish-weave:export chat).')
     now = now or time.time()
-    for target, text in (('chat-exact', 'the word list you pasted into claude.ai is over a week behind your words. '
-                                        'Run /spanish-weave:export chat exact to refresh it.'),
-                         ('claude-ai', 'the block you pasted into claude.ai is over a week behind your word list. Run '
-                                       '/spanish-weave:export to refresh it.'),
-                         ('chatgpt', 'the block you pasted into ChatGPT is over a week behind your word list. Run '
-                                     '/spanish-weave:export chatgpt to refresh it.')):
-        record = exports.get(target) or {}
-        if not record.get('at') or record.get('noticed') or record.get('version') == swlib.version(state):
-            continue
-        if now - record['at'] < STALE_EXPORT_DAYS * 86400:
-            continue
-        noticed(target, 'noticed', True)
-        return f'Spanish Weave: {text}'
-    return None
+    stale = [slot for slot in ('claude.ai', 'chatgpt') if (exports.get(slot) or {}).get('target') != 'chat' and
+             (exports.get(slot) or {}).get('at') and not exports[slot].get('noticed') and
+             exports[slot].get('version') != swlib.version(state) and
+             now - exports[slot]['at'] >= STALE_EXPORT_DAYS * 86400]
+    if not stale:
+        return None
+    if stale == ['claude.ai', 'chatgpt'] and exports['claude.ai'].get('target') == 'claude-ai' and \
+            abs(exports['claude.ai']['at'] - exports['chatgpt']['at']) < 600:
+        noticed(stale, 'noticed', True)
+        return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
+                'Run /spanish-weave:export (or export chatgpt) to refresh it.')
+    slot = stale[0]
+    noticed([slot], 'noticed', True)
+    target = exports[slot].get('target')
+    if target == 'chat-exact':
+        return ('Spanish Weave: the word list you pasted into claude.ai is over a week behind your words. Run '
+                '/spanish-weave:export chat exact to refresh it.')
+    if target == 'chatgpt':
+        return ('Spanish Weave: the block you pasted into ChatGPT is over a week behind your word list. Run '
+                '/spanish-weave:export chatgpt to refresh it.')
+    return ('Spanish Weave: the block you pasted into claude.ai is over a week behind your word list. Run '
+            '/spanish-weave:export to refresh it.')
 
 
 def main(argv):
@@ -447,8 +461,14 @@ def main(argv):
             data = {}
         if not isinstance(data, dict):
             data = {}
-        if not interactive(data=data):
+        env = dict(os.environ)
+        off = env.pop('SPANISH_WEAVE_OFF', None) == '1'
+        if not interactive(env=env, data=data):
             return 0  # scripted run: no brief at all
+        if off:  # switched off in a chat someone reads: no brief, but the chat plugin's skill must stand down too
+            print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit',
+                                                     'additionalContext': OFF + '\n' + swlib.HOOK_MARKER}}))
+            return 0
     source = prompt_source(data.get('prompt'))
     reply = typed = None
     if hook:

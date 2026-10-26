@@ -570,7 +570,7 @@ def check(_args):
         print(f'note {", ".join(chat)} (the chat-only plugin) {"is" if len(chat) == 1 else "are"} in Claude Code too. '
               f'Nothing to do: the hook\'s brief carries the line "{swlib.HOOK_MARKER}" (also while paused), which '
               'keeps its skill quiet here, so replies get one word list, not two. If a reply ever shows two, turn it '
-              f'off in Claude Code only: claude plugin disable {chat[0]}')
+              'off in Claude Code only: ' + '; '.join(f'claude plugin disable {key}' for key in chat))
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
     try:
@@ -828,11 +828,11 @@ def export_cmd(args):
     with swlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
         swlib.promote(state)  # today's refill first, so the stored version is the one printed below
-        level, stage = make_blocks.chat_level(state) if args.chat and not args.exact else (None, None)
+        level, stage, exact = make_blocks.chat_level(state) if args.chat and not args.exact else (None, None, False)
         export.mark_exported(state, 'chat-exact' if args.exact else 'chat' if args.chat else
-                             'chatgpt' if args.chatgpt else 'claude-ai', level, stage)
+                             'chatgpt' if args.chatgpt else 'claude-ai', level, stage, exact)
     if args.chat:
-        text = export.chat_exact(state) if args.exact else export.chat_line(level, stage)
+        text = export.chat_exact(state) if args.exact else export.chat_line(level, stage, exact)
         where = ('claude.ai and the Claude apps, with the spanish-weave-chat plugin added (paid plans: Customize > '
                  'Plugins). Paste into Settings > "Instructions for Claude" in place of any older Spanish Weave block '
                  'or line')
@@ -841,7 +841,7 @@ def export_cmd(args):
                   f'\n\n{text}')
         else:
             print(f'{where}: level {level} of {len(make_blocks.level_words(swlib.load_lexicon()))} is the nearest to '
-                  f'your words{f" (with your Stage {stage})" if stage else ""}, and Claude Code tells you when that '
+                  f'your words{f" (with your Stage {stage})" if stage else ""}, and Claude Code tells you when the line '
                   f'changes.\n\n{text}')
         if args.copy and copy_to_clipboard(text):
             print('\n(Also copied to your clipboard, ready to paste.)')

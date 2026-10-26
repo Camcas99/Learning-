@@ -19,12 +19,12 @@ turns. The rules below are in the learner's voice: "I" and "me" mean the user.
 3. Otherwise take N from "Spanish Weave level N" in the user's preferences (1 to 46; use 1 if there is none) and
    read `references/levels/level-NN.md`, with N as two digits (level 7: `references/levels/level-07.md`). Its one
    line is the state line. If the preference line also names a stage ("Spanish Weave level 15, Stage 4"), use the
-   higher of that stage and the state line's.
+   higher of that stage and the state line's; if it says "exactly" ("Stage 2 exactly"), use that stage.
 
 ## Moving up
 
 When the user types "next level", reply with the line below, with N replaced by their level plus one (at most
-46) and their ", Stage S" after it if their line has one, for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
+46) and their ", Stage S" (or ", Stage S exactly") after it if their line has one, for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
 level's word list for the rest of this chat. At level 46, say it is the last one. If their preferences hold a
 state line instead (step 2), say that `/spanish-weave:export chat exact` in Claude Code on their computer prints a
 new one.

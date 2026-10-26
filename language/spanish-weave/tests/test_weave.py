@@ -457,6 +457,10 @@ class Brief(Home):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
+    def test_switched_off_hook_still_tells_the_chat_skill_to_stand_down(self):
+        out = json.loads(self.run_hook({'session_id': 'x'}, SPANISH_WEAVE_OFF='1'))
+        self.assertEqual(out['hookSpecificOutput']['additionalContext'], weave.OFF + '\n' + swlib.HOOK_MARKER)
+
     def test_paused_hook_still_keeps_the_phone_list_current(self):
         state = swlib.load_state()
         state['paused'] = True
@@ -510,8 +514,10 @@ class Brief(Home):
 
     def test_no_spanish_in_scripted_runs(self):
         self.assertIn('Spanish Weave', self.run_hook({}))  # no claude parent here: weave by default
-        self.assertEqual(self.run_hook({}, SPANISH_WEAVE_OFF='1'), '')
+        off = json.loads(self.run_hook({}, SPANISH_WEAVE_OFF='1'))['hookSpecificOutput']['additionalContext']
+        self.assertEqual(off, weave.OFF + '\n' + swlib.HOOK_MARKER)  # no brief; only the chat skill's stand-down line
         self.assertEqual(self.run_hook({}, CLAUDE_CODE_ENTRYPOINT='sdk-py'), '')
+        self.assertEqual(self.run_hook({}, CLAUDE_CODE_ENTRYPOINT='sdk-py', SPANISH_WEAVE_OFF='1'), '')
         self.assertIn('Spanish Weave', self.run_hook({}, CLAUDE_CODE_ENTRYPOINT='sdk-cli', CLAUDE_CODE_SESSION_ATTENDED='0'))
         one_shot = ['claude', '-p', '--model', 'haiku', 'Reply OK']
         remote = ['claude', '--print', '--sdk-url', 'https://example.invalid/v1/code/sessions/x', '--session-id', 'x',
@@ -2673,7 +2679,7 @@ class ChatSkill(Home):
                 for w in order[:upto]:
                     swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
             notice = weave.export_notice(swlib.load_state())
-            self.assertIn(f'your claude.ai level is now {level}.', notice)
+            self.assertIn(f'your claude.ai line is now "Spanish Weave level {level}."', notice)
             self.assertIn('/spanish-weave:export chat', notice)
             self.assertIsNone(weave.export_notice(swlib.load_state()))  # once per level
         # An exact line goes stale like a block, so it gets the weekly nudge.
@@ -2698,7 +2704,7 @@ class ChatSkill(Home):
         lexicon = swlib.load_lexicon()
         for known_top, line in ((0, (1, None)), (150, (6, 3)), (160, (7, None)), (400, (15, 4)), (432, (17, None))):
             state = swlib.new_state(known_top=known_top)
-            self.assertEqual(make_blocks.chat_level(state, lexicon), line, known_top)
+            self.assertEqual(make_blocks.chat_level(state, lexicon), line + (False,), known_top)
             level, stage = line
             self.assertEqual(max(stage or 0, swlib.stage_for(make_blocks.level_state(level, lexicon))),
                              swlib.stage_for(state))  # the skill's "higher of the two" is the learner's own stage
@@ -2712,7 +2718,13 @@ class ChatSkill(Home):
         self.assertIn('(with your Stage 3)', out)
         skill = (SKILL_DIR / 'SKILL.md').read_text(encoding='utf-8')
         self.assertIn('("Spanish Weave level 15, Stage 4"), use the\n   higher of that stage', skill)
-        self.assertIn('and their ", Stage S" after it if their line has one', skill)
+        self.assertIn('and their ", Stage S" (or ", Stage S exactly") after it if their line has one', skill)
+        self.assertIn('if it says "exactly" ("Stage 2 exactly"), use that stage', skill)
+        # A stage pinned below the level's own is named exactly; one pinned above it is named like a higher stage.
+        state = dict(swlib.new_state(known_top=400), stage=2, stage_pinned=True)
+        self.assertEqual(make_blocks.chat_level(state, lexicon), (15, 2, True))
+        self.assertTrue(export.chat_line(15, 2, True).startswith('Spanish Weave level 15, Stage 2 exactly. At the'))
+        self.assertEqual(make_blocks.chat_level(dict(state, stage=4), lexicon), (15, 4, False))
 
     def test_each_export_target_keeps_its_own_reminder(self):
         self.sw('export', '--chat')
@@ -2721,7 +2733,7 @@ class ChatSkill(Home):
         with swlib.editing() as state:
             for w in order[:25]:
                 swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
-        self.assertIn('your claude.ai level is now 2.', weave.export_notice(swlib.load_state()))
+        self.assertIn('your claude.ai line is now "Spanish Weave level 2."', weave.export_notice(swlib.load_state()))
         notice = weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400)  # and the block still ages
         self.assertIn('the block you pasted into ChatGPT is over a week behind', notice)
         self.assertIsNone(weave.export_notice(swlib.load_state(), now=time.time() + 8 * 86400))
@@ -2731,6 +2743,56 @@ class ChatSkill(Home):
         self.assertIn('pasted into claude.ai is over a week behind', weave.export_notice(swlib.load_state()))
         doc = (ROOT / 'commands' / 'export.md').read_text(encoding='utf-8')
         self.assertIn('with `--copy` only on the first of those runs', doc)  # the clipboard holds one thing
+
+    def test_claude_ai_holds_one_form_and_old_records_carry_over(self):
+        order = make_blocks.level_order(swlib.load_lexicon())
+
+        def know(upto):
+            with swlib.editing() as state:
+                for w in order[:upto]:
+                    swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-01')
+        # The exact line replaces the level line in the same settings field: no level nudge for a line they removed.
+        self.sw('export', '--chat')
+        self.sw('export', '--chat', '--exact')
+        know(25)
+        self.assertIsNone(weave.export_notice(swlib.load_state()))
+        # Setup exports both blocks at once: one nudge for the pair, then quiet.
+        self.sw('export')
+        self.sw('export', '--chatgpt')
+        with swlib.editing() as state:
+            swlib.apply_event(state, order[60]['es'], 'known')
+        later = time.time() + 8 * 86400
+        self.assertIn('claude.ai or ChatGPT is over a week behind', weave.export_notice(swlib.load_state(), now=later))
+        self.assertIsNone(weave.export_notice(swlib.load_state(), now=later))
+        # A 0.3.4 chat record survives the first export of another target after the update, and its nudge isn't repeated.
+        with swlib.editing() as state:
+            state.pop('exports')
+            state['exported'] = {'at': time.time(), 'version': 'old', 'target': 'chat', 'level': 1, 'noticed_level': 2}
+        self.sw('export', '--chatgpt')
+        self.assertEqual(sorted(swlib.load_state()['exports']), ['chatgpt', 'claude.ai'])
+        self.assertIsNone(weave.export_notice(swlib.load_state()))  # level 2 was already nudged by 0.3.4
+        know(50)
+        self.assertIn('"Spanish Weave level 3."', weave.export_notice(swlib.load_state()))
+
+    def test_chat_line_nudges_follow_the_stage_down_and_back(self):
+        with swlib.editing() as state:
+            state.clear()
+            state.update(swlib.new_state(known_top=150))
+        self.sw('export', 'chat')
+        self.assertIsNone(weave.export_notice(swlib.load_state()))
+        line = lambda: export.chat_line(*make_blocks.chat_level(swlib.load_state())).split('. ')[0]
+        known = [w for w in swlib.load_state()['words'] if w['status'] == 'known'][:6]
+        with swlib.editing() as state:  # six known words turn shaky: Stage 2, and the line drops its ", Stage 3"
+            for w in known:
+                swlib.set_status(swlib.find(state, w['es']), 'shaky', '2026-01-02')
+        self.assertNotIn('Stage', line())
+        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state()))
+        with swlib.editing() as state:  # known again: told to add it back
+            for w in known:
+                swlib.set_status(swlib.find(state, w['es']), 'known', '2026-01-03')
+        self.assertIn(', Stage 3', line())
+        self.assertIn(f'"{line()}."', weave.export_notice(swlib.load_state()))
+        self.assertIsNone(weave.export_notice(swlib.load_state()))
 
     def test_check_notes_the_chat_plugin_and_changes_nothing(self):
         def check():
@@ -2749,6 +2811,11 @@ class ChatSkill(Home):
         self.assertIn('turn it off in Claude Code only: claude plugin disable spanish-weave-chat@learning', out)
         self.assertEqual(files(), before)  # read only: setup and check never write Claude Code's settings
         self.assertFalse((self.home / 'claude' / 'settings.json').exists())
+        SetupSafety.claude_file(self, 'installed_plugins.json', {'version': 2, 'plugins': {
+            'spanish-weave-chat@learning': [{'scope': 'user', 'version': main_version()}],
+            'spanish-weave-chat@synced': [{'scope': 'user', 'version': main_version()}]}})
+        self.assertIn('claude plugin disable spanish-weave-chat@learning; claude plugin disable spanish-weave-chat@synced',
+                      check())  # every copy, the account-synced one too
 
     def test_marketplace_lists_both_plugins(self):
         market = json.loads((REPO / '.claude-plugin' / 'marketplace.json').read_text(encoding='utf-8'))

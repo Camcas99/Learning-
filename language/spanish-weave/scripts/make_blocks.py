@@ -71,8 +71,8 @@ def level_order(lexicon, path=swlib.LEXICON):
     return [w for level in level_words(lexicon, path) for w in level]
 
 
-def level_state(level, lexicon):
-    levels = level_words(lexicon)
+def level_state(level, lexicon, levels=None):
+    levels = levels or level_words(lexicon)
     known = {swlib.key(w['es']) for chunk in levels[:level - 1] for w in chunk}
     active = {swlib.key(w['es']) for w in levels[level - 1]}
     words = []
@@ -83,13 +83,13 @@ def level_state(level, lexicon):
     return {'stage': 1, 'stage_pinned': False, 'paused': False, 'words': words}
 
 
-def nearest_level(state, lexicon=None):
+def nearest_level(state, lexicon=None, levels=None):
     """The published level closest to a plugin learner's words, for `sw.py export --chat`: the level whose Known words
     (every word of the levels before it) best match the words known in state. Calling a word Known that isn't counts
     twice as much as leaving out one that is, since a word used freely without a gloss costs more than a gloss
     someone didn't need; ties go to the lower level. So a level counts as passed once more than two thirds of its
     words are known, and one shaky word from an early level doesn't hold anyone back."""
-    levels = level_words(lexicon or swlib.load_lexicon())
+    levels = levels or level_words(lexicon or swlib.load_lexicon())
     known = {swlib.key(w['es']) for w in state['words'] if w['status'] == 'known'}
     cost = sum(swlib.key(w['es']) in known for level in levels for w in level)  # level 1: every known word left out
     best, lowest = 1, cost
@@ -101,13 +101,19 @@ def nearest_level(state, lexicon=None):
 
 
 def chat_level(state, lexicon=None):
-    """(level, stage) for the chat line: nearest_level, and the learner's stage when it is above that level's own
-    (None otherwise). The 0.3.3 words fill levels 43 to 46 but sit among the first words in a learner's list, so just
-    past 40, 150 or 400 known words the nearest level can be a stage behind the learner."""
+    """(level, stage, exact) for the chat line: nearest_level, and the learner's stage when the level's own differs:
+    named when it is higher (the skill uses the higher of the two), and named exact when /spanish-weave:stage pinned it
+    lower. Otherwise (level, None, False). The 0.3.3 words fill levels 43 to 46 but sit among the first words in a
+    learner's list, so just past 40, 150 or 400 known words the nearest level can be a stage behind the learner."""
     lexicon = lexicon or swlib.load_lexicon()
-    level = nearest_level(state, lexicon)
-    stage = swlib.stage_for(state)
-    return level, (stage if stage > swlib.stage_for(level_state(level, lexicon)) else None)
+    levels = level_words(lexicon)
+    level = nearest_level(state, lexicon, levels)
+    mine, its = swlib.stage_for(state), swlib.stage_for(level_state(level, lexicon, levels))
+    if mine > its:
+        return level, mine, False
+    if mine < its and state.get('stage_pinned'):
+        return level, mine, True
+    return level, None, False
 
 
 def block(level, levels, lexicon):
@@ -176,12 +182,12 @@ turns. The rules below are in the learner's voice: "I" and "me" mean the user.
 3. Otherwise take N from "Spanish Weave level N" in the user's preferences (1 to {levels}; use 1 if there is none) and
    read `references/levels/level-NN.md`, with N as two digits (level 7: `references/levels/level-07.md`). Its one
    line is the state line. If the preference line also names a stage ("Spanish Weave level 15, Stage 4"), use the
-   higher of that stage and the state line's.
+   higher of that stage and the state line's; if it says "exactly" ("Stage 2 exactly"), use that stage.
 
 ## Moving up
 
 When the user types "next level", reply with the line below, with N replaced by their level plus one (at most
-{levels}) and their ", Stage S" after it if their line has one, for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
+{levels}) and their ", Stage S" (or ", Stage S exactly") after it if their line has one, for them to paste over their Spanish Weave line in Settings > "Instructions for Claude", and use that
 level's word list for the rest of this chat. At level {levels}, say it is the last one. If their preferences hold a
 state line instead (step 2), say that `/spanish-weave:export chat exact` in Claude Code on their computer prints a
 new one.
