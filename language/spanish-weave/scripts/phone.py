@@ -61,7 +61,12 @@ _IOPOL_MATERIALIZE_OFF = 1
 
 
 class Unavailable(Exception):
-    """Phone sync can't run on this machine; str(error) is a one-line reason for status and setup."""
+    """Phone sync can't run on this machine; str(error) is a one-line reason for status and setup. retry: whether a
+    later run may succeed (iCloud Drive turned on, access allowed); never off a Mac."""
+
+    def __init__(self, message, retry=True):
+        super().__init__(message)
+        self.retry = retry
 
 
 class NotReady(Exception):
@@ -147,7 +152,7 @@ def shortcuts_folder(environ=None):
             raise Unavailable(f'SPANISH_WEAVE_PHONE_DIR {root} does not exist') from None
         return root
     if sys.platform != 'darwin':
-        raise Unavailable('iPhone sync needs a Mac with iCloud Drive')
+        raise Unavailable('iPhone sync needs a Mac with iCloud Drive', retry=False)
     mobile = Path.home() / 'Library' / 'Mobile Documents'
     root = mobile / CONTAINER / 'Documents'
     with no_downloads():
@@ -459,11 +464,11 @@ def enable(state, on=True):
 
 def _answer(record, snaps):
     """A phone record as an apply_events event, or None: only a quiz result for a word one of the Mac's recent
-    snapshots offered (the "snap" stamp names which). The event carries the snapshot's day as "since", so an answer
-    counts only if the word has no answer from that day on: each list's offer is used once, and a list from yesterday
-    can't add a second answer for a word the Mac already quizzed. A day the Mac can't use (before that snapshot's day,
-    as a phone in an earlier time zone may write, or not a Gregorian date within OLDEST days, as a phone set to
-    another calendar may write) becomes this Mac's today."""
+    snapshots offered (the "snap" stamp names which). The event is due_only, so it counts only if the word was due on
+    its day and has no answer from that day on (swlib.quiz_event): a list from yesterday can't add a second answer for
+    a word the Mac quizzed since. A day the Mac can't use (missing, before that snapshot's day as a phone in an
+    earlier time zone may write, or not a Gregorian date within OLDEST days as a phone set to another calendar may
+    write) becomes this Mac's today."""
     if record.get('kind') != 'quiz' or record.get('result') not in ('right', 'wrong'):
         return None
     word, snap, day = record.get('word'), record.get('snap'), record.get('day')
@@ -471,9 +476,10 @@ def _answer(record, snaps):
     words, since = (offered.get('words') or (), offered.get('day')) if isinstance(offered, dict) else (offered or (), None)
     if not isinstance(word, str) or word not in words:
         return None
-    if not swlib.event_day(day, swlib.today()) or (isinstance(since, str) and day < since):
+    usable = swlib.event_day(day, swlib.today())
+    if not usable or (isinstance(since, str) and usable < since):
         day = None
-    return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'since': since}
+    return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'due_only': True}
 
 
 def _read_inbox(state, inbox, phone, report, now):

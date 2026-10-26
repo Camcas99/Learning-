@@ -560,9 +560,10 @@ def apply_events(state, events, kinds=('seen', 'flip', 'peek'), today_=None):
     """Applies untrusted events, {word, kind, day?, result?, article?}, after checking each: a kind from kinds, a word of
     at most MAX_WORD characters, a real day within OLDEST days, at most MAX_EVENTS of them, oldest day first. A quiz event
     (the phone's quiz) needs result right or wrong and is recorded as the Mac's quiz records an answer, unless the word
-    already has an answer from that day or later (the newest answer counts, and a late phone file never undoes one), or,
-    when the event says "since" (the day the phone's list was made), from that day on (each list's offer is used once).
-    Returns (applied, skipped)."""
+    already has an answer from that day or later (the newest answer counts, and a late phone file never undoes one). A
+    quiz event with due_only (the phone's) also needs the word to be due on its day, as it stands after the earlier
+    events of the batch: a list the phone kept from an earlier day can't add an early review, a late file can't count a
+    word twice, and back-dated lines can't pump a word. Returns (applied, skipped)."""
     today_ = today_ or today()
     valid = []
     for event in (events if isinstance(events, list) else [])[:MAX_EVENTS]:
@@ -590,9 +591,9 @@ def quiz_event(state, word, event, day):
     w = find(state, word)
     if result not in ('right', 'wrong') or w is None or w['status'] == 'queue':
         return False
-    since = event.get('since')
-    floor = since if isinstance(since, str) and DAY.fullmatch(since) and since <= day else day
-    if any(d >= floor for d, *_ in w.get('reviews') or []):
+    if any(d >= day for d, *_ in w.get('reviews') or []):
+        return False
+    if event.get('due_only') and (due_date(w) or '9999') > day:
         return False
     article = article if isinstance(article, str) and key(article) in GENDER_OF else None
     hold = bool(result == 'right' and gender_slip(w['es'], article))

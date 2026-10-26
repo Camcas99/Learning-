@@ -2329,13 +2329,57 @@ class PhoneSync(Home):
             swlib.review(state, 'pero', True, day=yesterday)
         self.answer('iphone-20261025-110000-1000.jsonl', [self.quiz_line('pero', snap=made),
                                                           self.quiz_line('y', snap=made)])
-        self.assertEqual(self.sync()['answers'], 1)  # only y: pero was already answered from that list's day on
+        self.assertEqual(self.sync()['answers'], 1)  # only y: pero isn't due again until 3 days after that answer
         self.assertEqual(len(swlib.find(swlib.load_state(), 'pero')['reviews']), 1)
-        # One file can't pump a word: days before the list's day are ignored, and the list's offer is used once.
+        # One file can't pump a word: days before the list's day count as today, and a word counts only when due.
         days = [(dt.date.fromisoformat(today) - dt.timedelta(days=i)).isoformat() for i in range(60, -1, -1)]
         self.answer('pump-20261025-120000-2000.jsonl', [self.quiz_line('entonces', day=d) for d in days])
         self.assertEqual(self.sync()['answers'], 1)
         self.assertEqual(swlib.find(swlib.load_state(), 'entonces')['box'], 1)
+
+    def offer(self, word, day):
+        """A snapshot the Mac made on day offering word; returns its stamp."""
+        made = f'{day}T08:00:00Z'
+        with swlib.editing() as state:
+            phone.settings(state).setdefault('snaps', {})[made] = {'day': day, 'words': [word]}
+        return made
+
+    def test_a_phone_answer_counts_only_on_a_day_the_word_was_due(self):
+        self.sync()
+        today = swlib.today()
+        day = lambda n: (dt.date.fromisoformat(today) + dt.timedelta(days=n)).isoformat()
+        # A late file: answered pero yesterday, and again today from today's list written before that file arrived.
+        old, new = self.offer('pero', day(-1)), self.snapshot()['made']
+        self.answer('late-20261025-200000-1000.jsonl', [self.quiz_line('pero', day=day(-1), snap=old)])
+        os.utime(self.folder / 'inbox' / 'late-20261025-200000-1000.jsonl', (1, 1))
+        self.answer('iphone-20261026-080000-1001.jsonl', [self.quiz_line('pero', snap=new)])
+        self.assertEqual(self.sync()['answers'], 1)
+        self.assertEqual([r[0] for r in swlib.find(swlib.load_state(), 'pero')['reviews']], [day(-1)])
+        # Due again: con answered wrong on the Mac yesterday is due today, so the phone's answer from yesterday's list counts.
+        with swlib.editing() as state:
+            swlib.review(state, 'con', False, day=day(-1))
+        self.answer('iphone-20261026-090000-1002.jsonl', [self.quiz_line('con', snap=self.offer('con', day(-1)))])
+        self.assertEqual(self.sync()['answers'], 1)
+        # Back-dated lines across 14 kept lists count only on the days the word was due: 3 of them, not 14.
+        lines = [self.quiz_line('entonces', day=day(n), snap=self.offer('entonces', day(n))) for n in range(-13, 1)]
+        self.answer('pump-20261026-100000-1003.jsonl', lines)
+        self.assertEqual(self.sync()['answers'], 3)
+        self.assertEqual(swlib.find(swlib.load_state(), 'entonces')['box'], 3)
+        # Missing or null days count as today and don't sink the file's other lines.
+        made = self.snapshot()['made']
+        no_day = {'word': 'sin', 'kind': 'quiz', 'result': 'right', 'snap': made}
+        self.answer('iphone-20261026-110000-1004.jsonl', [json.dumps(no_day), json.dumps(dict(no_day, word='y', day=None))])
+        report = self.sync()
+        self.assertEqual((report['answers'], report['skipped_files']), (2, 0))
+
+    def test_phone_on_off_a_mac_stays_off(self):
+        with swlib.editing() as state:
+            phone.enable(state, False)
+        with mock.patch.dict(os.environ, {'SPANISH_WEAVE_PHONE_DIR': ''}), mock.patch.object(phone.sys, 'platform', 'linux'), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            sw.main(['phone', 'on'])
+        self.assertEqual(str(caught.exception), 'iPhone sync: iPhone sync needs a Mac with iCloud Drive')
+        self.assertFalse(phone.settings(swlib.load_state())['on'])
 
     def test_a_day_the_mac_cant_use_counts_as_today(self):
         self.sync()

@@ -964,9 +964,12 @@ def phone_cmd(args):
         except (phone.Unavailable, phone.NotReady, phone.TooBig, OSError) as error:
             failed = error  # leave the block normally, so "on" and the problem are saved, then exit
             phone.settings(state)['problem'] = str(error)[:300]
+            if action == 'on' and not getattr(error, 'retry', True):
+                phone.enable(state, False)  # it can never work here (not a Mac): nothing to retry
     if failed is not None:
+        retrying = action == 'on' and getattr(failed, 'retry', True)
         sys.exit(f'iPhone sync: {failed}' + ('\nIt stays on and tries again in the background; '
-                                            '/spanish-weave:phone sync tries now.' if action == 'on' else ''))
+                                            '/spanish-weave:phone sync tries now.' if retrying else ''))
     print(f'iPhone sync is on. Synced: {report["answers"]} answers from the phone recorded'
           + (f', {report["ignored"]} lines ignored' if report['ignored'] else '')
           + (f', {plural(report["waiting"], "answer file")} still downloading from iCloud' if report['waiting'] else '')
