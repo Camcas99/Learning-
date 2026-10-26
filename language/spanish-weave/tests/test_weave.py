@@ -457,6 +457,22 @@ class Brief(Home):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
+    def test_paused_hook_still_keeps_the_phone_list_current(self):
+        state = swlib.load_state()
+        state['paused'] = True
+        swlib.save_state(state)
+
+        def hook():
+            with mock.patch.object(weave, 'exposure') as exposure, mock.patch.object(weave, 'interactive', return_value=True), \
+                    mock.patch('sys.stdin', io.StringIO('{"session_id": "x"}')), mock.patch('sys.stdout', new=io.StringIO()) as out:
+                self.assertEqual(weave.main(['--hook']), 0)
+            return exposure.call_count, json.loads(out.getvalue())['hookSpecificOutput']['additionalContext']
+
+        self.assertEqual(hook(), (0, weave.PAUSED + '\n' + swlib.HOOK_MARKER))  # phone sync off: no background job
+        with swlib.editing() as state:
+            phone.enable(state)
+        self.assertEqual(hook()[0], 1)  # its background refresh syncs the phone, so the list doesn't go stale
+
     def test_hook_output_and_pause(self):
         out = json.loads(self.run_hook({'session_id': 'x', 'transcript_path': str(self.home / 'missing.jsonl')}))
         context = out['hookSpecificOutput']['additionalContext']
@@ -466,7 +482,8 @@ class Brief(Home):
         self.assertLess(len(context), 3000)
         with mock.patch('sys.stdout', new=io.StringIO()) as out:
             sw.main(['pause'])
-        self.assertEqual(self.run_hook({'session_id': 'x'}), '')
+        paused = json.loads(self.run_hook({'session_id': 'x'}))['hookSpecificOutput']['additionalContext']
+        self.assertEqual(paused, weave.PAUSED + '\n' + swlib.HOOK_MARKER)  # no brief, but the chat skill stays quiet too
         # The extension has no push from the plugin: say when Chrome follows.
         self.assertIn('stops sending new page text to Gemini within 2 minutes', out.getvalue())
         with mock.patch('sys.stdout', new=io.StringIO()) as out:
@@ -2245,6 +2262,114 @@ class PhoneSync(Home):
         self.assertIn('iPhone sync: on, last synced', text)
         self.assertIn('iPhone sync is off.', text)
         self.assertTrue((self.folder / 'snapshot.json').exists())
+
+    def quiz_line(self, word, result='right', day=None, snap=None):
+        return json.dumps({'word': word, 'kind': 'quiz', 'result': result, 'day': day or swlib.today(),
+                           'snap': snap or self.snapshot()['made']})
+
+    def test_a_line_that_crashes_json_or_a_check_sets_only_its_file_aside(self):
+        self.sync()
+        self.answer('evil-20261025-070000-2222.jsonl', ['[' * 1500])  # RecursionError in json on Python 3.9
+        self.answer('iphone-20261025-080000-1234.jsonl', [self.quiz_line('pero')])
+        report = self.sync()
+        self.assertEqual((report['answers'], report['ignored']), (1, 1))
+        with mock.patch.object(phone.json, 'loads', side_effect=RecursionError):
+            self.assertEqual(phone.new_records(b'{"word": "y"}\n'), ([], 14, 1))
+        real, calls = swlib.apply_events, []
+
+        def flaky(state, events, **kinds):
+            calls.append(len(events))
+            if len(calls) == 1:
+                raise RuntimeError('a bug')
+            return real(state, events, **kinds)
+        self.answer('odd-20261025-090000-1111.jsonl', [self.quiz_line('y')])
+        self.answer('iphone-20261025-090500-5555.jsonl', [self.quiz_line('con')])
+        os.utime(self.folder / 'inbox' / 'odd-20261025-090000-1111.jsonl', (1, 1))  # oldest: read first
+        with mock.patch.object(phone.swlib, 'apply_events', side_effect=flaky):
+            report = self.sync()
+            self.assertEqual((report['answers'], report['skipped_files']), (1, 1))  # the file after it still counts
+            self.assertEqual(self.sync()['answers'], 0)  # and the set-aside file isn't tried again until it changes
+        self.assertEqual(len(calls), 2)
+        with mock.patch.object(phone, 'sync', side_effect=RuntimeError('a bug')):
+            phone.background_sync()
+        self.assertIn('unexpected RuntimeError', phone.settings(swlib.load_state())['problem'])
+
+    def test_files_already_read_do_not_use_up_the_files_read_per_run(self):
+        self.sync()
+        old = time.time() - 20 * 86400
+        for i in range(phone.MAX_INBOX_FILES + 5):
+            self.answer(f'old-{i:03d}.jsonl', ['{"kind": "note"}'])
+            os.utime(self.folder / 'inbox' / f'old-{i:03d}.jsonl', (old + i, old + i))
+        self.assertEqual(self.sync()['later'], 5)
+        self.assertEqual(self.sync()['later'], 0)
+        self.answer('iphone-20261025-100000-7777.jsonl', [self.quiz_line('pero')])
+        self.assertEqual(self.sync()['answers'], 1)
+
+    def test_a_missing_snapshot_is_written_again(self):
+        self.sync()
+        (self.folder / 'snapshot.json').unlink()
+        self.assertTrue(self.sync()['written'])
+        self.assertTrue((self.folder / 'snapshot.json').exists())
+        with swlib.editing() as state:  # off, the folder deleted as the off message suggests, then on again
+            phone.enable(state, False)
+        shutil.rmtree(self.folder)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.main(['phone', 'on'])
+        self.assertIn('written for the phone', out.getvalue())
+        self.assertTrue((self.folder / 'snapshot.json').exists())
+
+    def test_a_list_counts_once_and_never_after_the_mac_answered(self):
+        self.sync()
+        made, today = self.snapshot()['made'], swlib.today()
+        yesterday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
+        with swlib.editing() as state:  # the list was made yesterday, and the Mac quizzed pero after that, yesterday
+            phone.settings(state)['snaps'][made]['day'] = yesterday
+            swlib.review(state, 'pero', True, day=yesterday)
+        self.answer('iphone-20261025-110000-1000.jsonl', [self.quiz_line('pero', snap=made),
+                                                          self.quiz_line('y', snap=made)])
+        self.assertEqual(self.sync()['answers'], 1)  # only y: pero was already answered from that list's day on
+        self.assertEqual(len(swlib.find(swlib.load_state(), 'pero')['reviews']), 1)
+        # One file can't pump a word: days before the list's day are ignored, and the list's offer is used once.
+        days = [(dt.date.fromisoformat(today) - dt.timedelta(days=i)).isoformat() for i in range(60, -1, -1)]
+        self.answer('pump-20261025-120000-2000.jsonl', [self.quiz_line('entonces', day=d) for d in days])
+        self.assertEqual(self.sync()['answers'], 1)
+        self.assertEqual(swlib.find(swlib.load_state(), 'entonces')['box'], 1)
+
+    def test_labels_that_start_with_a_dash_and_permission_errors(self):
+        self.sync()
+        self.answer('-ngela-20261026-080000-1234.jsonl', [self.quiz_line('pero')])  # the Shortcut's Ángela
+        self.assertEqual(self.sync()['answers'], 1)
+        import errno
+        real = os.scandir
+        for code, says in ((errno.EPERM, 'phone sync'), (errno.EACCES, 'Get Info')):
+            def scandir(path, code=code):  # only the inbox is blocked, as macOS privacy would block a listing
+                if Path(path).name == 'inbox':
+                    raise PermissionError(code, 'denied')
+                return real(path)
+            with mock.patch.object(phone.os, 'scandir', side_effect=scandir):
+                with self.assertRaises(phone.Unavailable) as caught:
+                    self.sync()
+            self.assertIn(says, str(caught.exception))
+        self.assertIn(f'python3 "{ROOT / "scripts" / "sw.py"}" phone sync', str(phone._denied(self.folder, PermissionError(
+            errno.EPERM, 'denied'))))
+
+    def test_status_shows_local_times_the_last_answers_and_skipped_files(self):
+        self.sync()
+        self.answer('iphone-20261025-130000-3000.jsonl', [self.quiz_line('pero')])
+        (self.folder / 'inbox' / 'notes.txt').write_text('hi')
+        self.sync()
+        self.sync()  # a quiet sync after it
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sw.main(['phone', 'status'])
+        text = out.getvalue()
+        self.assertIn('last synced today at ', text)
+        self.assertIn('last answers from the phone: 1, today at ', text)
+        self.assertIn('1 file in the inbox skipped', text)
+        self.assertNotRegex(text, r'\d{4}-\d\d-\d\dT')
+        moment = dt.datetime(2026, 10, 20, 23, 44, 58, tzinfo=dt.timezone.utc).astimezone()
+        self.assertEqual(sw.local_time('2026-10-20T23:44:58Z', today_=moment.date() + dt.timedelta(days=3)),
+                         f'{moment:%b} {moment.day} at {moment.strftime("%I:%M %p").lstrip("0")}')
+        self.assertEqual(sw.local_time('garbled'), 'garbled')
 
 
 CHAT = ROOT.parent / 'spanish-weave-chat'

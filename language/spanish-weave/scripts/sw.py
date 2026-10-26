@@ -53,6 +53,7 @@
                                                      what is left
 """
 import argparse
+import datetime as dt
 import errno
 import json
 import os
@@ -891,6 +892,22 @@ def refresh(_args):
     phone.background_sync()  # when iPhone sync is on; never raises
 
 
+def local_time(stamp, today_=None):
+    """A UTC stamp (2026-10-25T23:44:58Z) in this Mac's time: 'today at 4:44 PM', 'yesterday at 9:05 AM' or
+    'Oct 23 at 4:44 PM'. The stamp as it is when it doesn't parse."""
+    try:
+        moment = dt.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=dt.timezone.utc).astimezone()
+    except (TypeError, ValueError):
+        return str(stamp)
+    ago = ((today_ or dt.date.today()) - moment.date()).days
+    day = 'today' if ago == 0 else 'yesterday' if ago == 1 else f'{moment:%b} {moment.day}'
+    return f'{day} at {moment.strftime("%I:%M %p").lstrip("0")}'
+
+
+def plural(n, word):
+    return f'{n} {word}{"" if n == 1 else "s"}'
+
+
 def phone_line(state):
     """One status line on iPhone sync, or None when it was never turned on."""
     settings = phone.settings(state)
@@ -900,11 +917,18 @@ def phone_line(state):
         return 'iPhone sync: off (/spanish-weave:phone on)'
     if settings.get('problem'):
         return f'iPhone sync: on, but the last try failed: {settings["problem"]}'
-    last = settings.get('last') or {}
-    when = settings.get('synced', 'not yet')
-    extra = f', {last.get("waiting")} answer file{"s" if last.get("waiting") != 1 else ""} still downloading' \
-        if last.get('waiting') else ''
-    return f'iPhone sync: on, last synced {when}, {last.get("answers", 0)} answers from the phone that time{extra}'
+    last, got = settings.get('last') or {}, settings.get('got') or {}
+    parts = [f'last synced {local_time(settings["synced"])}' if settings.get('synced') else 'not synced yet',
+             f'last answers from the phone: {got.get("answers")}, {local_time(got.get("at"))}' if got.get('answers')
+             else 'no answers from the phone yet']
+    if last.get('waiting'):
+        parts.append(f'{plural(last["waiting"], "answer file")} still downloading from iCloud')
+    if last.get('later'):
+        parts.append(f'{plural(last["later"], "answer file")} left for the next sync')
+    if last.get('skipped_files'):
+        parts.append(f'{plural(last["skipped_files"], "file")} in the inbox skipped (an unexpected name, too large or '
+                     'unreadable)')
+    return 'iPhone sync: on, ' + '; '.join(parts)
 
 
 def phone_cmd(args):
@@ -939,7 +963,9 @@ def phone_cmd(args):
             sys.exit(f'iPhone sync: {error}')
     print(f'iPhone sync is on. Synced: {report["answers"]} answers from the phone recorded'
           + (f', {report["ignored"]} lines ignored' if report['ignored'] else '')
-          + (f', {report["waiting"]} answer files still downloading from iCloud' if report['waiting'] else '')
+          + (f', {plural(report["waiting"], "answer file")} still downloading from iCloud' if report['waiting'] else '')
+          + (f', {plural(report["later"], "answer file")} left for the next sync' if report['later'] else '')
+          + (f', {plural(report["skipped_files"], "inbox file")} skipped' if report['skipped_files'] else '')
           + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today '
           + ('written for the phone.' if report['written'] else '(the phone already has this list).'))
     for warning in report['warnings']:

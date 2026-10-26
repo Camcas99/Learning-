@@ -60,6 +60,9 @@ GUARDS = [
 ]
 
 
+PAUSED = 'Spanish Weave is paused (/spanish-weave:resume turns it back on): no Spanish word swaps in replies.'
+
+
 def exposure():
     """Per-word chat exposure; starts a background refresh when the index is stale or missing."""
     path = swlib.home() / 'exposure.json'
@@ -450,6 +453,11 @@ def main(argv):
         print(f'Spanish Weave: skipped, {reason}; /spanish-weave:status says how to fix it', file=sys.stderr)
         return 0
     if state.get('paused'):
+        if ((state.get('prefs') or {}).get('phone') or {}).get('on'):
+            exposure()  # its background refresh also keeps the iPhone's quiz list current while paused
+        if hook:  # the chat plugin's skill, if it loaded here too, must stand down as well
+            print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit',
+                                                     'additionalContext': PAUSED + '\n' + swlib.HOOK_MARKER}}))
         return 0
     if hook and not typed and session(data.get('session_id')).get('typed'):
         typed = True

@@ -43,13 +43,15 @@ ITEMS = 10              # quiz items per snapshot, as many as /spanish-weave:qui
 SNAPS_KEPT = 14         # recent snapshots whose words a phone answer may name
 MAX_SNAPSHOT = 512 * 1024
 MAX_INBOX_FILE = 256 * 1024
-MAX_INBOX_FILES = 50    # read per run; the rest wait for the next one
+MAX_INBOX_FILES = 50    # files read per run (files already read don't count); the rest wait for the next one
 MAX_LINE = 2048
+MAX_NESTING = 8         # [ and { in one line; an answer line has one, and deep nesting can crash json on Python 3.9
 KEEP_DAYS = 30          # a fully read inbox file is deleted this long after it was last changed
 TEMP_PREFIX, TEMP_SUFFIX = '.snapshot-', '.tmp'          # hidden, and a name iCloud skips
 STALE_TEMP_SECONDS = 3600
-# <label>-<stamp>-<rand>.jsonl, plus the " 2" iCloud adds on a new-file name clash.
-INBOX_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}(?: [0-9]{1,3})?\.jsonl\Z')
+# <label>-<stamp>-<rand>.jsonl, plus the " 2" iCloud adds on a new-file name clash. The label may start with "-" (the
+# Shortcut turns a leading Á or other non-ASCII letter into one).
+INBOX_NAME = re.compile(r'[A-Za-z0-9_-]{1,101}(?: [0-9]{1,3})?\.jsonl\Z')
 NOT_READY = frozenset({errno.EDEADLK, errno.ETIMEDOUT, errno.EAGAIN})
 
 # <sys/resource.h>
@@ -68,6 +70,16 @@ class NotReady(Exception):
 
 class TooBig(Exception):
     pass
+
+
+def _denied(path, error):
+    """Unavailable saying what to do when permissions block path: EACCES is the folder's own permissions; EPERM is
+    macOS privacy (Privacy & Security) or a sandbox such as Claude Code's, which a Terminal run asks about once."""
+    if error.errno == errno.EACCES:
+        return Unavailable(f'no permission to use {path}: check that it belongs to you (Finder > Get Info)')
+    script = Path(__file__).resolve().with_name('sw.py')
+    return Unavailable(f'macOS privacy settings or a sandbox blocked {path}. Run this once in Terminal and allow '
+                       f'access to iCloud Drive: python3 "{script}" phone sync')
 
 
 # ---- the iCloud folder ----
@@ -146,9 +158,8 @@ def shortcuts_folder(environ=None):
                 raise Unavailable('iCloud Drive is off on this Mac (System Settings > Apple Account > iCloud)') from None
             raise Unavailable('iCloud Drive has no Shortcuts folder yet: open the Shortcuts app on the iPhone once, '
                               'then try again') from None
-        except PermissionError:
-            raise Unavailable('macOS did not let this app open iCloud Drive (Privacy & Security); run '
-                              '"sw.py phone sync" once in Terminal and allow access') from None
+        except PermissionError as error:
+            raise _denied(root, error) from None
         except OSError as error:
             if error.errno in NOT_READY:
                 raise NotReady('the Shortcuts folder is still downloading from iCloud') from None
@@ -170,7 +181,9 @@ def ensure_folders(root):
             except OSError as error:
                 if error.errno in NOT_READY:
                     raise NotReady(f'{path.name} is still downloading from iCloud') from None
-                if error.errno in (errno.EPERM, errno.EACCES, errno.EROFS):
+                if error.errno in (errno.EPERM, errno.EACCES):
+                    raise _denied(path, error) from None
+                if error.errno == errno.EROFS:
                     raise Unavailable(f'cannot create {path} ({error.strerror})') from None
                 raise
             _check_dir(path, path.name)
@@ -193,7 +206,10 @@ def write_snapshot(folder, body):
             st = os.lstat(target)
             if not stat.S_ISREG(st.st_mode):
                 raise Unavailable(f'{target} is not a regular file; remove it')
-        fd, temporary = tempfile.mkstemp(prefix=TEMP_PREFIX, suffix=TEMP_SUFFIX, dir=folder)  # 0600, O_EXCL
+        try:
+            fd, temporary = tempfile.mkstemp(prefix=TEMP_PREFIX, suffix=TEMP_SUFFIX, dir=folder)  # 0600, O_EXCL
+        except PermissionError as error:
+            raise _denied(folder, error) from None
         try:
             with os.fdopen(fd, 'wb') as file:
                 file.write(body)
@@ -238,9 +254,10 @@ def remove_stale_temps(folder, now=None):
                         os.unlink(entry.path)
 
 
-def list_inbox(inbox, limit=MAX_INBOX_FILES):
-    """(ready, waiting, skipped): ready is [(name, stat)] of downloaded inbox files, oldest first, at most limit;
-    waiting is names still only in iCloud; skipped is [(name, reason)]. Never downloads anything."""
+def list_inbox(inbox, limit=None):
+    """(ready, waiting, skipped): ready is [(name, stat)] of downloaded inbox files, oldest first, at most limit (all
+    by default: the caller limits how many it reads); waiting is names still only in iCloud; skipped is
+    [(name, reason)]. Never downloads anything."""
     ready, waiting, skipped = [], [], []
     uid = os.getuid() if hasattr(os, 'getuid') else None
     with no_downloads():
@@ -249,6 +266,8 @@ def list_inbox(inbox, limit=MAX_INBOX_FILES):
         except OSError as error:
             if error.errno in NOT_READY:
                 return [], [INBOX + '/'], []
+            if isinstance(error, PermissionError):
+                raise _denied(inbox, error) from None
             raise
         for entry in entries:
             name = entry.name
@@ -275,7 +294,7 @@ def list_inbox(inbox, limit=MAX_INBOX_FILES):
             else:
                 ready.append((name, st))
     ready.sort(key=lambda item: (item[1].st_mtime_ns, item[0]))
-    return ready[:limit], waiting, skipped
+    return (ready if limit is None else ready[:limit]), waiting, skipped
 
 
 def read_file(folder, name, max_bytes):
@@ -329,13 +348,13 @@ def new_records(data, start=0, final_line_ok=False, max_records=swlib.MAX_EVENTS
         raw, pos = data[pos:line_end].strip(), line_end
         if not raw:
             continue
-        if len(raw) > MAX_LINE:
+        if len(raw) > MAX_LINE or raw.count(b'[') + raw.count(b'{') > MAX_NESTING:
             bad += 1
             continue
         try:
             text = raw.decode('utf-8').translate({0x201C: '"', 0x201D: '"', 0x2018: "'", 0x2019: "'"})
             item = json.loads(text)
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             bad += 1
             continue
         if isinstance(item, dict):
@@ -429,19 +448,26 @@ def enable(state, on=True):
     phone = dict(prefs.get('phone') or {})
     phone['on'] = on
     phone.setdefault('writer', secrets.token_hex(6))
+    phone.pop('sha256', None)  # turning it back on always writes snapshot.json, even if its folder was deleted
     prefs['phone'] = phone
     return phone
 
 
 def _answer(record, snaps):
     """A phone record as an apply_events event, or None: only a quiz result for a word one of the Mac's recent
-    snapshots offered (the "snap" stamp names which)."""
+    snapshots offered (the "snap" stamp names which), dated no earlier than that snapshot's day. The event carries the
+    snapshot's day as "since", so an answer counts only if the word has no answer from that day on: each list's offer
+    is used once, and a list from yesterday can't add a second answer for a word the Mac already quizzed."""
     if record.get('kind') != 'quiz' or record.get('result') not in ('right', 'wrong'):
         return None
-    word, snap = record.get('word'), record.get('snap')
-    if not isinstance(word, str) or not isinstance(snap, str) or word not in snaps.get(snap, ()):
+    word, snap, day = record.get('word'), record.get('snap'), record.get('day')
+    offered = snaps.get(snap) if isinstance(snap, str) else None
+    words, since = (offered.get('words') or (), offered.get('day')) if isinstance(offered, dict) else (offered or (), None)
+    if not isinstance(word, str) or word not in words:
         return None
-    return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': record.get('day')}
+    if isinstance(since, str) and isinstance(day, str) and day < since:
+        return None
+    return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'since': since}
 
 
 def _read_inbox(state, inbox, phone, report, now):
@@ -450,15 +476,20 @@ def _read_inbox(state, inbox, phone, report, now):
     ready, waiting, skipped = list_inbox(inbox)
     report['skipped_files'] += len(skipped)
     names = {name for name, _ in ready} | set(waiting)
+    reads = 0
     for name, st in ready:
         entry = ledger.get(name) or {}
         if entry.get('size') == st.st_size and entry.get('mtime_ns') == st.st_mtime_ns and \
-                (entry.get('read') == st.st_size or entry.get('rewritten')):
+                (entry.get('read') == st.st_size or entry.get('rewritten') or entry.get('failed')):
             if entry.get('read') == st.st_size and now - st.st_mtime > KEEP_DAYS * 86400:
                 with no_downloads(), contextlib.suppress(OSError):
                     os.unlink(inbox / name)  # read long ago: tidy the folder (iCloud keeps it in Recently Deleted)
                 ledger.pop(name, None)
             continue
+        if reads >= MAX_INBOX_FILES:
+            report['later'] += 1  # read on a later run
+            continue
+        reads += 1
         try:
             data = read_file(inbox, name, MAX_INBOX_FILE)
         except NotReady:
@@ -473,9 +504,14 @@ def _read_inbox(state, inbox, phone, report, now):
             ledger[name] = dict(entry, size=len(data), mtime_ns=st.st_mtime_ns, rewritten=True)
             report['skipped_files'] += 1
             continue
-        records, end, bad = new_records(data, read, final_line_ok=entry.get('size') == len(data))
-        events = [e for e in (_answer(r, snaps) for r in records) if e]
-        applied, _ = swlib.apply_events(state, events, kinds=('quiz',))
+        try:
+            records, end, bad = new_records(data, read, final_line_ok=entry.get('size') == len(data))
+            events = [e for e in (_answer(r, snaps) for r in records) if e]
+            applied, _ = swlib.apply_events(state, events, kinds=('quiz',))
+        except Exception:  # input no check foresaw: set this file aside until it changes, and read the rest
+            ledger[name] = dict(entry, size=len(data), mtime_ns=st.st_mtime_ns, failed=True)
+            report['skipped_files'] += 1
+            continue
         report['answers'] += applied
         report['ignored'] += len(records) - applied + bad
         ledger[name] = {'size': len(data), 'mtime_ns': st.st_mtime_ns, 'read': end,
@@ -494,7 +530,8 @@ def sync(state, now=None):
     a report dict. Raises Unavailable or NotReady when the folder can't be used right now."""
     now = time.time() if now is None else now
     phone = settings(state)
-    report = {'answers': 0, 'ignored': 0, 'skipped_files': 0, 'waiting': 0, 'written': False, 'warnings': []}
+    report = {'answers': 0, 'ignored': 0, 'skipped_files': 0, 'waiting': 0, 'later': 0, 'written': False,
+              'warnings': []}
     if not phone.get('on'):
         report['off'] = True
         return report
@@ -503,20 +540,35 @@ def sync(state, now=None):
     _read_inbox(state, inbox, phone, report, now)
     payload = snapshot(state)
     digest = hashlib.sha256(encode(payload)).hexdigest()
-    if digest != phone.get('sha256'):
-        made = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    if digest != phone.get('sha256') or not _exists(folder / SNAPSHOT):
+        made = stamp
         write_snapshot(folder, encode(dict(payload, made=made, writer=phone.get('writer', ''))))
         snaps = dict(phone.get('snaps') or {})
-        snaps[made] = [item['es'] for item in payload['items']]
+        snaps[made] = {'day': payload['day'], 'words': [item['es'] for item in payload['items']]}
         phone['snaps'] = dict(sorted(snaps.items())[-SNAPS_KEPT:])
         phone['sha256'] = digest
         report['written'] = True
-    phone['synced'] = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting')}
+    phone['synced'] = stamp
+    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting', 'skipped_files', 'later')}
+    if report['answers']:
+        phone['got'] = {'at': stamp, 'answers': report['answers']}  # status keeps showing it after quiet syncs
     phone.pop('problem', None)
     state.setdefault('prefs', {})['phone'] = phone
     report['due'] = len(payload['items'])
     return report
+
+
+def _exists(path):
+    """False only when path is certainly not there; a dataless or unreadable entry counts as there."""
+    with no_downloads():
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            pass
+    return True
 
 
 def background_sync():
@@ -529,5 +581,8 @@ def background_sync():
                     sync(state)
                 except (Unavailable, NotReady, TooBig, OSError) as error:
                     state.setdefault('prefs', {}).setdefault('phone', {})['problem'] = str(error)[:300]
+                except Exception as error:  # a bug or input no check foresaw: status says so instead of staying quiet
+                    state.setdefault('prefs', {}).setdefault('phone', {})['problem'] = (
+                        f'sync stopped on an unexpected {type(error).__name__}; /spanish-weave:phone sync shows more')
     except Exception:  # a busy or unreadable state: never surface from a background job
         pass
