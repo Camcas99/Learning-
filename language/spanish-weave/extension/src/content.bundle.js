@@ -1174,7 +1174,7 @@ const SLOP_PX = 10; // Chrome on Android sends pointermove while the finger hold
 let lastType = ''; // pointerType of the latest trusted pointer event of any kind
 let lastAt = -Infinity;
 let down = { type: '', span: null, at: -Infinity }; // the latest trusted pointerdown; pointerup refreshes `at`
-const lifted = new WeakMap(); // word -> when a finger last lifted off it, which a later pointerdown elsewhere keeps
+const lifted = new WeakMap(); // word -> when a finger last lifted off it, for an iOS click that lands after the next touch
 let press = null; // { span, id, x, y, timer, fired }: a finger held on a word
 let swallow = null; // { span, until }: a long press flipped this word; its trailing click and menu do nothing
 let tipBy = ''; // how the open gloss was opened: 'hover', 'focus' or 'tap'
@@ -1300,6 +1300,9 @@ function armTip(e) {
 }
 function disarmTip(e) {
   if (touching()) return; // iOS sends the word a mouseout and focusout when the next tap lands elsewhere, the speaker too
+  // A tapped gloss stays until the next press elsewhere, a scroll or a flip: a pen hovering off the word toward the
+  // speaker must not close it.
+  if (tipBy === 'tap') return;
   const span = swapFor(e);
   if (span && !span.contains(e.relatedTarget)) hideTip();
 }
@@ -1535,7 +1538,7 @@ function onPointerEnd(e) { // pointerup, and pointercancel when the browser take
   notePointer(e);
   if (e.type === 'pointerup' && down.span) { // the click comes after the lift
     down.at = clock();
-    if (fingery(down.type)) lifted.set(down.span, down.at);
+    if (fingery(down.type) && e.button === 0) lifted.set(down.span, down.at); // not a pen's barrel button
   }
   if (press && e.pointerId === press.id) cancelPress();
 }
@@ -1545,12 +1548,17 @@ function longPress(span) {
   flip(span);
 }
 // A click from a finger: its own pointerType says so where the click is a PointerEvent (Chrome, Safari 18.2 and later),
-// which holds even when the page is slow or swallowed the pointerdown; otherwise a finger pressed or lifted off this
-// word just before (the latest pointerdown, or its lift kept per word, since the next finger can land before an iOS
-// tap's late click). A click with none of these (a mouse, the keyboard, VoiceOver, TalkBack, switch control, whose
-// pointerType is '' or 'mouse') keeps its old meaning.
-const tapped = (span, e) => (e.isTrusted && fingery(e.pointerType)) || (fingery(down.type) && down.span === span &&
-  clock() - down.at < TOUCH_GRACE_MS) || clock() - (lifted.get(span) ?? -Infinity) < TOUCH_GRACE_MS;
+// which holds even when the page is slow or swallowed the pointerdown; otherwise the latest pointerdown was a finger
+// on this word just before. A plain MouseEvent click (Safari before 18.2, which has no pointerType) also counts when a
+// finger lifted off this word just before, since the next finger can land before an iOS tap's late click. A click
+// with none of these (a mouse, the keyboard, VoiceOver, TalkBack, switch control) keeps its old meaning.
+function tapped(span, e) {
+  if (e.isTrusted && fingery(e.pointerType)) return true;
+  if (fingery(down.type) && down.span === span && clock() - down.at < TOUCH_GRACE_MS) return true;
+  if (e.pointerType !== undefined || clock() - (lifted.get(span) ?? -Infinity) >= TOUCH_GRACE_MS) return false;
+  lifted.delete(span); // one late click per lift
+  return true;
+}
 function onClick(e) {
   if (e.isTrusted && sayBox?.contains(e.target)) { // the speaker in a tapped gloss: sound only, nothing recorded
     e.preventDefault(); e.stopPropagation();

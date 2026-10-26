@@ -388,3 +388,40 @@ test('touch: a finger click is a tap even when the pointerdown record misses it;
     await t.close();
   }
 }, 30000);
+
+test('touch: mouse and assistive-tech clicks right after a finger still flip; a pen reaches the tapped gloss speaker', async () => {
+  const t = await touchPage(() => import('../src/content.js?touch-mixed'));
+  const { win, events, spoken, P, M, fire, y, casa, gloss } = t;
+  try {
+    const tap = (el, init = {}) => fire(el, [P('pointerdown', init), P('pointerup', init), P('click', init)]);
+    // H1: finger taps y, then casa, then a mouse clicks y within the second (Chrome: the click says 'mouse').
+    tap(y);
+    tap(casa);
+    fire(y, [P('click', { pointerType: 'mouse', pointerId: 1 })]);
+    expect([y.textContent, events.at(-1)]).toEqual(['and', 'y:flip']);
+    fire(y, [P('click', { pointerType: 'mouse', pointerId: 1 })]); // and back
+    await wait(1100);
+    // H3: the same with VoiceOver or switch control (pointerType '' and pointerId -1).
+    tap(y);
+    tap(casa);
+    fire(y, [P('click', { pointerType: '', pointerId: -1 })]);
+    expect([y.textContent, events.at(-1)]).toEqual(['and', 'y:flip']);
+    fire(y, [P('click', { pointerType: '', pointerId: -1 })]);
+    await wait(1100);
+
+    // A pen taps y, hovers off it toward the speaker (the word gets a mouseout), and taps the speaker: it speaks.
+    const pen = { pointerType: 'pen', pointerId: 7 };
+    tap(y, pen);
+    expect(gloss()?.textContent).toContain('y = and');
+    const speaker = gloss().querySelector('sw-say');
+    fire(y, [P('pointermove', { ...pen, buttons: 0 }), M('mouseout', { relatedTarget: speaker })]);
+    expect(gloss()).not.toBeNull();
+    const heard = spoken.length;
+    tap(speaker, pen);
+    expect(spoken.slice(heard)).toEqual(['y']);
+    tap(y, pen); // the second tap on the word still flips it
+    expect([y.textContent, events.at(-1)]).toEqual(['and', 'y:flip']);
+  } finally {
+    await t.close();
+  }
+}, 20000);
