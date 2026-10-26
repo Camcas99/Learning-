@@ -18,7 +18,9 @@ ALL-CAPS words, a 3-day swap cache, logged-out X support, and several sense guar
 swaps while scrolling, a wait for Gemini's daily quota, a hover gloss pages can't clip, Claude Haiku as an optional
 model, and a clipboard copy of the claude.ai export. With the plugin, the new words come in at their place in the
 list, so if you already know many words, a few basic new ones (sino, tampoco, incluso...) come up for learning first.
-The paste-in levels keep their words: the new words fill new levels 43 to 46.
+The paste-in levels keep their words: the new words fill new levels 43 to 46. Version 0.3.5 adds a daily quiz on your
+iPhone through iCloud Drive ([IPHONE.md](IPHONE.md)), taps and long presses on touchscreens, and a chat-only skill
+plugin for claude.ai and the Claude apps.
 
 ## Set up
 
