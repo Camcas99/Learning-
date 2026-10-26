@@ -460,6 +460,7 @@ def enable(state, on=True):
     prefs = state.setdefault('prefs', {})
     phone = dict(prefs.get('phone') or {})
     phone['on'] = on
+    phone.pop('problem', None)
     phone.setdefault('writer', secrets.token_hex(6))
     phone.pop('sha256', None)  # turning it back on always writes snapshot.json, even if its folder was deleted
     prefs['phone'] = phone
@@ -471,8 +472,9 @@ def _answer(record, snaps):
     snapshots offered (the "snap" stamp names which). The event is due_only, so it counts only if the word was due on
     its day and has no answer from that day on (swlib.quiz_event): a list from yesterday can't add a second answer for
     a word the Mac quizzed since. A day the Mac can't use (missing, before that snapshot's day as a phone in an
-    earlier time zone may write, or not a Gregorian date within OLDEST days as a phone set to another calendar may
-    write) becomes this Mac's today."""
+    earlier time zone may write, or not a Gregorian date within OLDEST days up to today, as a phone set to another
+    calendar may write) becomes that snapshot's day, the earliest the answer can have been given (this Mac's today
+    when an old snapshot entry has no day), so a Mac answer from that day on still wins."""
     if record.get('kind') != 'quiz' or record.get('result') not in ('right', 'wrong'):
         return None
     word, snap, day = record.get('word'), record.get('snap'), record.get('day')
@@ -481,8 +483,8 @@ def _answer(record, snaps):
     if not isinstance(word, str) or word not in words:
         return None
     usable = swlib.event_day(day, swlib.today())
-    if not usable or (isinstance(since, str) and usable < since):
-        day = None
+    if usable != day or (isinstance(since, str) and usable < since):  # missing, unreal, too old or in the future
+        day = since if isinstance(since, str) else None
     return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'due_only': True}
 
 
@@ -511,6 +513,8 @@ def _read_inbox(state, inbox, phone, report, now):
         except NotReady:
             waiting.append(name)
             continue
+        except PermissionError as error:  # the inbox lists but its files can't be opened: privacy or a sandbox
+            raise _denied(inbox, error) from None
         except (TooBig, OSError):
             report['skipped_files'] += 1
             continue
@@ -518,7 +522,7 @@ def _read_inbox(state, inbox, phone, report, now):
         if read and (len(data) < read or hashlib.sha256(data[:read]).hexdigest() != entry.get('sha256')):
             # What was already applied changed under us: never apply anything from this file again.
             ledger[name] = dict(entry, size=len(data), mtime_ns=st.st_mtime_ns, rewritten=True)
-            report['skipped_files'] += 1
+            report['set_aside'] += 1
             continue
         try:
             records, end, bad = new_records(data, read, final_line_ok=entry.get('size') == len(data))
@@ -526,7 +530,7 @@ def _read_inbox(state, inbox, phone, report, now):
             applied, _ = swlib.apply_events(state, events, kinds=('quiz',))
         except Exception:  # input no check foresaw: set this file aside until it changes, and read the rest
             ledger[name] = dict(entry, size=len(data), mtime_ns=st.st_mtime_ns, failed=True)
-            report['skipped_files'] += 1
+            report['set_aside'] += 1
             continue
         report['answers'] += applied
         report['ignored'] += len(records) - applied + bad
@@ -546,8 +550,8 @@ def sync(state, now=None):
     a report dict. Raises Unavailable or NotReady when the folder can't be used right now."""
     now = time.time() if now is None else now
     phone = settings(state)
-    report = {'answers': 0, 'ignored': 0, 'skipped_files': 0, 'waiting': 0, 'later': 0, 'written': False,
-              'warnings': []}
+    report = {'answers': 0, 'ignored': 0, 'skipped_files': 0, 'set_aside': 0, 'waiting': 0, 'later': 0,
+              'written': False, 'warnings': []}
     if not phone.get('on'):
         report['off'] = True
         return report

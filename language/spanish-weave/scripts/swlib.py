@@ -561,9 +561,11 @@ def apply_events(state, events, kinds=('seen', 'flip', 'peek'), today_=None):
     at most MAX_WORD characters, a real day within OLDEST days, at most MAX_EVENTS of them, oldest day first. A quiz event
     (the phone's quiz) needs result right or wrong and is recorded as the Mac's quiz records an answer, unless the word
     already has an answer from that day or later (the newest answer counts, and a late phone file never undoes one). A
-    quiz event with due_only (the phone's) also needs the word to be due on its day, as it stands after the earlier
-    events of the batch: a list the phone kept from an earlier day can't add an early review, a late file can't count a
-    word twice, and back-dated lines can't pump a word. Returns (applied, skipped)."""
+    quiz event with due_only (the phone's) also needs the word to have been due on its day by its quiz history
+    (due_then), as it stands after the earlier events of the batch: a list the phone kept from an earlier day can't add
+    an early review, a late file can't count a word twice, and back-dated lines can't pump a word, while a promotion or
+    flip that landed before the file was read doesn't hide an answer given when the word was due. Returns (applied,
+    skipped)."""
     today_ = today_ or today()
     valid = []
     for event in (events if isinstance(events, list) else [])[:MAX_EVENTS]:
@@ -593,11 +595,24 @@ def quiz_event(state, word, event, day):
         return False
     if any(d >= day for d, *_ in w.get('reviews') or []):
         return False
-    if event.get('due_only') and (due_date(w) or '9999') > day:
+    if event.get('due_only') and not due_then(w, day):
         return False
     article = article if isinstance(article, str) and key(article) in GENDER_OF else None
     hold = bool(result == 'right' and gender_slip(w['es'], article))
     return review(state, w['es'], result == 'right', day=day, hold=hold) is not None
+
+
+def due_then(word, day):
+    """Whether the word was due for a quiz on day, judged by its quiz history: the review before day put its next
+    review on or before day. A word with no review before day was due when the list that offered it was made."""
+    before = [r for r in word.get('reviews') or [] if r[0] < day]
+    if not before:
+        return True
+    last, n = before[-1], len(UNDO)
+    after = last[2 + n:2 + 2 * n]
+    box = after[UNDO.index('box')] if len(after) == n else word.get('box', 0)  # 0.2.2 records have no after-snapshot
+    box = max(0, min(int(box or 0), len(INTERVALS) - 1))
+    return (dt.date.fromisoformat(last[0]) + dt.timedelta(days=INTERVALS[box])).isoformat() <= day
 
 
 def introduced(state):
