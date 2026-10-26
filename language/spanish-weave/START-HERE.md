@@ -16,7 +16,7 @@ It teaches Latin American Spanish, the Spanish of Mexico, Central and South Amer
 ## How it works, in 60 seconds
 
 - **You start small.** With Claude Code: about 5 words (y = and, pero = but, entonces = so, con = with,
-  sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: 25 words per
+  sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: up to 25 words per
   level, and you paste the next level yourself when they feel easy.
 - **In Claude Code, words move on by themselves.** A word becomes "known" once you've seen it on 3 different days
   without needing to look it up. Words you look up a lot, or forget after you knew them, become "shaky" and show up
@@ -39,7 +39,7 @@ right (the lines run off the screen, so don't select them by hand). The claude.a
 Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older
 layouts call the box "What personal preferences should Claude consider in responses?"). ChatGPT gets its own two
 shorter blocks, for the "Custom instructions" and "More about you" boxes under Settings > Personalization; the page
-says which goes where. Chat as usual. When those 25 words feel easy, paste level 2 instead.
+says which goes where. Chat as usual. When those words feel easy, paste level 2 instead.
 
 **2. The full version, with Claude Code (recommended).**
 This one needs Claude Code on your own Mac or Linux computer (on Windows, use option 1 for now). Claude Code comes

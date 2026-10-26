@@ -40,7 +40,7 @@ granted:
      block goes in claude.ai (Settings > "Instructions for Claude"; older layouts call it personal preferences).
      ChatGPT gets its own two shorter blocks, for the "Custom instructions" and "More about you" boxes under
      Settings > Personalization, as the page labels them (the claude.ai block is too long for ChatGPT's boxes). The
-     copy button at the top right of each block grabs it whole. Level 2 when those 25 words feel easy, and so on.
+     copy button at the top right of each block grabs it whole. Level 2 when those words feel easy, and so on.
   2. *Uses Claude Code:* the plugin. A hook adds a short brief to every prompt so your replies weave in their
      words, and their progress is tracked automatically.
   3. *Wants it everywhere:* also the Chrome extension, on any site including X and instagram.com. It needs a free

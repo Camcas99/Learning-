@@ -75,7 +75,7 @@ Re-export about once a week; Claude Code reminds you when the pasted block is mo
 
 **claude.ai or ChatGPT only, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy its
 claude.ai block, or its two ChatGPT blocks, into the same boxes (use the copy button at the top right of each
-block). Chat as usual. When the 25 words in it feel easy, paste level 2 instead, and so on through the last level
+block). Chat as usual. When its words (up to 25) feel easy, paste level 2 instead, and so on through the last level
 (46). A level never changes its words: words added to the list later go into new levels after the last one. On a
 paid plan, claude.ai can take one short line instead: see "On claude.ai and the Claude apps" below.
 
@@ -421,7 +421,7 @@ What Spanish Weave keeps, and what it sends:
   there as right or wrong per word, never what you typed. Apple can read iCloud Drive unless Advanced Data Protection
   is on.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
-  day each learning word arrived), stage and sync time.
+  day each learning word arrived or turned shaky), stage and sync time.
 - **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if
   you pasted one), a cache of chosen swaps with a few words of page text around each, today's count of model calls for
   each site, a copy of your word list and stage from Claude Code, the words shown or peeked at today and any not yet
