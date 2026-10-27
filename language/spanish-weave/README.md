@@ -493,7 +493,7 @@ own state folder, point `SPANISH_WEAVE_HOME` at a new or empty folder you own (s
 things, and the hook and commands write nothing there).
 
 GitHub Actions (`.github/workflows/spanish-weave.yml` at the repo root) runs `claude plugin validate --strict` on the
-marketplace and both plugins, the Python tests on 3.9 and 3.14, the three `--check` scripts and the extension tests on
+marketplace and both plugins, the Python tests on 3.9 and 3.15, the three `--check` scripts and the extension tests on
 every pull request and push to main that touches either plugin.
 
 To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version

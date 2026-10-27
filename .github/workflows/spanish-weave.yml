@@ -47,9 +47,9 @@ jobs:
         with:
           python-version: '3.9'  # the oldest Python setup supports, and macOS's own python3
       - uses: actions/setup-python@v5
-        id: py314
+        id: py315
         with:
-          python-version: '3.14'
+          python-version: '3.15'
       - uses: oven-sh/setup-bun@v2
       - name: Claude Code CLI (for plugin validation)
         run: npm install --global @anthropic-ai/claude-code@2.1.311
@@ -63,18 +63,18 @@ jobs:
       - name: Python 3.9 tests
         if: ${{ !cancelled() }}
         run: '"${{ steps.py39.outputs.python-path }}" -m unittest discover -s tests'
-      - name: Python 3.14 tests
+      - name: Python 3.15 tests
         if: ${{ !cancelled() }}
-        run: '"${{ steps.py314.outputs.python-path }}" -m unittest discover -s tests'
+        run: '"${{ steps.py315.outputs.python-path }}" -m unittest discover -s tests'
       - name: Paste-in blocks and the chat plugin are current and fit
         if: ${{ !cancelled() }}
-        run: '"${{ steps.py314.outputs.python-path }}" scripts/make_blocks.py --check'
+        run: '"${{ steps.py315.outputs.python-path }}" scripts/make_blocks.py --check'
       - name: Sound hints follow the rules
         if: ${{ !cancelled() }}
-        run: '"${{ steps.py314.outputs.python-path }}" scripts/hints.py --check'
+        run: '"${{ steps.py315.outputs.python-path }}" scripts/hints.py --check'
       - name: Content script bundle is current
         if: ${{ !cancelled() }}
-        run: '"${{ steps.py314.outputs.python-path }}" scripts/bundle_content.py --check'
+        run: '"${{ steps.py315.outputs.python-path }}" scripts/bundle_content.py --check'
       - name: Extension tests
         if: ${{ !cancelled() }}
         working-directory: language/spanish-weave/extension
