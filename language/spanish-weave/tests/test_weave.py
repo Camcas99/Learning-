@@ -165,23 +165,29 @@ class Rules(Home):
             swlib.promote(state, day, {})
         self.assertEqual(sum(w['status'] == 'active' for w in state['words']), swlib.WINDOW)  # full at 20
 
-    def test_graduation_needs_three_clean_days(self):
+    def test_graduation_needs_three_clean_days_from_chrome_or_quizzes(self):
         state = swlib.new_state('2026-10-01')
-        chat = {'y': {'n': 5, 'days': ['2026-10-01', '2026-10-02']}}
-        swlib.promote(state, '2026-10-02', chat)
+        # Chat sightings never count toward known: nothing in a chat shows the word was understood.
+        chat = {'y': {'n': 50, 'days': ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']}}
+        swlib.promote(state, '2026-10-04', chat)
+        self.assertEqual(swlib.find(state, 'y')['status'], 'active')
+        for day in ('2026-10-01', '2026-10-02'):  # Chrome sightings
+            swlib.apply_event(state, 'y', 'seen', day)
+        swlib.promote(state, '2026-10-02')
         self.assertEqual(swlib.find(state, 'y')['status'], 'active')  # 2 days
-        swlib.apply_event(state, 'y', 'seen', '2026-10-03')  # extension day + chat days
-        swlib.promote(state, '2026-10-03', chat)
+        swlib.review(state, 'y', True, day='2026-10-03')  # a right quiz answer counts as the third day
         self.assertEqual(swlib.find(state, 'y')['status'], 'known')
 
     def test_peek_blocks_graduation_and_assumed_alone_never_graduates(self):
         state = swlib.new_state('2026-10-01')
-        chat = {'pero': {'n': 3, 'days': ['2026-10-01', '2026-10-02', '2026-10-03']}}
+        for day in ('2026-10-01', '2026-10-02', '2026-10-03'):
+            swlib.apply_event(state, 'pero', 'seen', day)
         swlib.apply_event(state, 'pero', 'peek', '2026-10-02')
-        swlib.promote(state, '2026-10-03', chat)
+        swlib.promote(state, '2026-10-03')
         self.assertEqual(swlib.find(state, 'pero')['status'], 'active')  # peek inside the last 3 days
-        chat['pero']['days'] += ['2026-10-04', '2026-10-05']
-        swlib.promote(state, '2026-10-05', chat)
+        for day in ('2026-10-04', '2026-10-05'):
+            swlib.apply_event(state, 'pero', 'seen', day)
+        swlib.promote(state, '2026-10-05')
         self.assertEqual(swlib.find(state, 'pero')['status'], 'known')  # last 3 days (03-05) are peek-free
         for day in ('2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'):
             swlib.apply_event(state, 'entonces', 'assumed', day)
@@ -204,8 +210,10 @@ class Rules(Home):
         self.assertEqual(swlib.find(state, 'con')['status'], 'shaky')
         swlib.promote(state, '2026-10-16', {})
         self.assertEqual(swlib.find(state, 'con')['status'], 'known')
-        swlib.apply_event(state, 'solo', 'asked', '2026-10-16')  # chat can't count solo: a clean week is enough
-        swlib.promote(state, '2026-10-23', {})
+        swlib.apply_event(state, 'solo', 'asked', '2026-10-16')  # a clean week alone is no evidence, for any word
+        swlib.promote(state, '2026-10-23', {'solo': {'n': 9, 'days': ['2026-10-20', '2026-10-21']}})  # chat doesn't count
+        self.assertEqual(swlib.find(state, 'solo')['status'], 'shaky')
+        swlib.review(state, 'solo', True, day='2026-10-24')  # a right quiz answer is the sighting it needs
         self.assertEqual(swlib.find(state, 'solo')['status'], 'known')
 
     def test_merge_takes_corrected_glosses(self):
@@ -797,10 +805,11 @@ class Review(Home):
         self.assertEqual({w['box'] for w in seeded}, {1})
         dues = sorted({w['due'] for w in seeded})
         self.assertEqual((dues[0], dues[-1], len(dues)), ('2026-10-04', '2026-10-31', 28))  # spread over four weeks
-        chat = {'muy': {'n': 3, 'days': ['2026-10-01', '2026-10-02', '2026-10-03']}}
         swlib.promote(state, '2026-10-03', {})
         swlib.find(state, 'muy')['status'] = 'active'
-        swlib.promote(state, '2026-10-03', chat)
+        for day in ('2026-10-01', '2026-10-02', '2026-10-03'):
+            swlib.apply_event(state, 'muy', 'seen', day)
+        swlib.promote(state, '2026-10-03')
         muy = swlib.find(state, 'muy')
         self.assertEqual((muy['status'], muy['box'], muy['due']), ('known', 2, '2026-10-10'))  # graduated: a week later
         later = next(w for w in state['words'] if w['status'] == 'queue')
@@ -2456,6 +2465,13 @@ class PhoneSync(Home):
         self.sync()
         self.answer('-ngela-20261026-080000-1234.jsonl', [self.quiz_line('pero')])  # the Shortcut's Ángela
         self.assertEqual(self.sync()['answers'], 1)
+        # iOS adds its own extension to a name it doesn't know: those files count too, anything else is skipped.
+        for name, word in (('iphone-20261026-211949.jsonl.json', 'y'), ('iphone-20261026-212000.txt', 'con'),
+                           ('iphone-20261026-212100.json', 'sin')):
+            self.answer(name, [self.quiz_line(word)])
+        self.answer('iphone-20261026-212200.exe', [self.quiz_line('entonces')])
+        report = self.sync()
+        self.assertEqual((report['answers'], report['skipped_files']), (3, 1))
         import errno
         real = os.scandir
         for code, says in ((errno.EPERM, 'phone sync'), (errno.EACCES, 'Get Info')):
@@ -2477,7 +2493,7 @@ class PhoneSync(Home):
     def test_status_shows_local_times_the_last_answers_and_skipped_files(self):
         self.sync()
         self.answer('iphone-20261025-130000-3000.jsonl', [self.quiz_line('pero')])
-        (self.folder / 'inbox' / 'notes.txt').write_text('hi')
+        (self.folder / 'inbox' / 'notes.md').write_text('hi')
         self.sync()
         self.sync()  # a quiet sync after it
         with contextlib.redirect_stdout(io.StringIO()) as out:

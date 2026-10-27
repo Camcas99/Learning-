@@ -18,8 +18,9 @@ It teaches Latin American Spanish, the Spanish of Mexico, Central and South Amer
 - **You start small.** With Claude Code: about 5 words (y = and, pero = but, entonces = so, con = with,
   sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: up to 25 words per
   level, and you paste the next level yourself when they feel easy.
-- **In Claude Code, words move on by themselves.** A word becomes "known" once you've seen it on 3 different days
-  without needing to look it up. Words you look up a lot, or forget after you knew them, become "shaky" and show up
+- **Words move on by themselves.** A word becomes "known" after 3 days of seeing it in Chrome or answering it right
+  in a quiz, without needing to look it up. Words in Claude Code chats don't count toward that, since a chat can't
+  tell whether you understood them. Words you look up a lot, or forget after you knew them, become "shaky" and show up
   more until they stick. (A pasted block can't see what you've read, so nothing moves until you paste the next
   level.)
 - **The Spanish grows with you.** Stage 1 is about 1 word in 16; at 40 known words you reach Stage 2, at 150 Stage

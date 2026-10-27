@@ -147,6 +147,8 @@ Then make it run every morning:
 
 - **Not tested on a real iPhone yet.** The steps follow Apple's Shortcuts guide; if an action name differs on your
   phone, search for the nearest match. Please report what you find.
+- **The answer file's name:** iOS may add `.json` or `.txt` to it (`iphone-....jsonl.json`). That's fine: the Mac
+  reads those too.
 - **Answers are counted once.** Each run writes its own answer file and the Mac reads each line once. A word counts
   at most once a day, on the Mac or the phone, and a phone answer counts only on a day the word was due, so quizzing
   an old list never counts a word early or twice. Only words the Mac offered count.

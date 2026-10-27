@@ -722,16 +722,14 @@ def status(_args):
           f'{", PAUSED" if state.get("paused") else ""}')
     print(f'  known {len(by.get("known", []))}, learning {len(by.get("active", []))}, '
           f'shaky {len(by.get("shaky", []))}, not yet introduced {len(by.get("queue", []))}')
-    chat = (swlib.read_json(swlib.home() / 'exposure.json', {}) or {}).get('words', {})
     for name in ('shaky', 'active'):
         for w in by.get(name, []):
-            days = len(swlib.exposure_days(w, chat))
-            print(f'  {name:6} {w["es"]} = {w["en"]}, "{w["hint"]}"  (seen on {days} day{"s" if days != 1 else ""})'
+            days = len(swlib.exposure_days(w))  # what counts toward known: Chrome sightings and right quiz answers
+            print(f'  {name:6} {w["es"]} = {w["en"]}, "{w["hint"]}"  (counted on {days} day{"s" if days != 1 else ""})'
                   + (f'  {swlib.note(w["es"])}' if swlib.note(w['es']) else ''))
-    uncounted = [w['es'] for w in by.get('shaky', []) + by.get('active', []) if swlib.norm(w['es']) in swlib.UNMEASURABLE]
-    if uncounted:
-        print(f'  {", ".join(uncounted)}: also English spelling{"s" if len(uncounted) > 1 else ""}, so chat can\'t count '
-              f'{"them" if len(uncounted) > 1 else "it"}; the quiz, the extension or `known` can')
+    if by.get('shaky') or by.get('active'):
+        print('  a word becomes known after 3 days counted by Chrome sightings or right quiz answers, or with '
+              '/spanish-weave:known; chat sightings alone never make it known')
     nxt = next((n for n, s in sorted(swlib.STAGES) if swlib.stage_for(state) < s), None)
     if nxt and not state.get('stage_pinned'):
         print(f'  next stage at {nxt} known words')
