@@ -79,11 +79,11 @@ pasted block's rules in your own replies.
   adverbs first (y, pero, entonces, con, sin...), then everyday phrases, nouns, adjectives and verbs, then coding
   words. Each has an English gloss and a sound hint with the stressed syllable in capitals.
 - **Word lifecycle** (`scripts/swlib.py`): queue -> active (up to 20 learning words at once, shaky ones included;
-  5 new a day) -> known (seen on 3 days with no slips), with "shaky" as the penalty box for words they flip back to
-  English, keep looking up, or no longer recognize in a quiz (a missed learning word just starts its three days
-  over). A shaky word is known again after a week with no slips and at least one real sighting since (days counted
-  by `log-chat-day` don't count). Stage 1-4 follows the count of known words (40, 150,
-  400) and sets how much Spanish goes in a reply (about 6%, 12%, 25%, 40%).
+  5 new a day) -> known (3 days of Chrome sightings or right quiz answers with no slips; chat sightings never count),
+  with "shaky" as the penalty box for words they flip back to English, keep looking up, or no longer recognize in a
+  quiz (a missed learning word just starts its three days over). A shaky word is known again after a week with no
+  slips and at least one real sighting since (days counted by `log-chat-day` don't count). Stage 1-4 follows the count
+  of known words (40, 150, 400) and sets how much Spanish goes in a reply (about 6%, 12%, 25%, 40%).
 - **The hook** (`scripts/weave.py`) builds the brief you'll see each turn: the stage, the words to use, short
   guards for the words that are easiest to swap in the wrong sense (es only for what something is, so "it's ready"
   stays English; esto and eso never before a noun; question words only in questions; sino for "not X but Y"; para,

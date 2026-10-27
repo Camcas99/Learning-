@@ -1,6 +1,6 @@
 {
   "name": "spanish-weave",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Weaves a few Latin American Spanish words into Claude's chat replies, at your level, and syncs your words with the Spanish Weave Chrome extension. Adapted from French Weave by Jackie Oliver.",
   "author": {
     "name": "Camcas99"

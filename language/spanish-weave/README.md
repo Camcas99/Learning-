@@ -20,7 +20,8 @@ model, and a clipboard copy of the claude.ai export. With the plugin, the new wo
 list, so if you already know many words, a few basic new ones (sino, tampoco, incluso...) come up for learning first.
 The paste-in levels keep their words: the new words fill new levels 43 to 46. Version 0.3.5 adds a daily quiz on your
 iPhone through iCloud Drive ([IPHONE.md](IPHONE.md)), taps and long presses on touchscreens, and a chat-only skill
-plugin for claude.ai and the Claude apps.
+plugin for claude.ai and the Claude apps. Version 0.3.6 makes words known only through Chrome, quizzes and commands,
+never from chat sightings alone, and reads the iPhone's answer files when iOS adds `.json` or `.txt` to their names.
 
 ## Set up
 
@@ -45,14 +46,14 @@ two lines in one step (in a terminal, `claude plugin install spanish-weave --mar
 below.
 
 Setup first asks a few questions in one go: how much Spanish you know already (none, a few basic words, or simple
-Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome
-extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the
-question says what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the
-default. Rerunning setup (`/spanish-weave:setup`) asks again, with "Keep the current site choice" as the default for
-the websites question, and never resets your progress. Words you've made progress on keep their status, so if you
-rerun setup with a higher answer, you can start one stage lower until those words graduate, after about 3 days of
-seeing them. The first learning words the plugin hands out on your first prompt don't count against you: if you
-haven't seen them yet, setup marks them known along with the rest.
+Spanish, which starts you at Stage 1, 2 or 3), where Spanish should show up (Claude Code, Codex, the Chrome extension,
+a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on (the question says
+what goes to Gemini; see Privacy), and how you'll give it a Gemini key. Skip any question to take the default.
+Rerunning setup (`/spanish-weave:setup`) asks again, with "Keep the current site choice" as the default for the
+websites question, and never resets your progress. Words you've made progress on keep their status, so if you rerun
+setup with a higher answer, you can start one stage lower until those words become known (3 days of Chrome sightings
+or right quiz answers). The first learning words the plugin hands out on your first prompt don't count against you: if
+you haven't seen them yet, setup marks them known along with the rest.
 
 Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (Google requires you to be 18 or older), as a file path or pasted into the extension popup.
@@ -332,16 +333,18 @@ Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,100 Spanish word
 frequency/usefulness order (connectors and adverbs first, then everyday phrases, nouns, adjectives and verbs, and
 coding words at the end), each with a gloss and a sound hint.
 
-- **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or on a web page.
+- **Counted day**: a day you saw the word on a web page (the Chrome extension) or answered it right in a quiz, on the
+  Mac or the iPhone. Words in Claude Code or Codex replies don't count toward known: nothing in a chat shows whether
+  you understood them. They still decide how often a known word comes up in chat.
 - **Learning**: at most 20 words at a time, shaky ones included; at most 5 new words a day, and none while 5 or more
   are shaky.
-- **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
+- **Learning -> known**: 3 counted days, with no flip, `learn` or peek on the last 3, or `/spanish-weave:known`.
 - **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English (on a touchscreen, a second tap
   or a press and hold), `/spanish-weave:learn`, or a known word you don't recognize in the quiz. A **peek** (hovering
   until the meaning shows, or a first tap) holds back a learning word; a known word peeked on 2 days within a week,
   both since it became known, turns shaky. **Shaky -> known** after 7 days with no flip, peek or quiz miss, once
-  you've really seen the word again since the last one (days counted by `log-chat-day` don't count; solo, mayor,
-  sensible, tan, resolver and todos, which chat can't count, need only the week).
+  it has a counted day again since the last one (a Chrome sighting or a right quiz answer; days from `log-chat-day`
+  don't count).
 - **Late browser events**: the extension sends flips, peeks and sightings in batches, and holds them while the
   native host can't be reached; a flip or peek dated before a word's last change never undoes that change.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.

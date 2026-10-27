@@ -51,8 +51,9 @@ KEEP_DAYS = 30          # a fully read inbox file is deleted this long after it 
 TEMP_PREFIX, TEMP_SUFFIX = '.snapshot-', '.tmp'          # hidden, and a name iCloud skips
 STALE_TEMP_SECONDS = 3600
 # <label>-<stamp>-<rand>.jsonl, plus the " 2" iCloud adds on a new-file name clash. The label may start with "-" (the
-# Shortcut turns a leading Á or other non-ASCII letter into one).
-INBOX_NAME = re.compile(r'[A-Za-z0-9_-]{1,101}(?: [0-9]{1,3})?\.jsonl\Z')
+# Shortcut turns a leading Á or other non-ASCII letter into one). iOS's Append to Text File adds its own extension to
+# a name it doesn't recognize (iphone-....jsonl.json), so .json and .txt endings count too.
+INBOX_NAME = re.compile(r'[A-Za-z0-9_-]{1,101}(?: [0-9]{1,3})?\.(?:jsonl(?:\.json|\.txt)?|json|txt)\Z')
 NOT_READY = frozenset({errno.EDEADLK, errno.ETIMEDOUT, errno.EAGAIN})
 
 # <sys/resource.h>

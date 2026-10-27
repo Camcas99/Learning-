@@ -439,10 +439,12 @@ def refill(state, day, cap=NEW_PER_DAY):
     return added
 
 
-def graduates(word, chat=None):
+def graduates(word):
     """active -> known: GRADUATE_DAYS of exposure, no flip/asked/peek on the last GRADUATE_DAYS exposure days,
-    and at least one genuinely seen day (assumed days alone never graduate a word)."""
-    days = exposure_days(word, chat)
+    and at least one genuinely seen day (assumed days alone never graduate a word). Only the word's own record counts:
+    sightings in Chrome and right quiz answers (on the Mac or the phone). Chat sightings don't: nothing in a chat shows
+    whether the learner understood the word."""
+    days = exposure_days(word)
     total = sum(1 if kind == 'seen' else ASSUMED_WEIGHT for kind in days.values())
     if total < GRADUATE_DAYS or len(days) < GRADUATE_DAYS:
         return False
@@ -452,15 +454,13 @@ def graduates(word, chat=None):
     return clean and 'seen' in days.values()
 
 
-def recovers(word, day, chat=None):
-    """shaky -> known: SHAKY_DAYS with no slip (flip, asked or peek), and at least one genuinely seen day since the last
-    one: a word nobody saw isn't relearned, and assumed days never count. Chat can't count UNMEASURABLE words, so for
-    them the clean week alone has to do."""
+def recovers(word, day):
+    """shaky -> known: SHAKY_DAYS with no slip (flip, asked or peek), and at least one sighting in Chrome or right quiz
+    answer since the last one: a word nobody saw isn't relearned, and assumed and chat days never count."""
     slip = word['last_bad'] or word['changed']
     if days_between(slip, day) < SHAKY_DAYS:
         return False
-    return norm(word['es']) in UNMEASURABLE or any(d > slip and kind == 'seen'
-                                                   for d, kind in exposure_days(word, chat).items())
+    return any(d > slip and kind == 'seen' for d, kind in exposure_days(word).items())
 
 
 def chat_exposure():
@@ -468,12 +468,13 @@ def chat_exposure():
     return (read_json(home() / 'exposure.json', {}) or {}).get('words', {})
 
 
-def promote_word(w, day, chat):
-    """active -> known (graduates) or shaky -> known (recovers) for one word, if it is ready."""
-    if w['status'] == 'active' and graduates(w, chat):
+def promote_word(w, day, chat=None):
+    """active -> known (graduates) or shaky -> known (recovers) for one word, if it is ready. chat is ignored: only
+    Chrome, quizzes and commands (known, placement) move a word to known."""
+    if w['status'] == 'active' and graduates(w):
         set_status(w, 'known', day)
         schedule(w, day, max(w.get('box', 0), KNOWN_BOX['graduated']))
-    elif w['status'] == 'shaky' and recovers(w, day, chat):
+    elif w['status'] == 'shaky' and recovers(w, day):
         set_status(w, 'known', day)
         schedule(w, day, max(w.get('box', 0), KNOWN_BOX['recovered']))
 
@@ -481,10 +482,8 @@ def promote_word(w, day, chat):
 def promote(state, day=None, chat=None):
     """Applies the promotion rules for today. Idempotent: safe to call as often as you like."""
     day = day or today()
-    if chat is None:
-        chat = chat_exposure()
     for w in state['words']:
-        promote_word(w, day, chat)
+        promote_word(w, day)
     refill(state, day)
     state['stage'] = stage_for(state)
     return state
@@ -836,7 +835,7 @@ def review(state, es, right, day=None, hold=False):
     else:
         w['last_bad'] = day
         schedule(w, day, 0)
-    promote_word(w, day, chat_exposure())
+    promote_word(w, day)
     added = int(not seen and day in (w.get('days') or []))
     w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields() + [added]])[-10:]
     return w
