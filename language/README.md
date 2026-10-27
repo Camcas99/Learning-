@@ -7,6 +7,10 @@ Learning Latin American Spanish.
 - [`spanish-weave/`](spanish-weave/): a tool that weaves a few Spanish words into the English you already read
   (AI chat replies and web pages), at your level, and tracks which words you know. Adapted from
   [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver.
+- [`spanish-weave-chat/`](spanish-weave-chat/): the same rules as a skill for claude.ai and the Claude apps, for paid
+  plans: one line in your preferences instead of a pasted block (generated from `spanish-weave/`).
+- iPhone: a daily quiz through a Shortcut and iCloud Drive, with a Mac. See
+  [`spanish-weave/IPHONE.md`](spanish-weave/IPHONE.md).
 
 ## Sharing it
 

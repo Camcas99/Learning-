@@ -16,7 +16,7 @@ It teaches Latin American Spanish, the Spanish of Mexico, Central and South Amer
 ## How it works, in 60 seconds
 
 - **You start small.** With Claude Code: about 5 words (y = and, pero = but, entonces = so, con = with,
-  sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: 25 words per
+  sin = without), then up to 5 new ones a day, never more than 20 at once. With a pasted block: up to 25 words per
   level, and you paste the next level yourself when they feel easy.
 - **In Claude Code, words move on by themselves.** A word becomes "known" once you've seen it on 3 different days
   without needing to look it up. Words you look up a lot, or forget after you knew them, become "shaky" and show up
@@ -39,7 +39,7 @@ right (the lines run off the screen, so don't select them by hand). The claude.a
 Settings > "Instructions for Claude" (on a computer, click your initials at the bottom left to open Settings; older
 layouts call the box "What personal preferences should Claude consider in responses?"). ChatGPT gets its own two
 shorter blocks, for the "Custom instructions" and "More about you" boxes under Settings > Personalization; the page
-says which goes where. Chat as usual. When those 25 words feel easy, paste level 2 instead.
+says which goes where. Chat as usual. When those words feel easy, paste level 2 instead.
 
 **2. The full version, with Claude Code (recommended).**
 This one needs Claude Code on your own Mac or Linux computer (on Windows, use option 1 for now). Claude Code comes
@@ -94,7 +94,8 @@ really know go back to learning.
 
 1. **Just read.** Don't stop to study every Spanish word. Let the sentence tell you what it means.
 2. **Guess before you look.** In Chrome the meaning shows only after a short pause on purpose: try to recall it
-   first. In chat, the meanings are in the footer at the end.
+   first. On a touchscreen a tap shows it at once, so guess before you tap; tap again or press and hold to flip the
+   word back to English. In chat, the meanings are in the footer at the end.
 3. **Answer the "Recall: ...?" question in your head** before you read the answer at the end of the reply. It
    shows up every few replies, and it's the most valuable 3 seconds of the day.
 4. **Quiz for 3 to 5 minutes most days** with `/spanish-weave:quiz`. Words you get right come back after longer and
@@ -102,9 +103,9 @@ really know go back to learning.
    end, so you always finish on a right answer. Your answers are saved together at the end, so Claude Code asks you
    once to save them. That spacing is what turns "I've seen it" into "I know it".
 5. **Say words out loud.** The hints show the stressed syllable in capitals: `también` = `tahm-BYEN`. In Chrome,
-   Alt+click (Option+click on a Mac) a Spanish word to hear it, or turn on "Say words aloud when the meaning shows"
-   in the extension's popup. Underline colors tell you a noun's gender: teal for masculine (el), rose for feminine
-   (la), a little fainter once you know the word.
+   Alt+click (Option+click on a Mac) a Spanish word to hear it (on a touchscreen, tap it and then the speaker in its
+   meaning), or turn on "Say words aloud when the meaning shows" in the extension's popup. Underline colors tell you
+   a noun's gender: teal for masculine (el), rose for feminine (la), a little fainter once you know the word.
 6. **Once you know about 40 words, try writing a little:** `/spanish-weave:output on` adds an optional "Your turn"
    line every fifth reply. Answer it and you'll get a gentle one-line correction.
 7. **Keep it honest.** `/spanish-weave:known pero` for words you truly know; `/spanish-weave:learn pero` for ones you
@@ -140,12 +141,43 @@ You type these yourself: Claude can't start them for you (except status).
 | `/spanish-weave:output on` / `off` | turn "Your turn" practice on or off |
 | `/spanish-weave:pause` / `resume` | take a break from Spanish everywhere |
 | `/spanish-weave:export` | get an up-to-date block for claude.ai or ChatGPT (refresh it weekly) |
+| `/spanish-weave:export chat` | get the one line for the claude.ai chat plugin (see "On claude.ai and the Claude apps") |
 | `/spanish-weave:anki` | export your words to Anki, if you use it |
+| `/spanish-weave:phone on` | (Mac) quiz on your iPhone too: see [IPHONE.md](IPHONE.md) |
 
 With the pasted block in claude.ai or ChatGPT, you can type a word with a question mark ("pero?") for a quick
 translation, "quiz" for a three-word quiz, "story" (claude.ai only) to retell the last answer as a short story at
 your level, or "easier" / "harder" for that chat. In Claude Code, just ask ("what does pero mean?") or use the
 commands above.
+
+## On claude.ai and the Claude apps
+
+Have a paid plan (Pro, Max, Team or Enterprise)? Then claude.ai and the Claude apps (including the iPhone and Android
+apps) can use Spanish Weave as a skill. You paste one short line instead of the long block, and fixes to the rules
+reach you on their own:
+
+1. On claude.ai or in the Claude desktop app, open Customize > Plugins > Add > Add marketplace, type
+   `Camcas99/Learning-`, and click Add. From its list, install **spanish-weave-chat** (not spanish-weave: that one
+   is for Claude Code on a computer). If there's a switch to sync it automatically, turn it on. If you also use
+   Spanish Weave in Claude Code, update that plugin to 0.3.5 or later first.
+2. In Settings > Capabilities, leave "Code execution and file creation" on (newer apps call it "Create and edit
+   files"). Skills need it.
+3. In Settings > "Instructions for Claude", delete any Spanish Weave block and paste this line, with your level in
+   place of 1:
+
+   ```text
+   Spanish Weave level 1. At the start of every conversation, before your first reply, load the spanish-weave skill and follow it for the whole chat. Without the skill, still swap y, pero, entonces, con, sin, muy, también, ahora, porque, para into chat replies (never in code or in health, legal, money, safety or urgent answers) and gloss them in one footer line.
+   ```
+
+4. Start a new chat. When the words feel easy, type "next level" and Claude gives you the line for the next level.
+
+With Claude Code, `/spanish-weave:export chat` prints the line with the level closest to the words you know. When
+your own stage is above that level's, or you pinned a lower one, it adds it ("Spanish Weave level 6, Stage 3."), and the
+skill uses it.
+
+Two honest caveats. It hasn't been tested on an iPhone yet. And Claude decides for itself when to load a skill: the
+line asks for it in every chat, but a chat can still start without it, and then the rest of the line still gets you
+a few Spanish words (y, pero, entonces...). On the free plan there are no plugins, so keep using the paste-in blocks.
 
 ## On your phone and Instagram
 
@@ -159,6 +191,10 @@ commands above.
   press the spacebar and scan the QR code). Your computer has to stay on. It runs on your computer, so your words
   and progress are all there. A Claude Code session started in the cloud from your phone begins on a fresh computer
   every time, so it can't keep your progress.
+- **A daily quiz on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on your Mac, then
+  build a short Shortcut on your iPhone that asks your due words each day; your answers count on the Mac like
+  `/spanish-weave:quiz` answers (without its el/la check). Only today's quiz words go to iCloud Drive. The steps are
+  in [IPHONE.md](IPHONE.md); it hasn't been tried on a real iPhone yet.
 - **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
   Spanish words on a computer.
 - **Instagram's website** (instagram.com in Chrome on a computer): should work, but it hasn't been tried on the real
@@ -175,7 +211,7 @@ Now and then there's a new version with fixes. In Claude Code, type these one at
 `/spanish-weave:setup` again (it keeps your progress): pick the same places as the first time, and for the websites
 question keep the default, "Keep the current site choice", so a choice you made later in the extension's popup
 stays. Then in Chrome open `chrome://extensions` and click the reload arrow on Spanish Weave, and reload the tabs you
-had open (until then they show English).
+had open (until then, an open tab goes back to English the first time you scroll or touch a word there).
 `/spanish-weave:status` tells you when the copies setup made are behind the plugin, which means it's time to rerun
 setup. With only a pasted block, copy your level's block again now and then to pick up fixes.
 
@@ -196,8 +232,12 @@ What's kept where, and what gets sent:
   paste a paid Claude API key there, that same page text goes to Anthropic's API instead of Gemini. With Claude picked
   nothing goes to Gemini, even if a Gemini key is saved; without a Claude key the extension waits for one.
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
-- **In Chrome:** the extension keeps its settings, your key and a small cache of swapped words with a few words of
-  page text around each, in Chrome's own storage. Removing the extension deletes them.
+- **Into iCloud Drive, only with the iPhone quiz:** today's due words, their meanings, sound hints and your stage; the
+  phone's answers come back as right or wrong. Apple can read them unless Advanced Data Protection is on.
+- **In Chrome:** the extension keeps its settings, your keys, a copy of your word list, today's seen words and any
+  not yet passed to Claude Code, model-call counts, the last model error, a quota record and a small cache of swapped
+  words with a few words of page text around each, in Chrome's own storage. Removing the extension
+  deletes them.
 
 Email, messaging and AI chat sites (Gmail, Outlook, iCloud Mail, Yahoo, Proton, WhatsApp Web, Messenger, Slack,
 Discord, Teams, claude.ai, ChatGPT, Gemini, Copilot and others), Google Docs and Drive, password managers, big banks,

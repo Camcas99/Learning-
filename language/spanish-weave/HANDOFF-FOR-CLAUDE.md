@@ -40,7 +40,7 @@ granted:
      block goes in claude.ai (Settings > "Instructions for Claude"; older layouts call it personal preferences).
      ChatGPT gets its own two shorter blocks, for the "Custom instructions" and "More about you" boxes under
      Settings > Personalization, as the page labels them (the claude.ai block is too long for ChatGPT's boxes). The
-     copy button at the top right of each block grabs it whole. Level 2 when those 25 words feel easy, and so on.
+     copy button at the top right of each block grabs it whole. Level 2 when those words feel easy, and so on.
   2. *Uses Claude Code:* the plugin. A hook adds a short brief to every prompt so your replies weave in their
      words, and their progress is tracked automatically.
   3. *Wants it everywhere:* also the Chrome extension, on any site including X and instagram.com. It needs a free
@@ -51,7 +51,9 @@ granted:
   and they open it under Code in the Claude app. It needs a claude.ai subscription login (Pro, Max, Team or
   Enterprise; not an API key; Team and Enterprise need the Owner to enable it), and the computer has to stay on. A
   cloud session started from the phone starts on a fresh machine each time, so it can't keep their progress, and
-  the extension (3) needs Chrome on a computer.
+  the extension (3) needs Chrome on a computer. On a paid Claude plan, the chat-only plugin spanish-weave-chat (same
+  marketplace) replaces the pasted block with one line in their preferences. With a Mac, `/spanish-weave:phone on`
+  adds a daily quiz on the iPhone through a Shortcut and iCloud Drive (IPHONE.md); it is opt-in and Mac only.
 - **If they already know some Spanish**, offer the 2-minute placement test (`/spanish-weave:placement`) so they
   don't start with words they know.
 - **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. The
@@ -108,13 +110,15 @@ pasted block's rules in your own replies.
     kind line of feedback with the corrected Spanish, then carry on.
   - `/spanish-weave:anki`: export to Anki for anyone who already uses it.
 - **The Chrome extension** (`extension/`): Gemini picks swaps on the page; the extension accepts only words from
-  their list, paints them with a dotted underline (masculine and feminine nouns get slightly different colors),
-  shows the meaning after a short dwell (the pause is deliberate: a moment to guess first), flips a word back on
-  click, and says it aloud on Alt+click. It runs on X and instagram.com out of the box (site adapters live in the
-  `SITES` table in `extension/src/page.js`), never in Instagram direct messages, and its popup has "Say words
-  aloud when the meaning shows" (off by default) and "Color noun gender" (on by default) settings. Other sites
-  need the person's OK: "Allow all websites" in the popup, or the checkbox next to a site's name. It talks to the plugin through a local native messaging host, so web
-  sightings count toward progress too.
+  their list, paints them with a dotted underline (masculine and feminine nouns get slightly different colors), shows
+  the meaning after a short dwell (the pause is deliberate: a moment to guess first), flips a word back on click, and
+  says it aloud on Alt+click. On a touchscreen a tap shows the meaning at once (a peek) with a speaker button, and a
+  second tap or a long press flips; scrolls and the browser's emulated mouse events never count. It runs on X and
+  instagram.com out of the box (site adapters live in the `SITES` table in `extension/src/page.js`), never in
+  Instagram direct messages, and its popup has "Say words aloud when the meaning shows" (off by default) and "Color
+  noun gender" (on by default) settings. Other sites need the person's OK: "Allow all websites" in the popup, or the
+  checkbox next to a site's name. It talks to the plugin through a local native messaging host, so web sightings
+  count toward progress too.
 
 ## Being a good tutor with it
 

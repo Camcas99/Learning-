@@ -4,6 +4,7 @@
 Usage: weave.py --hook   (reads the hook JSON on stdin, prints hook JSON)
        weave.py          (prints the plain brief, for checking)
 """
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -58,6 +59,10 @@ GUARDS = [
     (('ya',), 'ya means already, never "just"'),
     (('como',), 'como never for the verb "like"'),
 ]
+
+
+PAUSED = 'Spanish Weave is paused (/spanish-weave:resume turns it back on): no Spanish word swaps in replies.'
+OFF = 'Spanish Weave is off in this session (SPANISH_WEAVE_OFF=1): no Spanish word swaps in replies.'
 
 
 def exposure():
@@ -151,7 +156,7 @@ def brief(state, seen, recall=None, output=False):
             text += (' In this reply, if the topic allows, end with one optional line inviting the user to write a few words '
                      'of Spanish with a learning word, like: Your turn: how would you say "without the cache"? (sin). '
                      'Skip it in code-heavy, urgent or zero-Spanish answers.')
-    return text
+    return text + '\n' + swlib.HOOK_MARKER  # tells the chat plugin's skill, if it loads here too, to stay out
 
 
 DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in Spanish every time
@@ -394,17 +399,70 @@ STALE_EXPORT_DAYS = 7
 
 
 def export_notice(state, now=None):
-    """Once per export: a nudge when a pasted claude.ai / ChatGPT block is over a week behind the word state."""
-    exported = state.get('exported') or {}
-    if not exported.get('at') or exported.get('noticed') or exported.get('version') == swlib.version(state):
-        return None
+    """At most one nudge per prompt, each given once. The claude.ai settings field holds one form at a time (block,
+    chat line or exact line: the latest export replaces the others) and ChatGPT has its own (export.export_slot). A
+    chat line changes only with its level or stage, so it gets one nudge per change, judged against the line the
+    learner was last told to use; a change of stage alone must hold into a later day first, so a word going shaky and
+    back at a stage boundary doesn't send the learner to their settings each time. A pasted word list gets one nudge
+    once it is over a week behind the word state; setup's pair of blocks shares one, as does a 0.3.4 record."""
+    import export  # only here: the hook needs it for nothing else
     now = now or time.time()
-    if now - exported['at'] < STALE_EXPORT_DAYS * 86400:
+    today_ = dt.date.fromtimestamp(now).isoformat()
+    exports = state.get('exports')
+    if exports is None:  # recorded by 0.3.4: one record, whichever block was exported last
+        legacy = state.get('exported') or {}
+        if not legacy.get('at') or legacy.get('noticed') or legacy.get('version') == swlib.version(state) or \
+                now - legacy['at'] < STALE_EXPORT_DAYS * 86400:
+            return None
+        with swlib.editing() as fresh:
+            fresh.setdefault('exported', {})['noticed'] = True
+        return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
+                'Run /spanish-weave:export to refresh it.')
+
+    def noticed(slots, values):
+        with swlib.editing() as fresh:
+            for slot in slots:
+                fresh.setdefault('exports', {}).setdefault(slot, dict(exports[slot])).update(values)
+
+    page = exports.get('claude.ai') or {}
+    if page.get('target') == 'chat' and page.get('level'):
+        import make_blocks  # only here: it reads the word list again, which the hook needs for no one else
+        line = list(make_blocks.chat_level(state))
+        told = page.get('noticed_line') or [page['level'], page.get('stage'), bool(page.get('exact'))]
+        if line != told:
+            seen = page.get('pending') or {}
+            if line[0] == told[0] and not (seen.get('line') == line and seen.get('day', today_) < today_):
+                if seen.get('line') != line:
+                    noticed(['claude.ai'], {'pending': {'line': line, 'day': today_}})
+                return None  # the stage alone changed: wait until it holds into a later day
+            noticed(['claude.ai'], {'noticed_line': line, 'pending': None})
+            level, stage, exact = line
+            start = export.chat_line(level, stage, exact).split('. ')[0]
+            return (f'Spanish Weave: your claude.ai line is now "{start}." Change your Spanish Weave line in claude.ai '
+                    'Settings > "Instructions for Claude" to start with that (or run /spanish-weave:export chat).')
+        if page.get('pending'):
+            noticed(['claude.ai'], {'pending': None})  # it went back before it held
+    stale = [slot for slot in ('claude.ai', 'chatgpt') if (exports.get(slot) or {}).get('target') != 'chat' and
+             (exports.get(slot) or {}).get('at') and not exports[slot].get('noticed') and
+             exports[slot].get('version') != swlib.version(state) and
+             now - exports[slot]['at'] >= STALE_EXPORT_DAYS * 86400]
+    if not stale:
         return None
-    with swlib.editing() as fresh:
-        fresh.setdefault('exported', {})['noticed'] = True
-    return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
-            'Run /spanish-weave:export to refresh it.')
+    if stale == ['claude.ai', 'chatgpt'] and exports['claude.ai'].get('paired') and exports['chatgpt'].get('paired'):
+        noticed(stale, {'noticed': True})
+        return ('Spanish Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
+                'Run /spanish-weave:export (or export chatgpt) to refresh it.')
+    slot = stale[0]
+    noticed([slot], {'noticed': True})
+    target = exports[slot].get('target')
+    if target == 'chat-exact':
+        return ('Spanish Weave: the word list you pasted into claude.ai is over a week behind your words. Run '
+                '/spanish-weave:export chat exact to refresh it.')
+    if target == 'chatgpt':
+        return ('Spanish Weave: the block you pasted into ChatGPT is over a week behind your word list. Run '
+                '/spanish-weave:export chatgpt to refresh it.')
+    return ('Spanish Weave: the block you pasted into claude.ai is over a week behind your word list. Run '
+            '/spanish-weave:export to refresh it.')
 
 
 def main(argv):
@@ -417,8 +475,14 @@ def main(argv):
             data = {}
         if not isinstance(data, dict):
             data = {}
-        if not interactive(data=data):
+        env = dict(os.environ)
+        off = env.pop('SPANISH_WEAVE_OFF', None) == '1'
+        if not interactive(env=env, data=data):
             return 0  # scripted run: no brief at all
+        if off:  # switched off in a chat someone reads: no brief, but the chat plugin's skill must stand down too
+            print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit',
+                                                     'additionalContext': OFF + '\n' + swlib.HOOK_MARKER}}))
+            return 0
     source = prompt_source(data.get('prompt'))
     reply = typed = None
     if hook:
@@ -437,6 +501,11 @@ def main(argv):
         print(f'Spanish Weave: skipped, {reason}; /spanish-weave:status says how to fix it', file=sys.stderr)
         return 0
     if state.get('paused'):
+        if ((state.get('prefs') or {}).get('phone') or {}).get('on'):
+            exposure()  # its background refresh also keeps the iPhone's quiz list current while paused
+        if hook:  # the chat plugin's skill, if it loaded here too, must stand down as well
+            print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit',
+                                                     'additionalContext': PAUSED + '\n' + swlib.HOOK_MARKER}}))
         return 0
     if hook and not typed and session(data.get('session_id')).get('typed'):
         typed = True

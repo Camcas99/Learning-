@@ -29,6 +29,10 @@ except ImportError:  # Windows: no locking (untested platform)
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
 NOTES = PLUGIN_ROOT / 'data' / 'notes.csv'
+# A line in the hook's brief (also the short one while paused). The skill of the chat-only plugin (spanish-weave-chat),
+# which can reach Claude Code through a claude.ai account, stands down when it sees it, so a reply never gets two word
+# lists.
+HOOK_MARKER = 'spanish-weave-hook: on'
 
 # ---- promotion rules (documented in README "How words advance") ----
 WINDOW = 20             # most learning words (active plus shaky) at once
@@ -528,6 +532,87 @@ def apply_event(state, es, kind, day=None):
         w['last_bad'] = day  # restart its graduation count
         set_status(w, 'active', day)
     return True
+
+
+# ---- events from outside: the Chrome extension (through the native host) and the phone inbox ----
+
+MAX_EVENTS = 500    # per batch; the rest are skipped
+MAX_WORD = 64       # longest word looked up (the longest listed phrase is far shorter)
+OLDEST = 60         # days back an event's day may be; older ones are skipped
+DAY = re.compile(r'\d{4}-\d{2}-\d{2}', re.ASCII)
+
+
+def event_day(value, today_):
+    """The day to apply an event on: today when it has none or one in the future, None (skip it) when it isn't a real
+    YYYY-MM-DD date within OLDEST days, so a bad day is never saved to trip later batches."""
+    if value is None:
+        return today_
+    if not isinstance(value, str) or not DAY.fullmatch(value):
+        return None
+    try:
+        age = (dt.date.fromisoformat(today_) - dt.date.fromisoformat(value)).days
+    except ValueError:
+        return None
+    return None if age > OLDEST else min(value, today_)
+
+
+def apply_events(state, events, kinds=('seen', 'flip', 'peek'), today_=None):
+    """Applies untrusted events, {word, kind, day?, result?, article?}, after checking each: a kind from kinds, a word of
+    at most MAX_WORD characters, a real day within OLDEST days, at most MAX_EVENTS of them, oldest day first. A quiz event
+    (the phone's quiz) needs result right or wrong and is recorded as the Mac's quiz records an answer, unless the word
+    already has an answer from that day or later (the newest answer counts, and a late phone file never undoes one). A
+    quiz event with due_only (the phone's) also needs the word to have been due on its day by its quiz history
+    (due_then), as it stands after the earlier events of the batch: a list the phone kept from an earlier day can't add
+    an early review, a late file can't count a word twice, and back-dated lines can't pump a word, while a promotion or
+    flip that landed before the file was read doesn't hide an answer given when the word was due. Returns (applied,
+    skipped)."""
+    today_ = today_ or today()
+    valid = []
+    for event in (events if isinstance(events, list) else [])[:MAX_EVENTS]:
+        if not isinstance(event, dict) or event.get('kind') not in kinds:
+            continue
+        word, day = event.get('word'), event_day(event.get('day'), today_)
+        if isinstance(word, str) and 0 < len(word) <= MAX_WORD and day:
+            valid.append((day, word, event))
+    applied = 0
+    for day, word, event in sorted(valid, key=lambda e: e[0]):  # oldest first, as they happened
+        try:
+            if event['kind'] == 'quiz':
+                applied += quiz_event(state, word, event, day)
+            else:
+                applied += apply_event(state, word, event['kind'], day)
+        except (ValueError, TypeError, KeyError):
+            pass  # one bad word state never sinks the batch
+    total = len(events) if isinstance(events, list) else 0
+    return applied, total - applied
+
+
+def quiz_event(state, word, event, day):
+    """One quiz answer from outside (see apply_events). True when it was recorded."""
+    result, article = event.get('result'), event.get('article')
+    w = find(state, word)
+    if result not in ('right', 'wrong') or w is None or w['status'] == 'queue':
+        return False
+    if any(d >= day for d, *_ in w.get('reviews') or []):
+        return False
+    if event.get('due_only') and not due_then(w, day):
+        return False
+    article = article if isinstance(article, str) and key(article) in GENDER_OF else None
+    hold = bool(result == 'right' and gender_slip(w['es'], article))
+    return review(state, w['es'], result == 'right', day=day, hold=hold) is not None
+
+
+def due_then(word, day):
+    """Whether the word was due for a quiz on day, judged by its quiz history: the review before day put its next
+    review on or before day. A word with no review before day was due when the list that offered it was made."""
+    before = [r for r in word.get('reviews') or [] if r[0] < day]
+    if not before:
+        return True
+    last, n = before[-1], len(UNDO)
+    after = last[2 + n:2 + 2 * n]
+    box = after[UNDO.index('box')] if len(after) == n else word.get('box', 0)  # 0.2.2 records have no after-snapshot
+    box = max(0, min(int(box or 0), len(INTERVALS) - 1))
+    return (dt.date.fromisoformat(last[0]) + dt.timedelta(days=INTERVALS[box])).isoformat() <= day
 
 
 def introduced(state):

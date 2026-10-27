@@ -1,7 +1,7 @@
 ---
 description: Set up Spanish Weave (asks a few questions, then installs the word state, extension folder and native host)
 argument-hint: [--gemini-key-file <path>]
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" setup:*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" placement:*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export:*), AskUserQuestion
+allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" setup:*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" placement:*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export:*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" phone:*), AskUserQuestion
 disable-model-invocation: true
 ---
 Setup plan (a dry run; nothing changed yet; don't show it to the user):
@@ -57,7 +57,17 @@ and relay the estimate and stage in plain English.
 If they picked the preferences block, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export` and
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" export --chatgpt` after the placement test (if any), so the block
 includes the words the test marked known, and show each block exactly as printed, in its own code block, with where
-to paste it.
+to paste it. Then add, in a line or two of plain English, that on a paid plan (Pro, Max, Team or Enterprise)
+claude.ai and the Claude apps can use one short line instead of the claude.ai block: add the marketplace
+Camcas99/Learning- in Customize > Plugins, install spanish-weave-chat there, and paste the line
+`/spanish-weave:export chat` prints (it gets rule fixes as plugin updates, but hasn't been tried on an iPhone yet).
+Don't run that export unless they ask.
+
+If the plan shows `platform` darwin, after setup (and the placement test, if any) ask one more question in its own
+AskUserQuestion call: "Quiz on your iPhone too? A Shortcut on the phone asks today's due words, and your answers come
+back to this Mac through iCloud Drive." with No (default) / Yes. Only on Yes, run
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" phone on` and relay the next steps it prints in plain English (build the
+Shortcut from IPHONE.md, Keep Downloaded on the folder). On other platforms don't ask.
 
 Commands that run after the user's next message (the placement answers, and the blocks when they come after the
 test) are in a later turn, where Claude Code asks before running them. That is expected: when you ask for the

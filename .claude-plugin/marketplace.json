@@ -8,7 +8,12 @@
     {
       "name": "spanish-weave",
       "source": "./language/spanish-weave",
-      "description": "Weaves a few Latin American Spanish words into Claude's chat replies, at your level, and syncs your words with the Spanish Weave Chrome extension."
+      "description": "For Claude Code on your computer (uses hooks). On claude.ai or the Claude apps, add spanish-weave-chat instead. Weaves a few Latin American Spanish words into Claude's chat replies, at your level, and syncs your words with the Spanish Weave Chrome extension."
+    },
+    {
+      "name": "spanish-weave-chat",
+      "source": "./language/spanish-weave-chat",
+      "description": "For claude.ai and the Claude apps (iPhone, Android, web, desktop chat): Spanish Weave as a skill, nothing to install on a computer. Pick this one in Customize > Plugins."
     }
   ]
 }

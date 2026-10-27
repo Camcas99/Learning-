@@ -1,5 +1,6 @@
 """Paste-ready Spanish Weave blocks for chats without hooks: claude.ai personal preferences and ChatGPT custom
-instructions. One rules source (RULES) feeds both, so the long and short versions can't drift apart.
+instructions. One rules source (RULES) feeds both, and the skill of the chat-only plugin (spanish-weave-chat, written
+by make_blocks.py), so the long and short versions can't drift apart.
 
 The state line keeps the format of the original word-state line: Stage | Active | Shaky | Known | Synced.
 """
@@ -25,7 +26,7 @@ RULES = [
     ("Apply only in chat replies to me. Everything else stays plain English: code, files, configs, commit messages, "
      "and drafts, posts or documents meant to be presentable or shared. If I'm not reading it, or unlikely to, no Spanish.",
      "Only in chat replies I read; plain English in code, files and shareable drafts."),
-    ("My stage and words are in the Spanish Weave state line below. Active and Shaky are "
+    ("My stage and words are in the Spanish Weave state line {where}. Active and Shaky are "
      "the words I'm learning; Known words I've seen a lot. Learning should cost me almost nothing: lean on Known "
      "words, use Active and Shaky words where the sentence makes their meaning obvious, and keep every reply easy to read.",
      "Words are in my Spanish Weave state line: lean on Known, use Active/Shaky where meaning is obvious."),
@@ -92,11 +93,53 @@ def stage_text(short=False):
                      f'{" in a sentence" if n == 1 else ""}){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
 
 
-def rules(short=False):
-    fill = {'stages': stage_text(), 'stages_short': stage_text(short=True)}
+# Where the full rules say the state line is: below them in a pasted block; in the chat skill (SKILL.md), wherever its
+# steps found it (the user's preferences, or a level file).
+WHERE = 'below'
+SKILL_WHERE = 'found by step 2 or 3 above'
+
+
+def rules(short=False, skill=False):
+    """The pasted rules: full for claude.ai, short for ChatGPT. skill: the full rules as bare bullets for the chat
+    skill's SKILL.md, which has its own heading and finds the state line by its own steps."""
+    fill = {'stages': stage_text(), 'stages_short': stage_text(short=True), 'where': SKILL_WHERE if skill else WHERE}
     parts = [(s if short else f).format(**fill) for f, s in RULES]
+    if skill:
+        return '\n'.join(f'- {p}' for p in parts if p)
     return ('SPANISH WEAVE. ' if short else 'SPANISH WEAVE\n\n') + ('\n' if short else '\n\n').join(
         p if short else f'- {p}' for p in parts if p)
+
+
+# The one line for claude.ai and the Claude apps with the spanish-weave-chat plugin (Settings > "Instructions for
+# Claude"). Preferences reach every chat, but a skill loads only when Claude chooses to, so the line asks for it
+# every time and carries a few default swaps for a chat where it still doesn't load.
+CHAT_LOAD = ('At the start of every conversation, before your first reply, load the spanish-weave skill and follow it '
+             'for the whole chat.')
+FALLBACK_WORDS = ('y', 'pero', 'entonces', 'con', 'sin', 'muy', 'también', 'ahora', 'porque', 'para')  # level 1's
+
+
+def chat_fallback(words=FALLBACK_WORDS):
+    return (f'Without the skill, still swap {", ".join(words)} into chat replies (never in code or in health, legal, '
+            'money, safety or urgent answers) and gloss them in one footer line.')
+
+
+CHAT_FALLBACK = chat_fallback()
+
+
+def chat_line(level, stage=None, exact=False):
+    """The preference line for a published level: the skill reads that level's word list. stage: the learner's own
+    stage when it differs from the level's (make_blocks.chat_level), so a learner whose words sit between levels gets
+    the level's words at their own Spanish share; exact for a stage pinned below the level's."""
+    named = f', Stage {stage}{" exactly" if exact else ""}' if stage else ''
+    return f'Spanish Weave level {level}{named}. {CHAT_LOAD} {CHAT_FALLBACK}'
+
+
+def chat_exact(state, now=None):
+    """The preference text for this learner's own words: the same line, then their state line (which the skill takes
+    in place of a level's). Its fallback swaps only words the learner has met."""
+    met = [es for es in FALLBACK_WORDS if (swlib.find(state, es) or {}).get('status') in ('active', 'shaky', 'known')]
+    return (f'Spanish Weave: my word list is the state line below. {CHAT_LOAD}'
+            + (f' {chat_fallback(met)}' if met else '') + '\n' + state_line(state, now, dates=False))
 
 
 def md(day):
@@ -215,8 +258,38 @@ def chatgpt(state, now=None, limit=None, tail=None):
     return line, rules(short=True)
 
 
-def mark_exported(state, target):
-    state['exported'] = {'at': time.time(), 'version': swlib.version(state), 'target': target}
+CLAUDE_AI = ('claude-ai', 'chat', 'chat-exact')  # the forms of one claude.ai settings field: the latest replaces the rest
+
+
+def export_slot(target):
+    """Where an export's record lives: claude.ai's block, chat line and exact line share one, ChatGPT has its own."""
+    return 'claude.ai' if target in CLAUDE_AI else target
+
+
+BLOCKS = ('claude-ai', 'chatgpt')
+PAIR_SECONDS = 600  # a claude.ai and a ChatGPT block exported this close together (setup does both) are a pair
+
+
+def mark_exported(state, target, level=None, stage=None, exact=False):
+    """Records an export, for the hook's reminders (weave.export_notice): one record per place it is pasted
+    (export_slot), so a ChatGPT export doesn't drop claude.ai's reminder; 'exported' keeps the latest, as before.
+    level, stage and exact: what a chat line named. The two blocks exported together (setup's pair: the learner uses
+    whichever applies) are marked paired, and any later export to one place drops the other half, so nobody is reminded
+    of a block they never pasted. A 0.3.4 record (only 'exported') is simply replaced, as 0.3.4 did."""
+    now = time.time()
+    exports = state.setdefault('exports', {})
+    for slot in [s for s, r in exports.items() if r.get('paired') and s != export_slot(target)]:
+        del exports[slot]
+    record = {'at': now, 'version': swlib.version(state), 'target': target}
+    if level:
+        record['level'] = level
+    if stage:
+        record.update(stage=stage, exact=bool(exact))
+    other = exports.get('chatgpt' if target == 'claude-ai' else 'claude.ai') if target in BLOCKS else None
+    if other and other.get('target') in BLOCKS and now - other.get('at', 0) < PAIR_SECONDS:
+        other['paired'] = record['paired'] = True
+    exports[export_slot(target)] = record
+    state['exported'] = dict(record)
 
 
 def log_chat_day(state, day=None):

@@ -23,10 +23,14 @@
   sw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   sw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
                                                      (the flags work without dashes too: export chatgpt)
+  sw.py export --chat [--exact]                      the one preference line for claude.ai and the Claude apps
+                                                     with the spanish-weave-chat plugin: the published level
+                                                     nearest to your words (--exact: your own word list instead)
   sw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   sw.py check                                        verify the state, extension folder and native host, that
                                                      setup's copies match the installed plugin's version, and that
-                                                     a local folder the marketplace was added from is still there
+                                                     a local folder the marketplace was added from is still there;
+                                                     notes the chat-only plugin when Claude Code has it too
   sw.py quiz [-n N] [--plan [N]]                     spaced-repetition quiz on words that are due (--plan: list
                                                      N questions with answers instead, default 5, for Claude to ask)
   sw.py review WORD right|wrong [--article A]        record one quiz answer (--article: the el/la they used, if
@@ -40,12 +44,16 @@
   sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated; all works
                                                      without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
+  sw.py phone on|off|sync|status                     opt-in quiz on the iPhone through iCloud Drive (Mac only): the
+                                                     Mac puts today's due words in iCloud Drive > Shortcuts >
+                                                     Spanish Weave and reads the phone's answers back (IPHONE.md)
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
                                                      remove the native host manifests (only Spanish Weave's; and
                                                      the Codex hook and the `hooks = true` setup added), then list
                                                      what is left
 """
 import argparse
+import datetime as dt
 import errno
 import json
 import os
@@ -61,6 +69,8 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import swlib  # noqa: E402
 import export  # noqa: E402
+import phone  # noqa: E402
+import make_blocks  # noqa: E402
 import placement  # noqa: E402
 
 HOST_NAME = 'com.spanishweave.host'
@@ -301,6 +311,17 @@ def installed_entries():
 
 def installed_plugin():
     return next(iter(installed_entries()), None)
+
+
+CHAT_PLUGIN = 'spanish-weave-chat'  # the skills-only plugin for claude.ai, which can reach Claude Code too
+
+
+def chat_plugin_keys():
+    """installed_plugins.json's names (plugin@marketplace) for the chat-only plugin, from any marketplace. Read only:
+    setup never changes Claude Code's settings for it, since the hook's marker line keeps its skill quiet."""
+    data = swlib.read_json(swlib.claude_config_dir() / 'plugins' / 'installed_plugins.json', {})
+    plugins = data.get('plugins') if isinstance(data, dict) else None
+    return sorted(k for k in plugins if k.split('@')[0] == CHAT_PLUGIN) if isinstance(plugins, dict) else []
 
 
 def marketplace_entry():
@@ -544,8 +565,23 @@ def check(_args):
         enabled = config.exists() and enable_codex_hooks(config.read_text()) == config.read_text().rstrip('\n') + '\n'
         report(enabled, f'Codex hook in {swlib.codex_home() / "hooks.json"} with [features] hooks = true '
                         '(Codex asks you to trust it on first start)')
+    chat = chat_plugin_keys()
+    if chat:
+        print(f'note {", ".join(chat)} (the chat-only plugin) {"is" if len(chat) == 1 else "are"} in Claude Code too. '
+              f'Nothing to do: the hook\'s brief carries the line "{swlib.HOOK_MARKER}" (also while paused), which '
+              'keeps its skill quiet here, so replies get one word list, not two. If a reply ever shows two, turn it '
+              'off in Claude Code only: ' + '; '.join(f'claude plugin disable {key}' for key in chat))
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
+    try:
+        on = phone.settings(swlib.load_state(create=False) or {}).get('on')
+    except (swlib.StateError, swlib.UnsafeHome):
+        on = False
+    if on:
+        try:
+            report(True, f'iPhone sync folder: {phone.shortcuts_folder() / phone.FOLDER}')
+        except (phone.Unavailable, phone.NotReady) as error:
+            report(False, f'iPhone sync folder: {error}')
     if not ok:
         sys.exit(1)
 
@@ -656,6 +692,8 @@ def uninstall(args):
           '      claude plugin marketplace remove learning   # only if nothing else from that marketplace is installed')
     print('  - the Chrome extension, if you loaded it: open chrome://extensions and click Remove on Spanish Weave')
     print('  - a Spanish Weave block pasted into claude.ai or ChatGPT settings, if any: delete it there')
+    print('  - the iPhone sync folder, if you turned it on: iCloud Drive > Shortcuts > Spanish Weave (delete it in Finder '
+          'or the Files app), and the Spanish Weave shortcuts on the iPhone')
     for item in left:
         print(f'  - {item}')
     for path in backups:
@@ -704,6 +742,9 @@ def status(_args):
     if behind:
         print(f'  the extension and native host copies are from {behind[0] or "an older version"}, the plugin is '
               f'{behind[1]}: rerun /spanish-weave:setup')
+    line = phone_line(state)
+    if line:
+        print(f'  {line}')
 
 
 QUOTES = '"“”«»\'‘’'
@@ -787,8 +828,24 @@ def export_cmd(args):
     with swlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
         swlib.promote(state)  # today's refill first, so the stored version is the one printed below
-        export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
-    if args.chatgpt:
+        level, stage, exact = make_blocks.chat_level(state) if args.chat and not args.exact else (None, None, False)
+        export.mark_exported(state, 'chat-exact' if args.exact else 'chat' if args.chat else
+                             'chatgpt' if args.chatgpt else 'claude-ai', level, stage, exact)
+    if args.chat:
+        text = export.chat_exact(state) if args.exact else export.chat_line(level, stage, exact)
+        where = ('claude.ai and the Claude apps, with the spanish-weave-chat plugin added (paid plans: Customize > '
+                 'Plugins). Paste into Settings > "Instructions for Claude" in place of any older Spanish Weave block '
+                 'or line')
+        if args.exact:
+            print(f'{where}: these two lines carry your own word list ({len(text)} characters); re-export about weekly.'
+                  f'\n\n{text}')
+        else:
+            print(f'{where}: level {level} of {len(make_blocks.level_words(swlib.load_lexicon()))} is the nearest to '
+                  f'your words{f" (with your Stage {stage})" if stage else ""}, and Claude Code tells you when the line '
+                  f'changes.\n\n{text}')
+        if args.copy and copy_to_clipboard(text):
+            print('\n(Also copied to your clipboard, ready to paste.)')
+    elif args.chatgpt:
         about, respond = export.chatgpt(state)
         limit = export.CHATGPT_LIMIT
         over = [f'The {box} block is {len(text):,} characters, over the {limit:,} limit of the Free and Go plans '
@@ -834,6 +891,104 @@ def log_chat_day(_args):
 
 def refresh(_args):
     swlib.refresh_exposure()
+    phone.background_sync()  # when iPhone sync is on; never raises
+
+
+def local_time(stamp, today_=None):
+    """A UTC stamp (2026-10-25T23:44:58Z) in this Mac's time: 'today at 4:44 PM', 'yesterday at 9:05 AM' or
+    'Oct 23 at 4:44 PM'. The stamp as it is when it doesn't parse."""
+    try:
+        moment = dt.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=dt.timezone.utc).astimezone()
+    except (TypeError, ValueError):
+        return str(stamp)
+    ago = ((today_ or dt.date.today()) - moment.date()).days
+    day = 'today' if ago == 0 else 'yesterday' if ago == 1 else f'{moment:%b} {moment.day}'
+    return f'{day} at {moment.strftime("%I:%M %p").lstrip("0")}'
+
+
+def plural(n, word):
+    return f'{n} {word}{"" if n == 1 else "s"}'
+
+
+def phone_line(state):
+    """One status line on iPhone sync, or None when it was never turned on."""
+    settings = phone.settings(state)
+    if not settings:
+        return None
+    if not settings.get('on'):
+        return f'iPhone sync: off ({settings.get("problem") or "/spanish-weave:phone on"})'
+    if settings.get('problem'):
+        return f'iPhone sync: on, but the last try failed: {settings["problem"]}'
+    last, got = settings.get('last') or {}, settings.get('got') or {}
+    parts = [f'last synced {local_time(settings["synced"])}' if settings.get('synced') else 'not synced yet',
+             f'last answers from the phone: {got.get("answers")}, {local_time(got.get("at"))}' if got.get('answers')
+             else 'no answers from the phone yet']
+    if last.get('waiting'):
+        parts.append(f'{plural(last["waiting"], "answer file")} still downloading from iCloud')
+    if last.get('later'):
+        parts.append(f'{plural(last["later"], "answer file")} left for the next sync')
+    if last.get('skipped_files'):
+        parts.append(f'{plural(last["skipped_files"], "file")} in the inbox skipped (an unexpected name, too large or '
+                     'unreadable)')
+    aside = sum(bool(e.get('failed') or e.get('rewritten')) for e in (state.get('phone_inbox') or {}).values()
+                if isinstance(e, dict))
+    if aside:
+        parts.append(f'{plural(aside, "answer file")} set aside (changed after it was read, or unreadable): '
+                     f'{"its" if aside == 1 else "their"} answers don\'t count; delete '
+                     f'{"it" if aside == 1 else "them"} from iCloud Drive > Shortcuts > Spanish Weave > inbox')
+    return 'iPhone sync: on, ' + '; '.join(parts)
+
+
+def phone_cmd(args):
+    action = args.action or 'status'
+    if action == 'status':
+        with swlib.editing() as state:
+            pass
+        print(phone_line(state) or 'iPhone sync: never turned on. Turn it on with /spanish-weave:phone on (needs a Mac '
+                                    'with iCloud Drive and the Shortcuts app on the iPhone; see IPHONE.md).')
+        return
+    if action == 'off':
+        with swlib.editing() as state:
+            phone.enable(state, False)
+        print('iPhone sync is off. The Spanish Weave folder in iCloud Drive > Shortcuts is left as it is; delete it in '
+              'Finder or the Files app if you no longer want it.')
+        return
+    failed = None
+    with swlib.editing() as state:
+        if action == 'on':
+            phone.enable(state, True)
+        if not phone.settings(state).get('on'):
+            sys.exit('iPhone sync is off. Turn it on with: sw.py phone on')
+        try:
+            folder, _, _ = phone.ensure_folders(phone.shortcuts_folder())
+            writer = phone.read_snapshot_writer(folder)
+            mine = phone.settings(state).get('writer')
+            if writer and writer != mine:
+                print('Note: another Mac already writes this word list. Keep iPhone sync on for one Mac only, or the two '
+                      'take turns overwriting it: turn it off there with /spanish-weave:phone off.')
+            report = phone.sync(state)
+        except (phone.Unavailable, phone.NotReady, phone.TooBig, OSError) as error:
+            failed = error  # leave the block normally, so "on" and the problem are saved, then exit
+            if action == 'on' and not getattr(error, 'retry', True):
+                phone.enable(state, False)  # it can never work here (not a Mac): nothing to retry
+            phone.settings(state)['problem'] = str(error)[:300]
+    if failed is not None:
+        retrying = action == 'on' and getattr(failed, 'retry', True)
+        sys.exit(f'iPhone sync: {failed}' + ('\nIt stays on and tries again in the background; '
+                                            '/spanish-weave:phone sync tries now.' if retrying else ''))
+    print(f'iPhone sync is on. Synced: {report["answers"]} answers from the phone recorded'
+          + (f', {report["ignored"]} lines ignored' if report['ignored'] else '')
+          + (f', {plural(report["waiting"], "answer file")} still downloading from iCloud' if report['waiting'] else '')
+          + (f', {plural(report["later"], "answer file")} left for the next sync' if report['later'] else '')
+          + (f', {plural(report["skipped_files"], "inbox file")} skipped' if report['skipped_files'] else '')
+          + (f', {plural(report["set_aside"], "answer file")} set aside' if report['set_aside'] else '')
+          + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today '
+          + ('written for the phone.' if report['written'] else '(the phone already has this list).'))
+    for warning in report['warnings']:
+        print(f'Note: {warning}')
+    if action == 'on':
+        print('Next: build the "Spanish Weave Quiz" shortcut on the iPhone (IPHONE.md). This Mac syncs again in the '
+              'background while you use Claude Code, or run /spanish-weave:phone sync.')
 
 
 def question(word, way):
@@ -1151,10 +1306,15 @@ def main(argv=None):
     target = p.add_mutually_exclusive_group()
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
+    target.add_argument('--chat', action='store_true',
+                        help='one line for claude.ai and the Claude apps with the spanish-weave-chat plugin: the '
+                             'published level nearest to your words')
+    p.add_argument('--exact', action='store_true', help='with --chat: your own word list instead of a level')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
-    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
-    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|log-day', help='the same flags without the dashes',
-                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'log-day'))
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block or chat line to the clipboard')
+    p.add_argument('extra', nargs='*', metavar='chatgpt|claude-ai|chat|exact|log-day',
+                   help='the same flags without the dashes',
+                   type=bare('chatgpt', 'claude-ai', 'claude.ai', 'chat', 'exact', 'log-day'))
     p.set_defaults(run=export_cmd)
     exporter = p
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
@@ -1183,11 +1343,18 @@ def main(argv=None):
     p = sub.add_parser('output')
     p.add_argument('value', nargs='?', choices=['on', 'off'])
     p.set_defaults(run=output_cmd)
+    p = sub.add_parser('phone')
+    p.add_argument('action', nargs='?', choices=['on', 'off', 'sync', 'status'])
+    p.set_defaults(run=phone_cmd)
     args = parser.parse_args(argv)
     for word in getattr(args, 'extra', []):  # chatgpt -> --chatgpt, claude.ai -> --claude-ai, all -> --all
         setattr(args, re.sub(r'[-.]', '_', word), True)
-    if args.command == 'export' and args.chatgpt and args.claude_ai:
-        exporter.error('argument --chatgpt: not allowed with argument --claude-ai')
+    if args.command == 'export':  # again with the flags given without dashes
+        given = [f'--{name.replace("_", "-")}' for name in ('claude_ai', 'chatgpt', 'chat') if getattr(args, name)]
+        if len(given) > 1:
+            exporter.error(f'argument {given[1]}: not allowed with argument {given[0]}')
+        if args.exact and not args.chat:
+            exporter.error('argument --exact: only with --chat')
     try:
         args.run(args)
     except swlib.StateError as error:
