@@ -492,6 +492,10 @@ copies only update when the version changes. Then run `python3 scripts/make_bloc
 own state folder, point `SPANISH_WEAVE_HOME` at a new or empty folder you own (setup refuses one that holds other
 things, and the hook and commands write nothing there).
 
+GitHub Actions (`.github/workflows/spanish-weave.yml` at the repo root) runs `claude plugin validate --strict` on the
+marketplace and both plugins, the Python tests on 3.9 and 3.15, the three `--check` scripts and the extension tests on
+every pull request and push to main that touches either plugin.
+
 To add a word, add a row `es,en,,VERSION` to `data/lexicon.csv` in the rank where it belongs, with the next version
 in the since column (`quizás,perhaps,,0.3.4`). Run `python3 scripts/hints.py --fill` to generate its hint, then
 `python3 scripts/make_blocks.py`. The plugin queues the word at its rank; the paste-in levels put each version's words
