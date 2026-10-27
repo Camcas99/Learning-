@@ -1,0 +1,81 @@
+name: spanish-weave
+
+# Runs the Spanish Weave checks on pull requests and pushes to main that touch it, and on demand. Every check is in one
+# Ubuntu job (each job bills at least a minute; these take seconds) and runs even when an earlier one failed, so one
+# run reports every failure. Layout adapted from French Weave by Jackie Oliver (MIT).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'language/spanish-weave/**'
+      - 'language/spanish-weave-chat/**'
+      - '.claude-plugin/**'
+      - '.github/workflows/spanish-weave.yml'
+  pull_request:
+    paths:
+      - 'language/spanish-weave/**'
+      - 'language/spanish-weave-chat/**'
+      - '.claude-plugin/**'
+      - '.github/workflows/spanish-weave.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    # Pinned: setup-python has no Python 3.9 build for newer Ubuntu images.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # The Claude Code CLI only validates plugins here: no login, no updates, no telemetry.
+      DISABLE_AUTOUPDATER: '1'
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+    defaults:
+      run:
+        working-directory: language/spanish-weave
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        id: py39
+        with:
+          python-version: '3.9'  # the oldest Python setup supports, and macOS's own python3
+      - uses: actions/setup-python@v5
+        id: py314
+        with:
+          python-version: '3.14'
+      - uses: oven-sh/setup-bun@v2
+      - name: Claude Code CLI (for plugin validation)
+        run: npm install --global @anthropic-ai/claude-code@2.1.311
+
+      - name: Plugins and marketplace validate
+        working-directory: .
+        run: |
+          claude plugin validate --strict .
+          claude plugin validate --strict language/spanish-weave
+          claude plugin validate --strict language/spanish-weave-chat
+      - name: Python 3.9 tests
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py39.outputs.python-path }}" -m unittest discover -s tests'
+      - name: Python 3.14 tests
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py314.outputs.python-path }}" -m unittest discover -s tests'
+      - name: Paste-in blocks and the chat plugin are current and fit
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py314.outputs.python-path }}" scripts/make_blocks.py --check'
+      - name: Sound hints follow the rules
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py314.outputs.python-path }}" scripts/hints.py --check'
+      - name: Content script bundle is current
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py314.outputs.python-path }}" scripts/bundle_content.py --check'
+      - name: Extension tests
+        if: ${{ !cancelled() }}
+        working-directory: language/spanish-weave/extension
+        run: bun install --frozen-lockfile && bun test
