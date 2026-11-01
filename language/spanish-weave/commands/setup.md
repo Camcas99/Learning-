@@ -64,10 +64,10 @@ Camcas99/Learning- in Customize > Plugins, install spanish-weave-chat there, and
 Don't run that export unless they ask.
 
 If the plan shows `platform` darwin, after setup (and the placement test, if any) ask one more question in its own
-AskUserQuestion call: "Quiz on your iPhone too? A Shortcut on the phone asks today's due words, and your answers come
-back to this Mac through iCloud Drive." with No (default) / Yes. Only on Yes, run
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" phone on` and relay the next steps it prints in plain English (build the
-Shortcut from IPHONE.md, Keep Downloaded on the folder). On other platforms don't ask.
+AskUserQuestion call: "Quiz on your iPhone too? A Shortcut on the phone asks today's words, your answers come back to
+this Mac through iCloud Drive, and a page there shows your progress and every word you have in use." with No (default)
+/ Yes. Only on Yes, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sw.py" phone on` and relay the next steps it prints in
+plain English (build the Shortcuts from IPHONE.md, Keep Downloaded on the folder). On other platforms don't ask.
 
 Commands that run after the user's next message (the placement answers, and the blocks when they come after the
 test) are in a later turn, where Claude Code asks before running them. That is expected: when you ask for the

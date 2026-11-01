@@ -44,9 +44,10 @@
   sw.py anki [--all] [--out FILE]                    your words as an Anki import file (tab-separated; all works
                                                      without dashes too); --out replaces only an earlier export
   sw.py output [on|off]                              "Your turn" lines that invite you to write some Spanish
-  sw.py phone on|off|sync|status                     opt-in quiz on the iPhone through iCloud Drive (Mac only): the
-                                                     Mac puts today's due words in iCloud Drive > Shortcuts >
-                                                     Spanish Weave and reads the phone's answers back (IPHONE.md)
+  sw.py phone on|off|sync|status                     opt-in quiz and progress page on the iPhone through iCloud
+                                                     Drive (Mac only): the Mac puts today's quiz words and the page
+                                                     in iCloud Drive > Shortcuts > Spanish Weave and reads the
+                                                     phone's answers back (IPHONE.md)
   sw.py uninstall [--codex] [--user-data-dir DIR]... [--dry-run]
                                                      remove the native host manifests (only Spanish Weave's; and
                                                      the Codex hook and the `hooks = true` setup added), then list
@@ -722,16 +723,18 @@ def status(_args):
           f'{", PAUSED" if state.get("paused") else ""}')
     print(f'  known {len(by.get("known", []))}, learning {len(by.get("active", []))}, '
           f'shaky {len(by.get("shaky", []))}, not yet introduced {len(by.get("queue", []))}')
+    day = swlib.today()
     for name in ('shaky', 'active'):
         for w in by.get(name, []):
-            days = len(swlib.exposure_days(w))  # what counts toward known: Chrome sightings and right quiz answers
-            print(f'  {name:6} {w["es"]} = {w["en"]}, "{w["hint"]}"  (counted on {days} day{"s" if days != 1 else ""})'
+            done, needed = swlib.learning_progress(w, day)  # the iPhone's progress page shows the same count
+            print(f'  {name:6} {w["es"]} = {w["en"]}, "{w["hint"]}"  ({done} of {needed} '
+                  f'{"clean days" if name == "shaky" else "days"})'
                   + (f'  {swlib.note(w["es"])}' if swlib.note(w['es']) else ''))
     if by.get('shaky') or by.get('active'):
         print('  a word becomes known after 3 days counted by Chrome sightings or right quiz answers, or with '
               '/spanish-weave:known; chat sightings alone never make it known')
-    nxt = next((n for n, s in sorted(swlib.STAGES) if swlib.stage_for(state) < s), None)
-    if nxt and not state.get('stage_pinned'):
+    nxt = swlib.next_stage(state)
+    if nxt:
         print(f'  next stage at {nxt} known words')
     due = len(swlib.due_reviews(state, limit=len(state['words'])))
     print(f'  {due} word{"s" if due != 1 else ""} due for review: /spanish-weave:quiz or sw.py quiz' if due else
@@ -980,13 +983,14 @@ def phone_cmd(args):
           + (f', {plural(report["later"], "answer file")} left for the next sync' if report['later'] else '')
           + (f', {plural(report["skipped_files"], "inbox file")} skipped' if report['skipped_files'] else '')
           + (f', {plural(report["set_aside"], "answer file")} set aside' if report['set_aside'] else '')
-          + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today '
-          + ('written for the phone.' if report['written'] else '(the phone already has this list).'))
+          + f'; {report["due"]} word{"s" if report["due"] != 1 else ""} due today'
+          + (f' and {report["practice"]} to practice' if report['practice'] else '')
+          + (' written for the phone.' if report['written'] else ' (the phone already has this list).'))
     for warning in report['warnings']:
         print(f'Note: {warning}')
     if action == 'on':
-        print('Next: build the "Spanish Weave Quiz" shortcut on the iPhone (IPHONE.md). This Mac syncs again in the '
-              'background while you use Claude Code, or run /spanish-weave:phone sync.')
+        print('Next: build the "Spanish Weave Quiz" and "Spanish Weave Progress" shortcuts on the iPhone (IPHONE.md). '
+              'This Mac syncs again in the background while you use Claude Code, or run /spanish-weave:phone sync.')
 
 
 def question(word, way):

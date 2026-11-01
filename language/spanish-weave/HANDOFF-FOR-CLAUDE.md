@@ -53,7 +53,8 @@ granted:
   cloud session started from the phone starts on a fresh machine each time, so it can't keep their progress, and
   the extension (3) needs Chrome on a computer. On a paid Claude plan, the chat-only plugin spanish-weave-chat (same
   marketplace) replaces the pasted block with one line in their preferences. With a Mac, `/spanish-weave:phone on`
-  adds a daily quiz on the iPhone through a Shortcut and iCloud Drive (IPHONE.md); it is opt-in and Mac only.
+  adds a daily quiz and a progress page on the iPhone through Shortcuts and iCloud Drive (IPHONE.md); it is opt-in and
+  Mac only, and it puts every word they have in use in iCloud Drive.
 - **If they already know some Spanish**, offer the 2-minute placement test (`/spanish-weave:placement`) so they
   don't start with words they know.
 - **Updates:** `claude plugin marketplace update learning`, then `claude plugin update spanish-weave@learning`. The
