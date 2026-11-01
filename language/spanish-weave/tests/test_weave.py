@@ -2546,6 +2546,14 @@ class PhoneSync(Home):
         self.assertEqual(self.phone_answers([self.quiz_line('con', snap=self.offer('con', swlib.today()))])['answers'], 1)
         self.assertEqual(self.word('con')['box'], 4)
 
+    def test_a_right_answer_from_the_day_a_word_became_known_still_counts(self):
+        self.sync()
+        with swlib.editing() as state:  # graduated in Chrome before the Mac read the phone's answer: it was due
+            swlib.set_status(swlib.find(state, 'pero'), 'known', swlib.today())
+            swlib.schedule(swlib.find(state, 'pero'), swlib.today(), 2)
+        self.assertEqual(self.phone_answers([self.quiz_line('pero')])['answers'], 1)
+        self.assertEqual(self.word('pero')['reviews'][-1][:2], [swlib.today(), 1])
+
     def test_a_miss_from_the_day_a_word_became_known_still_counts(self):
         self.sync()
         with swlib.editing() as state:
@@ -2579,6 +2587,14 @@ class PhoneSync(Home):
         self.assertEqual(swlib.learning_progress(con, swlib.today()), (1, 3))
         self.assertEqual(self.phone_answers([self.quiz_line('pero', day=self.day(-1), snap=self.offer('pero', self.day(-1)))]
                                             )['answers'], 0)  # a day with an answer still counts once
+        old = self.offer('y', self.day(-2))
+        with swlib.editing() as state:  # a known word gets none of this: its newest answer stands
+            swlib.set_status(swlib.find(state, 'y'), 'known', self.day(-5))
+            swlib.review(state, 'y', True, day=self.day(-1))
+        for result in ('right', 'wrong'):
+            self.assertEqual(self.phone_answers([self.quiz_line('y', result, day=self.day(-2), snap=old)])['answers'], 0)
+        y = self.word('y')
+        self.assertEqual((y['status'], y['last_bad'], y['days']), ('known', '', [self.day(-1)]))
 
     def test_the_list_holds_at_most_ten_due_and_twenty_practice_words(self):
         with swlib.editing() as state:
