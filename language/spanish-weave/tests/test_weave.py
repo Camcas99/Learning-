@@ -2357,11 +2357,11 @@ class PhoneSync(Home):
         self.assertEqual(self.sync()['answers'], 1)
         self.assertEqual(swlib.find(swlib.load_state(), 'entonces')['box'], 1)
 
-    def offer(self, word, day):
-        """A snapshot the Mac made on day offering word; returns its stamp."""
+    def offer(self, word, day, *more):
+        """A snapshot the Mac made on day offering word (and more words); returns its stamp."""
         made = f'{day}T08:00:00Z'
         with swlib.editing() as state:
-            phone.settings(state).setdefault('snaps', {})[made] = {'day': day, 'words': [word]}
+            phone.settings(state).setdefault('snaps', {})[made] = {'day': day, 'words': [word, *more]}
         return made
 
     def test_an_answer_on_a_known_word_counts_only_on_a_day_it_was_due(self):
@@ -2414,21 +2414,25 @@ class PhoneSync(Home):
             swlib.apply_event(state, 'sin', 'flip', self.day(-1))  # shaky and due today
             swlib.set_status(swlib.find(state, 'entonces'), 'shaky', self.day(-1))
             swlib.schedule(swlib.find(state, 'entonces'), self.day(-1), 1)  # shaky, not due: first of the practice words
+            swlib.set_status(swlib.find(state, 'la idea'), 'known', self.day(-1))
+            swlib.schedule(swlib.find(state, 'la idea'), self.day(-1), 2)  # known and not due: not for practice
+            swlib.set_status(swlib.find(state, 'el problema'), 'active', self.day(-1))
+            swlib.review(state, 'el problema', True, day=self.day(-1))  # arrived and answered yesterday: practice today
         report = self.sync()
         items = self.snapshot()['items']
         self.assertEqual([(i['es'], i['practice']) for i in items],
-                         [('sin', False), ('y', False), ('entonces', True), ('pero', True)])
-        self.assertEqual((report['due'], report['practice']), (2, 2))
+                         [('sin', False), ('y', False), ('entonces', True), ('pero', True), ('el problema', True)])
+        self.assertEqual((report['due'], report['practice']), (2, 3))
         state = swlib.load_state()
         new = [w['es'] for w in state['words'] if w['status'] == 'active' and w['added'] == swlib.today()]
         self.assertEqual(len(new), 5)  # the day's new words wait for tomorrow, as their first quiz does
         self.assertFalse(set(new) & {i['es'] for i in items})
         with mock.patch.object(phone, 'ITEMS', 1):  # due words over the limit still come, after it
             self.assertEqual([(i['es'], i['practice']) for i in phone.snapshot(state)['items']],
-                             [('sin', False), ('entonces', True), ('y', True), ('pero', True)])
+                             [('sin', False), ('entonces', True), ('y', True), ('pero', True), ('el problema', True)])
         with contextlib.redirect_stdout(io.StringIO()) as out:
             sw.main(['phone', 'sync'])
-        self.assertIn('2 words due today and 2 to practice (the phone already has this list).', out.getvalue())
+        self.assertIn('2 words due today and 3 to practice (the phone already has this list).', out.getvalue())
 
     def test_right_practice_counts_a_day_and_three_days_make_a_word_known_a_week_out(self):
         self.sync()
@@ -2487,15 +2491,20 @@ class PhoneSync(Home):
 
     def test_known_answer_on_a_known_word_is_a_right_answer_and_never_a_new_change(self):
         with swlib.editing() as state:
-            for es in ('pero', 'con'):
+            for es in ('pero', 'con', 'sin'):
                 swlib.set_status(swlib.find(state, es), 'known', self.day(-20))
             swlib.review(state, 'pero', True, day=self.day(-4))  # box 1: due again, 3 days on
             swlib.review(state, 'con', True, day=self.day(-1))   # not due
+            swlib.review(state, 'sin', True, day=self.day(-1))   # not due
         self.sync()
-        self.assertEqual(self.phone_answers([self.quiz_line('pero', 'known'), self.quiz_line('con', 'known')])['answers'], 1)
-        pero, con = self.word('pero'), self.word('con')
+        stale = self.offer('con', swlib.today(), 'sin')  # a list kept from before those answers
+        report = self.phone_answers([self.quiz_line('pero', 'known'), self.quiz_line('con', 'known', snap=stale),
+                                     self.quiz_line('sin', 'wrong', snap=stale)])
+        self.assertEqual(report['answers'], 1)
+        pero, con, sin = self.word('pero'), self.word('con'), self.word('sin')
         self.assertEqual((pero['status'], pero['box'], pero['changed']), ('known', 2, self.day(-20)))
         self.assertEqual((con['box'], con['changed'], len(con['reviews'])), (1, self.day(-20), 1))
+        self.assertEqual((sin['status'], sin['box'], sin['last_bad'], len(sin['reviews'])), ('known', 1, '', 1))
         self.assertNotIn('pero', [row[1]['es'] for row in phone.changes(swlib.load_state(), swlib.today())
                                   if row[2] == 'now known'])
 
@@ -2613,6 +2622,21 @@ class PhoneSync(Home):
         rows = [label for d, _, label, _ in phone.changes(state, day(0)) if d == day(0)]
         self.assertEqual(rows[:3], ['now known', 'missed', 'right'])
 
+    def test_answers_dated_around_a_change_keep_their_own_day(self):
+        self.sync()
+        old = self.offer('pero', self.day(-2), 'con', 'sin')
+        with swlib.editing() as state:
+            swlib.apply_event(state, 'pero', 'flip', swlib.today())
+            swlib.apply_event(state, 'con', 'flip', swlib.today())
+        report = self.phone_answers([self.quiz_line('pero', 'known', snap=old),                # the same day as the flip
+                                     self.quiz_line('con', day=self.day(-2), snap=old),        # a right answer from before it
+                                     self.quiz_line('sin', 'known', day=self.day(-1), snap=old)])  # known yesterday
+        self.assertEqual(report['answers'], 3)
+        self.assertEqual(self.word('pero')['status'], 'known')
+        con, sin = self.word('con'), self.word('sin')
+        self.assertEqual((con['status'], con['reviews'][-1][:2]), ('shaky', [self.day(-2), 1]))
+        self.assertEqual((sin['status'], sin['changed'], sin['due']), ('known', self.day(-1), self.day(13)))
+
     def test_a_late_known_answer_never_undoes_a_later_change(self):
         self.sync()
         old = self.offer('pero', self.day(-2))
@@ -2654,7 +2678,7 @@ class PhoneSync(Home):
         (self.folder / 'progress.html').unlink()
         self.assertTrue(self.sync()['page'])
         self.assertEqual(self.phone_answers([self.quiz_line('pero')])['page'], True)  # an answer changes it
-        self.assertIn('right', self.page())
+        self.assertIn('tag known">right</span><b lang="es">pero</b>', self.page())
         with swlib.editing() as state:
             phone.enable(state, True)
             self.assertNotIn('page', phone.settings(state))
@@ -2707,6 +2731,46 @@ class PhoneSync(Home):
         self.assertIn((swlib.today(), 'y', 'back to learning'),
                       [(d, w['es'], label) for d, w, label, _ in phone.changes(swlib.load_state(), swlib.today())])
 
+    def test_the_pages_week_is_seven_days_up_to_its_day(self):
+        state = swlib.new_state('2026-09-01')
+        a, b, c, d = state['words'][:4]
+        a['reviews'], b['reviews'] = [['2026-10-25', 1]], [['2026-10-24', 1]]
+        swlib.set_status(c, 'shaky', '2026-10-25')
+        swlib.set_status(d, 'shaky', '2026-10-24')
+        shown = lambda day: {w['es'] for _, w, _, _ in phone.changes(state, day)}
+        self.assertEqual(shown('2026-10-31'), {a['es'], c['es']})
+        self.assertEqual(shown('2026-10-24'), {b['es'], d['es']})  # nothing dated after the page's day
+
+    def test_the_written_page_has_its_stamp_stage_labels_and_lists(self):
+        with swlib.editing() as state:
+            swlib.apply_event(state, 'y', 'known', self.day(-2))
+            swlib.apply_event(state, 'entonces', 'known', self.day(-1))
+            swlib.apply_event(state, 'sin', 'flip', self.day(-1))
+            swlib.apply_event(state, 'la idea', 'active', self.day(-1))
+            swlib.apply_event(state, 'el problema', 'known', self.day(-3))
+            swlib.apply_event(state, 'el problema', 'active', self.day(-1))
+        self.sync()
+        self.answer('iphone-20261031-140000.jsonl', [self.quiz_line('pero'), self.quiz_line('con', 'wrong')])
+        now = time.time()
+        with swlib.editing() as state:
+            self.assertTrue(phone.sync(state, now=now)['page'])
+        text = self.page()
+        self.assertIn(f'Stage 1 &middot; updated {phone.time_label(now)}</p>', text)
+        self.assertIn('<i style="width:5%"></i>', text)  # 2 of 40
+        for row in ('tag known">right</span><b lang="es">pero<', 'tag missed">missed</span><b lang="es">con<',
+                    'tag known">now known</span><b lang="es">y<', 'tag shaky">now shaky</span><b lang="es">sin<',
+                    'tag learning">new word</span><b lang="es">la idea<',
+                    'tag learning">back to learning</span><b lang="es">el problema<'):
+            self.assertIn(row, text)
+        known = text[text.index('<summary>'):]
+        self.assertLess(known.index('<b lang="es">entonces<'), known.index('<b lang="es">y<'))  # newest first
+        self.assertNotIn(' more</p>', text)
+        for tag in ('ul', 'li', 'h2', 'h3', 'details', 'div', 'p', 'span', 'b', 'small'):
+            self.assertEqual(len(re.findall(rf'<{tag}[ >]', text)), text.count(f'</{tag}>'), tag)
+        exact = swlib.new_state(swlib.today(), known_top=phone.RECENT_ROWS - 5)  # 5 new words fill the day's rows exactly
+        self.assertEqual(len(phone.changes(exact, swlib.today())), phone.RECENT_ROWS)
+        self.assertNotIn(' more</p>', phone.progress_page(exact, swlib.today()).decode('utf-8'))
+
     def test_a_big_seed_is_capped_on_the_page_with_the_rest_counted(self):
         state = swlib.new_state(swlib.today(), known_top=150)
         text = phone.progress_page(state, swlib.today()).decode('utf-8')
@@ -2746,11 +2810,14 @@ class PhoneSync(Home):
             swlib.apply_event(state, 'pero', 'peek', self.day(-4))   # a peek: the days up to it don't count
             swlib.apply_event(state, 'pero', 'seen', self.day(-3))
             swlib.apply_event(state, 'pero', 'seen', self.day(-2))
+            swlib.apply_event(state, 'con', 'flip', self.day(-2))
         self.sync()
         with contextlib.redirect_stdout(io.StringIO()) as out:
             sw.main(['status'])
         self.assertRegex(out.getvalue(), r'active pero = .*\(2 of 3 days\)')
         self.assertRegex(self.page(), r'aria-label="2 of 3 days">●●○</span><b lang="es">pero</b>')
+        self.assertRegex(out.getvalue(), r'shaky  con = .*\(2 of 7 clean days\)')
+        self.assertRegex(self.page(), r'>2 of 7 clean days</span><b lang="es">con</b>')
 
     def test_learning_progress_matches_the_promotion_rules(self):
         w = dict(swlib.blank({'es': 'x', 'en': 'x', 'hint': 'x'}), status='active', added='2026-10-01', changed='2026-10-01')
