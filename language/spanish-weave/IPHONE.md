@@ -96,8 +96,9 @@ Make a second shortcut named **Spanish Weave Progress** with two actions:
 2. **Quick Look**.
 
 Add it to your Home Screen too. (You can also open `progress.html` from the Files app.) The page shows your stage, your
-known, learning and shaky counts, how close you are to the next stage, everything that changed in the last week, a dot
-for each day a learning word has so far, and all your known words.
+known, learning and shaky counts, how close you are to the next stage, what changed on each of the last 7 days (up to
+15 words a day, new changes first, with a count of the rest), a dot for each day a learning word has so far, and all
+your known words.
 
 The page changes when your Mac syncs: about every half hour while you use Claude Code, or right away with
 `/spanish-weave:phone sync`. So after a quiz, your answers show up there once the Mac has read them.
@@ -112,6 +113,9 @@ Build a third shortcut, **Spanish Weave Reminder**:
 4. **If** `Due` **is greater than** 0: **Show Notification**, title "Spanish Weave", body "[Due] words to quiz. Open
    Spanish Weave Quiz." **End If**.
 
+The count comes from the Mac's last sync. If the Mac hasn't synced since yesterday's quiz, it may say 0 or stay quiet
+even though words are waiting; a sync brings the new list.
+
 Then make it run every morning:
 - **iOS 26:** Automation tab > **+** > **Time of Day** > 8:00 AM, Daily > **Run Immediately** (turn off Notify When Run
   if you see it) > Next > choose Spanish Weave Reminder.
@@ -122,8 +126,8 @@ Then make it run every morning:
 
 - **What has run on a real iPhone:** the quiz shortcut above. The Progress shortcut and the reminder are newer and
   follow Apple's Shortcuts guide; if an action name differs on your phone, search for the nearest match.
-- **How long the quiz is:** up to 10 due words, plus every other learning word (at most 20 are learning at once), so
-  at most about 30 questions a day.
+- **How long the quiz is:** up to 10 due words, plus up to 20 other learning words (shaky ones first), so at most 30
+  questions a day.
 - **New words** join the list the day after they arrive, so you meet them before you're asked.
 - **The answer file's name:** iOS may add `.json` or `.txt` to it (`iphone-....jsonl.json`). That's fine: the Mac
   reads those too.
@@ -133,6 +137,8 @@ Then make it run every morning:
   review schedule's gap as it was; a wrong one is a slip. Only words the Mac offered count.
 - **Nothing on the list?** You've answered everything for today, or there are no learning words and no known words due.
   Known words come back at growing gaps, as in `/spanish-weave:quiz`.
+- **Same questions again?** The list stays as it is until the Mac reads your answers. Taking it twice before then is
+  harmless: a word counts once a day.
 - **The list didn't change?** The Mac updates it in the background while you use Claude Code (also while Spanish
   Weave is paused), about every half hour. `/spanish-weave:phone sync` updates it now, and `/spanish-weave:phone
   status` shows when it last synced, the last answers it got, and any answer file it had to skip.

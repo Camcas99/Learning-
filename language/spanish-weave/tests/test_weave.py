@@ -2499,6 +2499,120 @@ class PhoneSync(Home):
         self.assertNotIn('pero', [row[1]['es'] for row in phone.changes(swlib.load_state(), swlib.today())
                                   if row[2] == 'now known'])
 
+    def test_known_answer_gets_the_two_week_gap_even_on_a_words_last_day(self):
+        self.sync()
+        with swlib.editing() as state:
+            swlib.apply_event(state, 'pero', 'seen', self.day(-2))
+            swlib.apply_event(state, 'pero', 'seen', self.day(-1))  # the answer is its third counted day
+            swlib.apply_event(state, 'con', 'flip', self.day(-9))   # a clean week: a right answer would recover it
+        self.assertEqual(self.phone_answers([self.quiz_line('pero', 'known'), self.quiz_line('con', 'known')])['answers'], 2)
+        for es in ('pero', 'con'):
+            w = self.word(es)
+            self.assertEqual((w['status'], w['box'], w['due']), ('known', 3, self.day(14)), es)
+
+    def test_a_late_wrong_answer_never_moves_a_newer_slip_back(self):
+        self.sync()
+        old = self.offer('pero', self.day(-7))
+        with swlib.editing() as state:
+            swlib.apply_event(state, 'pero', 'seen', self.day(-5))
+            swlib.apply_event(state, 'pero', 'flip', swlib.today())
+        self.assertEqual(self.phone_answers([self.quiz_line('pero', 'wrong', day=self.day(-7), snap=old)])['answers'], 1)
+        pero = self.word('pero')
+        self.assertEqual((pero['status'], pero['last_bad']), ('shaky', swlib.today()))  # not known by an old slip's clock
+
+    def test_after_its_last_change_a_words_schedule_says_whether_it_is_due(self):
+        self.sync()
+        old = self.offer('pero', self.day(-1))
+        with swlib.editing() as state:  # known by hand last night: not due for two weeks, whatever yesterday's list said
+            swlib.apply_event(state, 'pero', 'known', self.day(-1))
+        self.assertEqual(self.phone_answers([self.quiz_line('pero', day=swlib.today(), snap=old)])['answers'], 0)
+        self.assertEqual((self.word('pero')['box'], self.word('pero')['due']), (3, self.day(13)))
+        with swlib.editing() as state:  # an old review's long gap doesn't outlive the change that reset it
+            swlib.set_status(swlib.find(state, 'con'), 'known', self.day(-30))
+            swlib.review(state, 'con', True, day=self.day(-20))
+            con = swlib.find(state, 'con')
+            con['reviews'][-1][7] = 5  # that review left it in box 5: 60 days
+            swlib.apply_event(state, 'con', 'active', self.day(-19))
+            swlib.apply_event(state, 'con', 'known', self.day(-18))  # box 3: due 14 days later, 4 days ago
+        self.assertEqual(self.phone_answers([self.quiz_line('con', snap=self.offer('con', swlib.today()))])['answers'], 1)
+        self.assertEqual(self.word('con')['box'], 4)
+
+    def test_a_miss_from_the_day_a_word_became_known_still_counts(self):
+        self.sync()
+        with swlib.editing() as state:
+            swlib.review(state, 'pero', True, day=self.day(-2))
+            swlib.set_status(swlib.find(state, 'pero'), 'known', swlib.today())
+            swlib.schedule(swlib.find(state, 'pero'), swlib.today(), 2)
+            swlib.review(state, 'con', True, day=self.day(-2))
+            swlib.set_status(swlib.find(state, 'con'), 'known', swlib.today())
+            swlib.schedule(swlib.find(state, 'con'), swlib.today(), 2)
+            swlib.review(state, 'y', True, day=self.day(-2))
+            swlib.set_status(swlib.find(state, 'y'), 'known', self.day(-1))
+            swlib.schedule(swlib.find(state, 'y'), self.day(-1), 2)
+        report = self.phone_answers([self.quiz_line('pero', 'wrong'), self.quiz_line('con'), self.quiz_line('y', 'wrong')])
+        self.assertEqual(report['answers'], 1)
+        self.assertEqual([self.word(w)['status'] for w in ('pero', 'con', 'y')], ['shaky', 'known', 'known'])
+
+    def test_a_practice_file_read_after_a_newer_one_keeps_its_days_and_slips(self):
+        self.sync()
+        old = self.offer('pero', self.day(-2))
+        with swlib.editing() as state:
+            phone.settings(state)['snaps'][old]['words'].append('con')
+            swlib.review(state, 'pero', True, day=self.day(-1))
+            swlib.review(state, 'con', True, day=self.day(-1))
+        report = self.phone_answers([self.quiz_line('pero', day=self.day(-2), snap=old),
+                                     self.quiz_line('con', 'wrong', day=self.day(-2), snap=old)])
+        self.assertEqual(report['answers'], 2)
+        pero, con = self.word('pero'), self.word('con')
+        self.assertIn(self.day(-2), pero['days'])
+        self.assertEqual((len(pero['reviews']), pero['box'], pero['due']), (1, 1, self.day(2)))  # its schedule stays
+        self.assertEqual((con['last_bad'], len(con['reviews']), con['box']), (self.day(-2), 1, 1))
+        self.assertEqual(swlib.learning_progress(con, swlib.today()), (1, 3))
+        self.assertEqual(self.phone_answers([self.quiz_line('pero', day=self.day(-1), snap=self.offer('pero', self.day(-1)))]
+                                            )['answers'], 0)  # a day with an answer still counts once
+
+    def test_the_list_holds_at_most_ten_due_and_twenty_practice_words(self):
+        with swlib.editing() as state:
+            for w in state['words'][:60]:
+                swlib.set_status(w, 'shaky', self.day(-1))
+                swlib.schedule(w, self.day(-1), 2)  # shaky but not due for a week
+        self.sync()
+        items = self.snapshot()['items']
+        self.assertEqual((len(items), sum(i['practice'] for i in items)), (phone.ITEMS + swlib.WINDOW - 10, swlib.WINDOW))
+
+    def test_a_failed_page_write_keeps_the_count_of_answers_already_recorded(self):
+        self.sync()
+        self.answer('iphone-20261031-130000.jsonl', [self.quiz_line('pero')])
+        real = phone.write_snapshot
+
+        def write(folder, body, name=phone.SNAPSHOT):
+            if name == phone.PROGRESS:
+                raise OSError('disk full')
+            real(folder, body, name)
+        with mock.patch.object(phone, 'write_snapshot', side_effect=write), swlib.editing() as state:
+            with self.assertRaises(OSError):
+                phone.sync(state)
+        settings = phone.settings(swlib.load_state())
+        self.assertEqual((settings['got']['answers'], settings['last']['answers']), (1, 1))
+        self.assertEqual(self.word('pero')['reviews'][-1][:2], [swlib.today(), 1])
+        self.assertTrue(self.sync()['page'])  # the next sync writes it
+
+    def test_a_week_of_quiz_days_all_show_with_status_changes_first(self):
+        state = swlib.new_state('2026-10-01')
+        learning = state['words'][:phone.RECENT_ROWS + 3]
+        for w in learning:
+            swlib.set_status(w, 'active', '2026-10-01')
+        day = lambda n: (dt.date(2026, 10, 31) + dt.timedelta(days=n)).isoformat()
+        for n in range(-6, 1):
+            for w in learning:
+                w.setdefault('reviews', []).append([day(n), int(w is not learning[1])])
+        swlib.set_status(learning[-1], 'known', day(0))
+        text = phone.progress_page(state, day(0)).decode('utf-8')
+        self.assertEqual([phone.date_label(day(n)) for n in range(0, -7, -1)], re.findall(r'<h3>(.+?)</h3>', text))
+        self.assertEqual(text.count('and 3 more'), 7)
+        rows = [label for d, _, label, _ in phone.changes(state, day(0)) if d == day(0)]
+        self.assertEqual(rows[:3], ['now known', 'missed', 'right'])
+
     def test_a_late_known_answer_never_undoes_a_later_change(self):
         self.sync()
         old = self.offer('pero', self.day(-2))
@@ -2533,8 +2647,8 @@ class PhoneSync(Home):
         self.assertNotIn('<script', first)
         self.assertNotRegex(first, r'(?:src|href)=|url\(|@import|https?:')
         self.assertNotIn('gemini', first.lower())
-        with mock.patch.object(phone.time, 'time', return_value=time.time() + 3 * 3600):
-            self.assertFalse(self.sync()['page'])  # a later stamp alone doesn't rewrite it
+        with swlib.editing() as state:
+            self.assertFalse(phone.sync(state, now=time.time() + 60)['page'])  # a later stamp alone doesn't rewrite it
         self.assertEqual(self.page(), first)
         self.assertEqual([p.name for p in self.folder.iterdir() if p.name.startswith('.')], [])
         (self.folder / 'progress.html').unlink()

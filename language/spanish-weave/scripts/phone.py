@@ -1,11 +1,11 @@
 """iPhone sync through iCloud Drive (opt-in, Mac only). Python 3.9+, standard library only.
 
 The Mac and the phone share the folder iOS shows as iCloud Drive > Shortcuts > Spanish Weave:
-  snapshot.json   written by the Mac only: today's quiz items, due words then every other learning word for practice,
-                  with answers pre-folded for the phone's checks
+  snapshot.json   written by the Mac only: today's quiz items, due words then the other learning words for practice,
+                  with answers pre-folded for a Shortcut that grades typed answers (the one in IPHONE.md leaves that to you)
   progress.html   written by the Mac only: a page for the phone showing stage, counts, recent changes and every word in use
   inbox/*.jsonl   written by the phone only, one new file per quiz run: {"word", "kind": "quiz", "result", "day", "snap"}
-  phone/          the phone's own done markers
+  phone/          for a Shortcut's own done markers; the one in IPHONE.md doesn't need it
 One writer per file, so iCloud never makes conflict copies. The Mac creates the folders; the phone only adds files.
 
 What goes to iCloud: today's quiz words (Spanish, gloss, sound hint, question), the stage, and on the progress page every
@@ -25,6 +25,7 @@ import datetime as dt
 import errno
 import hashlib
 import html
+import itertools
 import json
 import os
 from pathlib import Path
@@ -43,7 +44,7 @@ import swlib  # noqa: E402
 SF_DATALESS = getattr(stat, 'SF_DATALESS', 0x40000000)  # stat.SF_DATALESS is new in 3.13; value from <sys/stat.h>
 CONTAINER = 'iCloud~is~workflow~my~workflows'          # iCloud Drive > Shortcuts is <container>/Documents
 FOLDER, INBOX, MARKS, SNAPSHOT, PROGRESS = 'Spanish Weave', 'inbox', 'phone', 'snapshot.json', 'progress.html'
-VERSION = 1             # snapshot format; the Shortcut stops on any other
+VERSION = 1             # snapshot format, for a Shortcut that wants to check it; the one in IPHONE.md doesn't
 ITEMS = 10              # due quiz items per snapshot, as many as /spanish-weave:quiz asks; practice items come on top
 SNAPS_KEPT = 14         # recent snapshots whose words a phone answer may name
 MAX_SNAPSHOT = 512 * 1024
@@ -55,10 +56,10 @@ KEEP_DAYS = 30          # a fully read inbox file is deleted this long after it 
 TEMP_PREFIX, TEMP_SUFFIX = '.snapshot-', '.tmp'          # hidden, and a name iCloud skips
 STALE_TEMP_SECONDS = 3600
 RECENT_DAYS = 7         # days of changes on the progress page
-RECENT_ROWS = 40        # rows of changes on it; a setup seed can mark 150 words known in one day
-# <label>-<stamp>-<rand>.jsonl, plus the " 2" iCloud adds on a new-file name clash. The label may start with "-" (the
-# Shortcut turns a leading Á or other non-ASCII letter into one). iOS's Append to Text File adds its own extension to
-# a name it doesn't recognize (iphone-....jsonl.json), so .json and .txt endings count too.
+RECENT_ROWS = 15        # rows of changes per day on it; a setup seed can mark 150 words known in one day
+# iphone-<stamp>.jsonl, or any name made of the same characters (a Shortcut may name a device, and turn a leading Á or
+# other non-ASCII letter into "-"), plus the " 2" iCloud adds on a new-file name clash. iOS's Append to Text File adds
+# its own extension to a name it doesn't recognize (iphone-....jsonl.json), so .json and .txt endings count too.
 INBOX_NAME = re.compile(r'[A-Za-z0-9_-]{1,101}(?: [0-9]{1,3})?\.(?:jsonl(?:\.json|\.txt)?|json|txt)\Z')
 NOT_READY = frozenset({errno.EDEADLK, errno.ETIMEDOUT, errno.EAGAIN})
 
@@ -410,9 +411,8 @@ FOLD = str.maketrans({**dict.fromkeys('áàâäã', 'a'), **dict.fromkeys('éè�
 
 
 def phone_fold(text):
-    """The Shortcut's normalization, step for step: lowercase, accents and ñ off, apostrophes dropped, anything else
-    that isn't a letter or digit becomes a space, trimmed. The accept and reject lists use it, so a typed answer
-    compares as the Shortcut folds it."""
+    """How a typed answer folds for the accept and reject lists, in steps a Shortcut's Replace Text can repeat: lowercase,
+    accents and ñ off, apostrophes dropped, anything else that isn't a letter or digit becomes a space, trimmed."""
     text = str(text).lower().translate(FOLD)
     text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))  # the Shortcut's \p{M}
     text = re.sub(r"['’]", '', text)
@@ -441,16 +441,17 @@ def answers(word, way):
 
 def snapshot(state, day=None):
     """The payload for snapshot.json, without its "made" and "writer" stamps: today's due words as the quiz would ask
-    them, then every other learning word for practice (swlib.practice), at most ITEMS + swlib.WINDOW items."""
+    them, then the other learning words for practice (swlib.practice), shaky first, at most ITEMS + swlib.WINDOW items:
+    flips and quiz misses can make more words shaky than a day's quiz should ask."""
     day = day or swlib.today()
     due = swlib.due_reviews(state, day=day, limit=ITEMS)
-    extra = swlib.practice(state, day, skip={w['es'] for w in due})
+    extra = swlib.practice(state, day, skip={w['es'] for w in due})[:swlib.WINDOW]
     items = []
-    for w in due + extra:
+    for w, practice in [(w, False) for w in due] + [(w, True) for w in extra]:
         way = swlib.direction(w)
         accept, reject = answers(w, way)
         items.append({'es': w['es'], 'en': w['en'], 'hint': w['hint'], 'way': way, 'ask': question(w, way),
-                      'accept': accept, 'reject': reject, 'practice': w in extra})
+                      'accept': accept, 'reject': reject, 'practice': practice})
     return {'version': VERSION, 'day': day, 'stage': swlib.stage_for(state), 'items': items}
 
 
@@ -503,8 +504,8 @@ def time_label(now):
 
 
 def changes(state, day):
-    """What happened in the last RECENT_DAYS days, newest first, as (day, word, label, class) rows: the word's status
-    change, else its quiz answer, for each day."""
+    """What happened in the last RECENT_DAYS days as (day, word, label, class) rows, newest day first: for each word and
+    day its status change, else its quiz answer. Within a day status changes come first, then misses."""
     since = (dt.date.fromisoformat(day) - dt.timedelta(days=RECENT_DAYS - 1)).isoformat()
     rows = {}
     for w in swlib.introduced(state):
@@ -516,8 +517,9 @@ def changes(state, day):
             label = {'known': 'now known', 'shaky': 'now shaky'}.get(w['status'])
             label = label or ('new word' if changed == w.get('added') else 'back to learning')
             rows[changed, w['es']] = (w, label, 'learning' if w['status'] == 'active' else w['status'])
-    newest = sorted(rows, key=lambda row: row[0], reverse=True)
-    return [(d, *rows[d, es]) for d, es in newest]
+    order = sorted(rows, key=lambda row: {'right': 2, 'missed': 1}.get(rows[row][1], 0))
+    order.sort(key=lambda row: row[0], reverse=True)
+    return [(d, *rows[d, es]) for d, es in order]
 
 
 def word_row(word, extra=''):
@@ -550,15 +552,13 @@ def progress_page(state, day, updated=''):
     rows = changes(state, day)
     if rows:
         parts.append(f'<h2>Last {RECENT_DAYS} days</h2>')
-        heading = None
-        for d, w, label, css in rows[:RECENT_ROWS]:
-            if d != heading:
-                parts.append(('</ul>' if heading else '') + f'<h3>{date_label(d)}</h3><ul>')
-                heading = d
-            parts.append(word_row(w, f'<span class="tag {css}">{label}</span>'))
-        parts.append('</ul>')
-        if len(rows) > RECENT_ROWS:
-            parts.append(f'<p class="dim">and {len(rows) - RECENT_ROWS} more</p>')
+        for d, group in itertools.groupby(rows, key=lambda row: row[0]):
+            group = list(group)
+            parts.append(f'<h3>{date_label(d)}</h3><ul>')
+            parts.extend(word_row(w, f'<span class="tag {css}">{label}</span>') for _, w, label, css in group[:RECENT_ROWS])
+            parts.append('</ul>')
+            if len(group) > RECENT_ROWS:
+                parts.append(f'<p class="dim">and {len(group) - RECENT_ROWS} more</p>')
     if shaky:
         parts.append('<h2>Shaky</h2><p class="dim">Known again after a clean week and a right quiz answer or a Chrome '
                      'sighting.</p><ul>')
@@ -697,10 +697,13 @@ def sync(state, now=None):
     folder, inbox, report['warnings'] = ensure_folders(shortcuts_folder())
     remove_stale_temps(folder, now)
     _read_inbox(state, inbox, phone, report, now)
+    stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting', 'skipped_files', 'later')}
+    if report['answers']:
+        phone['got'] = {'at': stamp, 'answers': report['answers']}  # status keeps showing it after quiet syncs
     swlib.promote(state)  # today's graduations and new words belong on the list and the page, not on the next sync's
     payload = snapshot(state)
     digest = hashlib.sha256(encode(payload)).hexdigest()
-    stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     if digest != phone.get('sha256') or not _exists(folder / SNAPSHOT):
         made = stamp
         write_snapshot(folder, encode(dict(payload, made=made, writer=phone.get('writer', ''))))
@@ -715,9 +718,6 @@ def sync(state, now=None):
         phone['page'] = digest
         report['page'] = True
     phone['synced'] = stamp
-    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting', 'skipped_files', 'later')}
-    if report['answers']:
-        phone['got'] = {'at': stamp, 'answers': report['answers']}  # status keeps showing it after quiet syncs
     phone.pop('problem', None)
     state.setdefault('prefs', {})['phone'] = phone
     report['practice'] = sum(item['practice'] for item in payload['items'])

@@ -577,14 +577,17 @@ def apply_events(state, events, kinds=('seen', 'flip', 'peek'), today_=None):
     """Applies untrusted events, {word, kind, day?, result?, article?}, after checking each: a kind from kinds, a word of
     at most MAX_WORD characters, a real day within OLDEST days, at most MAX_EVENTS of them, oldest day first. A quiz event
     (the phone's quiz) needs result right, wrong or known and is recorded as the Mac's quiz records an answer, unless the
-    word already has an answer from that day or later (the newest answer counts, and a late phone file never undoes
-    one). Known is a right answer that also marks the word, as /spanish-weave:known does, unless the word changed after
-    that day: a flip or learn since then stands. A quiz event with due_or_practice (the phone's) is judged against the
-    word's quiz history (due_then), as it stands after the earlier events of the batch. A known word must have been due
-    on the event's day: a list the phone kept from an earlier day can't add an early review, a late file can't count a
-    word twice, and back-dated lines can't pump a word, while a promotion or flip that landed before the file was read
-    doesn't hide an answer given when the word was due. A learning word not due that day counts as practice: a counted
-    day when right, a slip when wrong, and its box stays where it is. Returns (applied, skipped)."""
+    word already has an answer from that day (a day counts once) or a later one (the newest answer counts, and a late
+    phone file never undoes one). Known is a right answer that also marks the word, as /spanish-weave:known does, unless
+    the word changed after that day: a flip or learn since then stands. A quiz event with due_or_practice (the phone's)
+    is judged by due_on, as the word stands after the earlier events of the batch. A known word must have been due on
+    the event's day: a list the phone kept from an earlier day can't add an early review, a late file can't count a word
+    twice, and back-dated lines can't pump a word, while a promotion or flip that landed before the file was read
+    doesn't hide an answer given when the word was due. The one exception is a wrong answer from the day the word became
+    known, which may have come first, as a same-day flip may. A learning word not due that day counts as practice: a
+    counted day when right, a slip when wrong, and its box stays where it is. Practice repeats a learning word daily, so
+    a phone file read after a newer one still gives its counted day or slip, without touching the box or the next
+    review. Returns (applied, skipped)."""
     today_ = today_ or today()
     valid = []
     for event in (events if isinstance(events, list) else [])[:MAX_EVENTS]:
@@ -612,12 +615,21 @@ def quiz_event(state, word, event, day):
     w = find(state, word)
     if result not in ('right', 'wrong', 'known') or w is None or w['status'] == 'queue':
         return False
-    if any(d >= day for d, *_ in w.get('reviews') or []):
+    answered = [d for d, *_ in w.get('reviews') or []]
+    if day in answered:
         return False
+    spaced, learning = bool(event.get('due_or_practice')), w['status'] != 'known'
+    if any(d > day for d in answered):
+        if not (spaced and learning):
+            return False
+        if result == 'wrong':
+            w['last_bad'] = max(w['last_bad'] or '', day)
+            return True
+        return apply_event(state, w['es'], 'seen', day)
     if result == 'known' and day < (w.get('changed') or ''):
         return False
-    practice_day = bool(event.get('due_or_practice')) and not due_then(w, day)
-    if practice_day and w['status'] == 'known':
+    practice_day = spaced and not due_on(w, day)
+    if practice_day and not learning and not (result == 'wrong' and day == w.get('changed')):
         return False
     article = article if isinstance(article, str) and key(article) in GENDER_OF else None
     hold = practice_day or bool(result == 'right' and gender_slip(w['es'], article))
@@ -635,6 +647,12 @@ def due_then(word, day):
     box = after[UNDO.index('box')] if len(after) == n else word.get('box', 0)  # 0.2.2 records have no after-snapshot
     box = max(0, min(int(box or 0), len(INTERVALS) - 1))
     return (dt.date.fromisoformat(last[0]) + dt.timedelta(days=INTERVALS[box])).isoformat() <= day
+
+
+def due_on(word, day):
+    """Whether the word was due for a quiz on day. After its last change its schedule says so. Up to that change only
+    its quiz history can tell: the change moved the schedule, and must not hide an answer given while the word was due."""
+    return (due_date(word) or '9999') <= day if day > (word.get('changed') or '') else due_then(word, day)
 
 
 def introduced(state):
@@ -866,11 +884,11 @@ def review(state, es, right, day=None, hold=False, known=False):
     elif w['status'] == 'known':
         apply_event(state, w['es'], 'asked', day)  # not recognized: shaky, first box
     else:
-        w['last_bad'] = day
+        w['last_bad'] = max(w['last_bad'] or '', day)  # a late answer never moves a newer slip back
         schedule(w, day, 0)
-    promote_word(w, day)
     if known and w['status'] != 'known':
         apply_event(state, w['es'], 'known', day)
+    promote_word(w, day)
     added = int(not seen and day in (w.get('days') or []))
     w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields() + [added]])[-10:]
     return w
