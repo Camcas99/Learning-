@@ -189,8 +189,8 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    (Customize > Plugins, marketplace Camcas99/Learning-) and paste the one line `python3 "$SW" export --chat` prints.
 6b. iPhone quiz (Mac only, opt-in): on a Mac, ask one more question at the hand-over, "Quiz on your iPhone too?"
    (default No; it needs iCloud Drive on the Mac and the Shortcuts app on the iPhone). On Yes, run
-   `python3 "$SW" phone on` and point them to IPHONE.md to build the Shortcut. Only today's quiz words go to iCloud
-   Drive.
+   `python3 "$SW" phone on` and point them to IPHONE.md to build the Shortcuts. Today's quiz words and a progress page
+   with every word they have in use go to iCloud Drive.
 7. Commands, which they type themselves (Claude can't start them, except status): `/spanish-weave:status`,
    `/spanish-weave:known <word>`, `/spanish-weave:learn <word>`, `/spanish-weave:stage 1-4|auto`,
    `/spanish-weave:pause`, `/spanish-weave:resume`, `/spanish-weave:quiz`, `/spanish-weave:placement`,

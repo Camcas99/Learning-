@@ -144,7 +144,7 @@ You type these yourself: Claude can't start them for you (except status).
 | `/spanish-weave:export` | get an up-to-date block for claude.ai or ChatGPT (refresh it weekly) |
 | `/spanish-weave:export chat` | get the one line for the claude.ai chat plugin (see "On claude.ai and the Claude apps") |
 | `/spanish-weave:anki` | export your words to Anki, if you use it |
-| `/spanish-weave:phone on` | (Mac) quiz on your iPhone too: see [IPHONE.md](IPHONE.md) |
+| `/spanish-weave:phone on` | (Mac) quiz and progress page on your iPhone too: see [IPHONE.md](IPHONE.md) |
 
 With the pasted block in claude.ai or ChatGPT, you can type a word with a question mark ("pero?") for a quick
 translation, "quiz" for a three-word quiz, "story" (claude.ai only) to retell the last answer as a short story at
@@ -192,10 +192,11 @@ a few Spanish words (y, pero, entonces...). On the free plan there are no plugin
   press the spacebar and scan the QR code). Your computer has to stay on. It runs on your computer, so your words
   and progress are all there. A Claude Code session started in the cloud from your phone begins on a fresh computer
   every time, so it can't keep your progress.
-- **A daily quiz on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on your Mac, then
-  build a short Shortcut on your iPhone that asks your due words each day; your answers count on the Mac like
-  `/spanish-weave:quiz` answers (without its el/la check). Only today's quiz words go to iCloud Drive. The steps are
-  in [IPHONE.md](IPHONE.md); it hasn't been tried on a real iPhone yet.
+- **A daily quiz and progress page on your iPhone: yes, with a Mac.** Run `/spanish-weave:phone on` in Claude Code on
+  your Mac, then build a short Shortcut on your iPhone that asks your due words and practices your learning words each
+  day; your answers count on the Mac like `/spanish-weave:quiz` answers (without its el/la check). A second Shortcut
+  opens a page showing what changed and all your words. Your quiz words and every word you have in use go to iCloud
+  Drive. The steps are in [IPHONE.md](IPHONE.md).
 - **The Chrome extension on your phone: no.** Chrome on phones doesn't run extensions, so web pages only get
   Spanish words on a computer.
 - **Instagram's website** (instagram.com in Chrome on a computer): should work, but it hasn't been tried on the real
@@ -233,8 +234,9 @@ What's kept where, and what gets sent:
   paste a paid Claude API key there, that same page text goes to Anthropic's API instead of Gemini. With Claude picked
   nothing goes to Gemini, even if a Gemini key is saved; without a Claude key the extension waits for one.
 - **Into claude.ai or ChatGPT:** the blocks you paste there, with your word lists.
-- **Into iCloud Drive, only with the iPhone quiz:** today's due words, their meanings, sound hints and your stage; the
-  phone's answers come back as right or wrong. Apple can read them unless Advanced Data Protection is on.
+- **Into iCloud Drive, only with the iPhone quiz:** today's quiz words, your stage, and a progress page with every
+  word you have in use, with their meanings, sound hints and the last week's quiz results; the phone's answers come
+  back as right, wrong or known. Apple can read them unless Advanced Data Protection is on.
 - **In Chrome:** the extension keeps its settings, your keys, a copy of your word list, today's seen words and any
   not yet passed to Claude Code, model-call counts, the last model error, a quota record and a small cache of swapped
   words with a few words of page text around each, in Chrome's own storage. Removing the extension

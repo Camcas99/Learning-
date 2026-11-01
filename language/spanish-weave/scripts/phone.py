@@ -1,15 +1,18 @@
 """iPhone sync through iCloud Drive (opt-in, Mac only). Python 3.9+, standard library only.
 
 The Mac and the phone share the folder iOS shows as iCloud Drive > Shortcuts > Spanish Weave:
-  snapshot.json   written by the Mac only: today's due quiz items, with answers pre-folded for the phone's checks
+  snapshot.json   written by the Mac only: today's quiz items, due words then the other learning words for practice,
+                  with answers pre-folded for a Shortcut that grades typed answers (the one in IPHONE.md leaves that to you)
+  progress.html   written by the Mac only: a page for the phone showing stage, counts, recent changes and every word in use
   inbox/*.jsonl   written by the phone only, one new file per quiz run: {"word", "kind": "quiz", "result", "day", "snap"}
-  phone/          the phone's own done markers
+  phone/          for a Shortcut's own done markers; the one in IPHONE.md doesn't need it
 One writer per file, so iCloud never makes conflict copies. The Mac creates the folders; the phone only adds files.
 
-What goes to iCloud: the due words (Spanish, gloss, sound hint, question) and the stage. Never the Gemini key,
-exposure.json, chat transcripts or the rest of the word state. What comes back is only quiz results, and each one must
-name a word the Mac offered in one of its recent snapshots; it is then recorded through the same checks as any other
-outside event (swlib.apply_events).
+What goes to iCloud: today's quiz words (Spanish, gloss, sound hint, question), the stage, and on the progress page every
+word in use (known, learning or shaky) with its gloss, sound hint and recent quiz results. Never the Gemini key,
+exposure.json, chat transcripts or the words not introduced yet. What comes back is only quiz results (right, wrong or
+known), and each one must name a word the Mac offered in one of its recent snapshots; it is then recorded through the
+same checks as any other outside event (swlib.apply_events).
 
 Nothing here ever downloads an evicted (dataless) iCloud file in the calling process: reads run with dataless
 materialization off for the thread (Apple TN3150, setiopolicy_np), so they fail fast and are retried on a later run
@@ -21,6 +24,8 @@ import ctypes.util
 import datetime as dt
 import errno
 import hashlib
+import html
+import itertools
 import json
 import os
 from pathlib import Path
@@ -38,9 +43,9 @@ import swlib  # noqa: E402
 
 SF_DATALESS = getattr(stat, 'SF_DATALESS', 0x40000000)  # stat.SF_DATALESS is new in 3.13; value from <sys/stat.h>
 CONTAINER = 'iCloud~is~workflow~my~workflows'          # iCloud Drive > Shortcuts is <container>/Documents
-FOLDER, INBOX, MARKS, SNAPSHOT = 'Spanish Weave', 'inbox', 'phone', 'snapshot.json'
-VERSION = 1             # snapshot format; the Shortcut stops on any other
-ITEMS = 10              # quiz items per snapshot, as many as /spanish-weave:quiz asks
+FOLDER, INBOX, MARKS, SNAPSHOT, PROGRESS = 'Spanish Weave', 'inbox', 'phone', 'snapshot.json', 'progress.html'
+VERSION = 1             # snapshot format, for a Shortcut that wants to check it; the one in IPHONE.md doesn't
+ITEMS = 10              # due quiz items per snapshot, as many as /spanish-weave:quiz asks; practice items come on top
 SNAPS_KEPT = 14         # recent snapshots whose words a phone answer may name
 MAX_SNAPSHOT = 512 * 1024
 MAX_INBOX_FILE = 256 * 1024
@@ -50,9 +55,11 @@ MAX_NESTING = 8         # [ and { in one line; an answer line has one, and deep 
 KEEP_DAYS = 30          # a fully read inbox file is deleted this long after it was last changed
 TEMP_PREFIX, TEMP_SUFFIX = '.snapshot-', '.tmp'          # hidden, and a name iCloud skips
 STALE_TEMP_SECONDS = 3600
-# <label>-<stamp>-<rand>.jsonl, plus the " 2" iCloud adds on a new-file name clash. The label may start with "-" (the
-# Shortcut turns a leading Á or other non-ASCII letter into one). iOS's Append to Text File adds its own extension to
-# a name it doesn't recognize (iphone-....jsonl.json), so .json and .txt endings count too.
+RECENT_DAYS = 7         # days of changes on the progress page
+RECENT_ROWS = 15        # rows of changes per day on it; a setup seed can mark 150 words known in one day
+# iphone-<stamp>.jsonl, or any name made of the same characters (a Shortcut may name a device, and turn a leading Á or
+# other non-ASCII letter into "-"), plus the " 2" iCloud adds on a new-file name clash. iOS's Append to Text File adds
+# its own extension to a name it doesn't recognize (iphone-....jsonl.json), so .json and .txt endings count too.
 INBOX_NAME = re.compile(r'[A-Za-z0-9_-]{1,101}(?: [0-9]{1,3})?\.(?:jsonl(?:\.json|\.txt)?|json|txt)\Z')
 NOT_READY = frozenset({errno.EDEADLK, errno.ETIMEDOUT, errno.EAGAIN})
 
@@ -205,9 +212,9 @@ def ensure_folders(root):
     return folder, folder / INBOX, warnings
 
 
-def write_snapshot(folder, body):
-    """Writes folder/snapshot.json atomically: a hidden temp file in the same folder, fsync, os.replace."""
-    target = folder / SNAPSHOT
+def write_snapshot(folder, body, name=SNAPSHOT):
+    """Writes folder/name atomically: a hidden temp file in the same folder, fsync, os.replace."""
+    target = folder / name
     with no_downloads():
         with contextlib.suppress(FileNotFoundError):
             st = os.lstat(target)
@@ -404,9 +411,8 @@ FOLD = str.maketrans({**dict.fromkeys('áàâäã', 'a'), **dict.fromkeys('éè�
 
 
 def phone_fold(text):
-    """The Shortcut's normalization, step for step: lowercase, accents and ñ off, apostrophes dropped, anything else
-    that isn't a letter or digit becomes a space, trimmed. The accept and reject lists use it, so a typed answer
-    compares as the Shortcut folds it."""
+    """How a typed answer folds for the accept and reject lists, in steps a Shortcut's Replace Text can repeat: lowercase,
+    accents and ñ off, apostrophes dropped, anything else that isn't a letter or digit becomes a space, trimmed."""
     text = str(text).lower().translate(FOLD)
     text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))  # the Shortcut's \p{M}
     text = re.sub(r"['’]", '', text)
@@ -434,20 +440,147 @@ def answers(word, way):
 
 
 def snapshot(state, day=None):
-    """The payload for snapshot.json, without its "made" and "writer" stamps: today's due words, as the quiz would ask
-    them."""
+    """The payload for snapshot.json, without its "made" and "writer" stamps: today's due words as the quiz would ask
+    them, then the other learning words for practice (swlib.practice), shaky first, at most ITEMS + swlib.WINDOW items:
+    flips and quiz misses can make more words shaky than a day's quiz should ask."""
     day = day or swlib.today()
+    due = swlib.due_reviews(state, day=day, limit=ITEMS)
+    extra = swlib.practice(state, day, skip={w['es'] for w in due})[:swlib.WINDOW]
     items = []
-    for w in swlib.due_reviews(state, day=day, limit=ITEMS):
+    for w, practice in [(w, False) for w in due] + [(w, True) for w in extra]:
         way = swlib.direction(w)
         accept, reject = answers(w, way)
         items.append({'es': w['es'], 'en': w['en'], 'hint': w['hint'], 'way': way, 'ask': question(w, way),
-                      'accept': accept, 'reject': reject})
+                      'accept': accept, 'reject': reject, 'practice': practice})
     return {'version': VERSION, 'day': day, 'stage': swlib.stage_for(state), 'items': items}
 
 
 def encode(payload):
     return (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+
+
+# ---- the progress page ----
+
+PAGE_STYLE = """
+:root{color-scheme:light dark;--bg:#fbfaf7;--card:#fff;--ink:#22201c;--dim:#6d675e;--line:#e6e2da;--known:#1f7a4d;
+--learning:#2f62b3;--shaky:#b5570f;--missed:#b3312f}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#201f1c;--ink:#efece6;--dim:#a39d92;--line:#35332e;
+--known:#5cc48f;--learning:#86adee;--shaky:#eb9d5e;--missed:#ef8a87}}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:640px;padding:20px 16px 40px;background:var(--bg);color:var(--ink);
+font:17px/1.4 -apple-system,system-ui,sans-serif;-webkit-text-size-adjust:100%}
+h1{font-size:28px;margin:0}
+h2{font-size:20px;margin:28px 0 8px}
+h3{font-size:14px;margin:16px 0 4px;color:var(--dim);font-weight:600}
+p{margin:4px 0}
+small,.dim{color:var(--dim)}
+small{font-size:14px}
+ul{list-style:none;margin:0;padding:0}
+li{padding:7px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.tiles{display:flex;gap:8px;margin:16px 0 12px}
+.tile{flex:1;min-width:0;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;
+text-align:center}
+.tile b{display:block;font-size:26px;line-height:1.2}
+.known{color:var(--known)}.learning{color:var(--learning)}.shaky{color:var(--shaky)}.missed{color:var(--missed)}
+.bar{height:8px;margin-top:6px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--known)}
+.dots{float:right;margin-left:8px;color:var(--learning);letter-spacing:2px}
+.tag{float:right;margin-left:8px;font-size:14px;font-weight:600}
+summary{font-size:20px;font-weight:700;margin:28px 0 8px;cursor:pointer}
+footer{margin-top:28px;font-size:14px;color:var(--dim)}
+"""
+
+
+def date_label(day):
+    """'Sat, Oct 31': a heading that never goes stale, as today or yesterday would on a page the phone keeps."""
+    date = dt.date.fromisoformat(day)
+    return f'{date:%a, %b} {date.day}'
+
+
+def time_label(now):
+    """This Mac's local time, like 'Sat, Oct 31 at 9:40 PM'."""
+    moment = dt.datetime.fromtimestamp(now)
+    return f'{date_label(moment.date().isoformat())} at {moment.strftime("%I:%M %p").lstrip("0")}'
+
+
+def changes(state, day):
+    """What happened in the last RECENT_DAYS days as (day, word, label, class) rows, newest day first: for each word and
+    day its status change, else its quiz answer. Within a day status changes come first, then misses."""
+    since = (dt.date.fromisoformat(day) - dt.timedelta(days=RECENT_DAYS - 1)).isoformat()
+    rows = {}
+    for w in swlib.introduced(state):
+        for d, ok, *_ in w.get('reviews') or []:
+            if since <= d <= day:
+                rows[d, w['es']] = (w, 'right', 'known') if ok else (w, 'missed', 'missed')
+        changed = w.get('changed') or ''
+        if since <= changed <= day:
+            label = {'known': 'now known', 'shaky': 'now shaky'}.get(w['status'])
+            label = label or ('new word' if changed == w.get('added') else 'back to learning')
+            rows[changed, w['es']] = (w, label, 'learning' if w['status'] == 'active' else w['status'])
+    order = sorted(rows, key=lambda row: {'right': 2, 'missed': 1}.get(rows[row][1], 0))
+    order.sort(key=lambda row: row[0], reverse=True)
+    return [(d, *rows[d, es]) for d, es in order]
+
+
+def word_row(word, extra=''):
+    esc = html.escape
+    return (f'<li>{extra}<b lang="es">{esc(word["es"])}</b> = {esc(word["en"])} <small>{esc(word["hint"])}</small></li>')
+
+
+def progress_page(state, day, updated=''):
+    """The progress page as UTF-8 HTML: one static file with no scripts or outside files, so it opens anywhere iOS shows
+    a file. updated (when the Mac wrote it) is left out of the digest that decides whether to rewrite it."""
+    by = {}
+    for w in swlib.introduced(state):
+        by.setdefault(w['status'], []).append(w)
+    known, learning, shaky = (by.get(name, []) for name in ('known', 'active', 'shaky'))
+    stage, nxt = swlib.stage_for(state), swlib.next_stage(state)
+    parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
+             '<meta name="viewport" content="width=device-width, initial-scale=1">',
+             '<meta name="color-scheme" content="light dark"><title>Spanish Weave</title>',
+             f'<style>{PAGE_STYLE}</style></head><body>',
+             f'<h1>Spanish Weave</h1><p class="dim">Stage {stage}'
+             + (f' &middot; updated {html.escape(updated)}' if updated else '') + '</p>',
+             '<div class="tiles">']
+    for count, name, css in ((len(known), 'known', 'known'), (len(learning), 'learning', 'learning'),
+                             (len(shaky), 'shaky', 'shaky')):
+        parts.append(f'<div class="tile"><b class="{css}">{count}</b>{name}</div>')
+    parts.append('</div>')
+    if nxt:
+        parts.append(f'<p>{len(known)} of {nxt} known words to Stage {stage + 1}</p>'
+                     f'<div class="bar"><i style="width:{min(100, 100 * len(known) // nxt)}%"></i></div>')
+    rows = changes(state, day)
+    if rows:
+        parts.append(f'<h2>Last {RECENT_DAYS} days</h2>')
+        for d, group in itertools.groupby(rows, key=lambda row: row[0]):
+            group = list(group)
+            parts.append(f'<h3>{date_label(d)}</h3><ul>')
+            parts.extend(word_row(w, f'<span class="tag {css}">{label}</span>') for _, w, label, css in group[:RECENT_ROWS])
+            parts.append('</ul>')
+            if len(group) > RECENT_ROWS:
+                parts.append(f'<p class="dim">and {len(group) - RECENT_ROWS} more</p>')
+    if shaky:
+        parts.append('<h2>Shaky</h2><p class="dim">Known again after a clean week and a right quiz answer or a Chrome '
+                     'sighting.</p><ul>')
+        for w in shaky:
+            done, needed = swlib.learning_progress(w, day)
+            parts.append(word_row(w, f'<span class="tag shaky">{done} of {needed} clean days</span>'))
+        parts.append('</ul>')
+    if learning:
+        parts.append(f'<h2>Learning</h2><p class="dim">Known after {swlib.GRADUATE_DAYS} clean days of right quiz '
+                     'answers or Chrome sightings.</p><ul>')
+        for w in learning:
+            done, needed = swlib.learning_progress(w, day)
+            dots = '●' * done + '○' * (needed - done)
+            parts.append(word_row(w, f'<span class="dots" aria-label="{done} of {needed} days">{dots}</span>'))
+        parts.append('</ul>')
+    if known:
+        parts.append(f'<details open><summary>Known ({len(known)})</summary><ul>')
+        parts.extend(word_row(w) for w in sorted(known, key=lambda w: w.get('changed') or '', reverse=True))
+        parts.append('</ul></details>')
+    parts.append('<footer>This page changes when your Mac syncs: about every half hour while you use Claude Code, or '
+                 'right away with /spanish-weave:phone sync.</footer></body></html>\n')
+    return ''.join(parts).encode('utf-8')
 
 
 # ---- sync ----
@@ -463,20 +596,24 @@ def enable(state, on=True):
     phone['on'] = on
     phone.pop('problem', None)
     phone.setdefault('writer', secrets.token_hex(6))
-    phone.pop('sha256', None)  # turning it back on always writes snapshot.json, even if its folder was deleted
+    phone.pop('sha256', None)  # turning it back on always writes its files, even if the folder was deleted
+    phone.pop('page', None)
     prefs['phone'] = phone
     return phone
 
 
 def _answer(record, snaps):
-    """A phone record as an apply_events event, or None: only a quiz result for a word one of the Mac's recent
-    snapshots offered (the "snap" stamp names which). The event is due_only, so it counts only if the word was due on
-    its day and has no answer from that day on (swlib.quiz_event): a list from yesterday can't add a second answer for
-    a word the Mac quizzed since. A day the Mac can't use (missing, before that snapshot's day as a phone in an
-    earlier time zone may write, or not a Gregorian date within OLDEST days up to today, as a phone set to another
-    calendar may write) becomes that snapshot's day, the earliest the answer can have been given (this Mac's today
-    when an old snapshot entry has no day), so a Mac answer from that day on still wins."""
-    if record.get('kind') != 'quiz' or record.get('result') not in ('right', 'wrong'):
+    """A phone record as an apply_events event, or None: only a quiz result (right, wrong or known, in any case) for a
+    word one of the Mac's recent snapshots offered (the "snap" stamp names which). The event is due_or_practice, so it
+    counts only if the word has no answer from that day on and was due on its day or is still learning
+    (swlib.quiz_event): a list from yesterday can't add a second answer for a word the Mac quizzed since. A day the Mac
+    can't use (missing, before that snapshot's day as a phone in an earlier time zone may write, or not a Gregorian date
+    within OLDEST days up to today, as a phone set to another calendar may write) becomes that snapshot's day, the
+    earliest the answer can have been given (this Mac's today when an old snapshot entry has no day), so a Mac answer
+    from that day on still wins."""
+    result = record.get('result')
+    result = result.strip().lower() if isinstance(result, str) else None
+    if record.get('kind') != 'quiz' or result not in ('right', 'wrong', 'known'):
         return None
     word, snap, day = record.get('word'), record.get('snap'), record.get('day')
     offered = snaps.get(snap) if isinstance(snap, str) else None
@@ -486,7 +623,7 @@ def _answer(record, snaps):
     usable = swlib.event_day(day, swlib.today())
     if usable != day or (isinstance(since, str) and usable < since):  # missing, unreal, too old or in the future
         day = since if isinstance(since, str) else None
-    return {'word': word, 'kind': 'quiz', 'result': record['result'], 'day': day, 'due_only': True}
+    return {'word': word, 'kind': 'quiz', 'result': result, 'day': day, 'due_or_practice': True}
 
 
 def _read_inbox(state, inbox, phone, report, now):
@@ -546,22 +683,27 @@ def _read_inbox(state, inbox, phone, report, now):
 
 
 def sync(state, now=None):
-    """Reads the phone's answers into state, then writes a fresh snapshot.json when today's due words changed. The
-    caller saves state (swlib.editing), so the answers and the record of which files were read land together. Returns
-    a report dict. Raises Unavailable or NotReady when the folder can't be used right now."""
+    """Reads the phone's answers into state, then writes a fresh snapshot.json when today's list changed and a fresh
+    progress.html when the page changed. The caller saves state (swlib.editing), so the answers and the record of which
+    files were read land together. Returns a report dict. Raises Unavailable or NotReady when the folder can't be used
+    right now."""
     now = time.time() if now is None else now
     phone = settings(state)
     report = {'answers': 0, 'ignored': 0, 'skipped_files': 0, 'set_aside': 0, 'waiting': 0, 'later': 0,
-              'written': False, 'warnings': []}
+              'written': False, 'page': False, 'warnings': []}
     if not phone.get('on'):
         report['off'] = True
         return report
     folder, inbox, report['warnings'] = ensure_folders(shortcuts_folder())
     remove_stale_temps(folder, now)
     _read_inbox(state, inbox, phone, report, now)
+    stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting', 'skipped_files', 'later')}
+    if report['answers']:
+        phone['got'] = {'at': stamp, 'answers': report['answers']}  # status keeps showing it after quiet syncs
+    swlib.promote(state)  # today's graduations and new words belong on the list and the page, not on the next sync's
     payload = snapshot(state)
     digest = hashlib.sha256(encode(payload)).hexdigest()
-    stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     if digest != phone.get('sha256') or not _exists(folder / SNAPSHOT):
         made = stamp
         write_snapshot(folder, encode(dict(payload, made=made, writer=phone.get('writer', ''))))
@@ -570,13 +712,16 @@ def sync(state, now=None):
         phone['snaps'] = dict(sorted(snaps.items())[-SNAPS_KEPT:])
         phone['sha256'] = digest
         report['written'] = True
+    digest = hashlib.sha256(progress_page(state, payload['day'])).hexdigest()
+    if digest != phone.get('page') or not _exists(folder / PROGRESS):
+        write_snapshot(folder, progress_page(state, payload['day'], time_label(now)), PROGRESS)
+        phone['page'] = digest
+        report['page'] = True
     phone['synced'] = stamp
-    phone['last'] = {k: report[k] for k in ('answers', 'ignored', 'waiting', 'skipped_files', 'later')}
-    if report['answers']:
-        phone['got'] = {'at': stamp, 'answers': report['answers']}  # status keeps showing it after quiet syncs
     phone.pop('problem', None)
     state.setdefault('prefs', {})['phone'] = phone
-    report['due'] = len(payload['items'])
+    report['practice'] = sum(item['practice'] for item in payload['items'])
+    report['due'] = len(payload['items']) - report['practice']
     return report
 
 

@@ -22,6 +22,8 @@ The paste-in levels keep their words: the new words fill new levels 43 to 46. Ve
 iPhone through iCloud Drive ([IPHONE.md](IPHONE.md)), taps and long presses on touchscreens, and a chat-only skill
 plugin for claude.ai and the Claude apps. Version 0.3.6 makes words known only through Chrome, quizzes and commands,
 never from chat sightings alone, and reads the iPhone's answer files when iOS adds `.json` or `.txt` to their names.
+Version 0.3.7 adds a progress page on the iPhone, an "I know this" answer in its quiz, and daily practice for learning
+words.
 
 ## Set up
 
@@ -132,11 +134,12 @@ account doesn't double the Spanish; `sw.py check` notes when Claude Code has it.
   `/remote-control` in a local Code session in the Claude desktop app), then open the session under Code in the
   Claude app. The computer has to stay on. The hook runs on your computer, so progress is kept. A cloud session
   started from the phone begins on a fresh machine each time, so its word state wouldn't last.
-- **A daily quiz on the iPhone** (Mac only, opt-in): `/spanish-weave:phone on` puts today's due words in
-  iCloud Drive > Shortcuts > Spanish Weave, and a Shortcut you build on the phone asks them and sends the answers
-  back, where they count like `/spanish-weave:quiz` answers (graded against the list's answers or by you, without the
-  quiz's el/la check). Only those words, their meanings and hints go to iCloud Drive. Steps: [IPHONE.md](IPHONE.md).
-  Not yet tested on a real iPhone.
+- **A daily quiz and progress page on the iPhone** (Mac only, opt-in): `/spanish-weave:phone on` puts today's quiz
+  words and a progress page in iCloud Drive > Shortcuts > Spanish Weave. A Shortcut you build on the phone asks the due
+  words and practices the other learning words, then sends the answers back, where they count like
+  `/spanish-weave:quiz` answers (graded by you, without the quiz's el/la check). A second Shortcut opens the page, which
+  shows what changed and every word you have in use. Those words, their meanings, hints and recent quiz results go to
+  iCloud Drive. Steps: [IPHONE.md](IPHONE.md).
 - **Chrome extension:** computers only. Chrome on Android and iPhone doesn't run extensions. Some other Android
   browsers can load Chrome extensions, but Spanish Weave hasn't been tried in one. Without the native host every site
   would start off, its words would come from the built-in lists, and nothing it shows would count toward your
@@ -202,7 +205,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/spanish-weave:placement` | 2-minute placement test that sets your starting words; one approval to save |
 | `/spanish-weave:anki [all]` | Your words as an Anki import file |
 | `/spanish-weave:output [on\|off]` | "Your turn" lines that invite you to write a little Spanish (no argument: is it on?) |
-| `/spanish-weave:phone [on\|off\|sync\|status]` | Daily quiz on the iPhone through iCloud Drive, Mac only (see [IPHONE.md](IPHONE.md)) |
+| `/spanish-weave:phone [on\|off\|sync\|status]` | Daily quiz and progress page on the iPhone through iCloud Drive, Mac only (see [IPHONE.md](IPHONE.md)) |
 
 You type these yourself: Claude can't start them for you, except status. The same commands work from a terminal as
 `python3 ~/.spanish-weave/app/scripts/sw.py <command>`, except setup, which runs from the plugin
@@ -338,7 +341,11 @@ coding words at the end), each with a gloss and a sound hint.
   you understood them. They still decide how often a known word comes up in chat.
 - **Learning**: at most 20 words at a time, shaky ones included; at most 5 new words a day, and none while 5 or more
   are shaky.
-- **Learning -> known**: 3 counted days, with no flip, `learn` or peek on the last 3, or `/spanish-weave:known`.
+- **Learning -> known**: 3 counted days, with no flip, `learn`, peek or quiz miss on the last 3, or
+  `/spanish-weave:known`, or "known" in the iPhone quiz.
+- **Practice on the iPhone**: its daily list adds every learning word that isn't due, from the day after it arrives. A
+  right answer is a counted day, a wrong one a slip, and neither moves the word's review box up, so 3 days of right
+  answers make a word known, with its next check a week later. A known word still counts only on a day it's due.
 - **Flip or `learn` -> shaky**: clicking a Spanish word on a web page back to English (on a touchscreen, a second tap
   or a press and hold), `/spanish-weave:learn`, or a known word you don't recognize in the quiz. A **peek** (hovering
   until the meaning shows, or a first tap) holds back a learning word; a known word peeked on 2 days within a week,
@@ -420,10 +427,11 @@ What Spanish Weave keeps, and what it sends:
   data terms apply.
 - **Sent to Anthropic's API with each page instead**, only if you pick Claude Haiku in the popup and paste a Claude
   key there: the same page text, word lists and stage, under Anthropic's API terms.
-- **Put in iCloud Drive**, only if you turn on the iPhone quiz (`/spanish-weave:phone on`): today's due words with their
-  meanings, sound hints and your stage, in iCloud Drive > Shortcuts > Spanish Weave; your phone's answers come back
-  there as right or wrong per word, never what you typed. Apple can read iCloud Drive unless Advanced Data Protection
-  is on.
+- **Put in iCloud Drive**, only if you turn on the iPhone quiz (`/spanish-weave:phone on`): today's quiz words with their
+  meanings and sound hints, your stage, and a progress page listing every word you have in use (known, learning or
+  shaky) with its meaning, sound hint and the last week's quiz results, in iCloud Drive > Shortcuts > Spanish Weave.
+  Your phone's answers come back there as right, wrong or known per word, never what you typed. Apple can read iCloud
+  Drive unless Advanced Data Protection is on.
 - **Pasted by you** into claude.ai or ChatGPT: the export blocks, with your word lists (the claude.ai block with the
   day each learning word arrived or turned shaky), stage and sync time.
 - **Kept in Chrome's storage** by the extension: its settings and site choices, your Gemini key (and Claude key, if

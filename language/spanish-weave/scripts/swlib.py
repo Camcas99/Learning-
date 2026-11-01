@@ -406,6 +406,13 @@ def stage_for(state):
     return next((s for n, s in STAGES if known >= n), 1)
 
 
+def next_stage(state):
+    """How many known words bring the next stage, or None at the last stage or with the stage pinned."""
+    if state.get('stage_pinned'):
+        return None
+    return next((n for n, s in sorted(STAGES) if stage_for(state) < s), None)
+
+
 def exposure_days(word, chat=None):
     """{day: 'seen' | 'assumed'} since the word joined the learning set.
 
@@ -461,6 +468,17 @@ def recovers(word, day):
     if days_between(slip, day) < SHAKY_DAYS:
         return False
     return any(d > slip and kind == 'seen' for d, kind in exposure_days(word).items())
+
+
+def learning_progress(word, day):
+    """(days so far, days needed) on the way to known, as `status` and the iPhone's progress page show it. A learning
+    word has the days graduates() would count: counted days after its last slip or peek, at most GRADUATE_DAYS - 1
+    while it has no seen day. A shaky word has the days since its last slip, as recovers() counts them."""
+    if word['status'] == 'shaky':
+        return max(0, min(days_between(word['last_bad'] or word['changed'], day), SHAKY_DAYS)), SHAKY_DAYS
+    days = exposure_days(word)
+    slip = max(word['last_bad'] or '', (word.get('peeks') or [''])[-1])
+    return min(sum(d > slip for d in days), GRADUATE_DAYS - ('seen' not in days.values())), GRADUATE_DAYS
 
 
 def chat_exposure():
@@ -558,13 +576,18 @@ def event_day(value, today_):
 def apply_events(state, events, kinds=('seen', 'flip', 'peek'), today_=None):
     """Applies untrusted events, {word, kind, day?, result?, article?}, after checking each: a kind from kinds, a word of
     at most MAX_WORD characters, a real day within OLDEST days, at most MAX_EVENTS of them, oldest day first. A quiz event
-    (the phone's quiz) needs result right or wrong and is recorded as the Mac's quiz records an answer, unless the word
-    already has an answer from that day or later (the newest answer counts, and a late phone file never undoes one). A
-    quiz event with due_only (the phone's) also needs the word to have been due on its day by its quiz history
-    (due_then), as it stands after the earlier events of the batch: a list the phone kept from an earlier day can't add
-    an early review, a late file can't count a word twice, and back-dated lines can't pump a word, while a promotion or
-    flip that landed before the file was read doesn't hide an answer given when the word was due. Returns (applied,
-    skipped)."""
+    (the phone's quiz) needs result right, wrong or known and is recorded as the Mac's quiz records an answer, unless the
+    word already has an answer from that day (a day counts once) or a later one (the newest answer counts, and a late
+    phone file never undoes one). Known is a right answer that also marks the word, as /spanish-weave:known does, unless
+    the word changed after that day: a flip or learn since then stands. A quiz event with due_or_practice (the phone's)
+    is judged by due_on, as the word stands after the earlier events of the batch. A known word must have been due on
+    the event's day: a list the phone kept from an earlier day can't add an early review, a late file can't count a word
+    twice, and back-dated lines can't pump a word, while a promotion or flip that landed before the file was read
+    doesn't hide an answer given when the word was due. The one exception is a wrong answer from the day the word became
+    known, which may have come first, as a same-day flip may. A learning word not due that day counts as practice: a
+    counted day when right, a slip when wrong, and its box stays where it is. Practice repeats a learning word daily, so
+    a phone file read after a newer one still gives its counted day or slip, without touching the box or the next
+    review. Returns (applied, skipped)."""
     today_ = today_ or today()
     valid = []
     for event in (events if isinstance(events, list) else [])[:MAX_EVENTS]:
@@ -590,15 +613,27 @@ def quiz_event(state, word, event, day):
     """One quiz answer from outside (see apply_events). True when it was recorded."""
     result, article = event.get('result'), event.get('article')
     w = find(state, word)
-    if result not in ('right', 'wrong') or w is None or w['status'] == 'queue':
+    if result not in ('right', 'wrong', 'known') or w is None or w['status'] == 'queue':
         return False
-    if any(d >= day for d, *_ in w.get('reviews') or []):
+    answered = [d for d, *_ in w.get('reviews') or []]
+    if day in answered:
         return False
-    if event.get('due_only') and not due_then(w, day):
+    spaced, learning = bool(event.get('due_or_practice')), w['status'] != 'known'
+    if any(d > day for d in answered):
+        if not (spaced and learning):
+            return False
+        if result == 'wrong':
+            w['last_bad'] = max(w['last_bad'] or '', day)
+            return True
+        return apply_event(state, w['es'], 'seen', day)
+    if result == 'known' and day < (w.get('changed') or ''):
+        return False
+    practice_day = spaced and not due_on(w, day)
+    if practice_day and not learning and not (result == 'wrong' and day == w.get('changed')):
         return False
     article = article if isinstance(article, str) and key(article) in GENDER_OF else None
-    hold = bool(result == 'right' and gender_slip(w['es'], article))
-    return review(state, w['es'], result == 'right', day=day, hold=hold) is not None
+    hold = practice_day or bool(result == 'right' and gender_slip(w['es'], article))
+    return review(state, w['es'], result != 'wrong', day=day, hold=hold, known=result == 'known') is not None
 
 
 def due_then(word, day):
@@ -612,6 +647,12 @@ def due_then(word, day):
     box = after[UNDO.index('box')] if len(after) == n else word.get('box', 0)  # 0.2.2 records have no after-snapshot
     box = max(0, min(int(box or 0), len(INTERVALS) - 1))
     return (dt.date.fromisoformat(last[0]) + dt.timedelta(days=INTERVALS[box])).isoformat() <= day
+
+
+def due_on(word, day):
+    """Whether the word was due for a quiz on day. After its last change its schedule says so. Up to that change only
+    its quiz history can tell: the change moved the schedule, and must not hide an answer given while the word was due."""
+    return (due_date(word) or '9999') <= day if day > (word.get('changed') or '') else due_then(word, day)
 
 
 def introduced(state):
@@ -713,6 +754,14 @@ def due_reviews(state, day=None, limit=10):
     return sorted(ready, key=lambda w: (w['status'] != 'shaky', due_date(w)))[:limit]
 
 
+def practice(state, day=None, skip=()):
+    """Learning words to practice on day besides skip (the due list), shaky first: every active or shaky word with no
+    answer from day. A word that arrived less than FIRST_QUIZ_DAYS ago waits, as its first quiz does."""
+    day = day or today()
+    return [w for w in introduced(state) if w['status'] != 'known' and w['es'] not in skip and w.get('added')
+            and days_between(w['added'], day) >= FIRST_QUIZ_DAYS and not any(d == day for d, *_ in w.get('reviews') or [])]
+
+
 def direction(word):
     """'produce' (how do you say it?) once the last PRODUCE_AFTER quiz answers were right, else 'recognize' (what does
     it mean?). Recognition comes first; producing a word is the harder retrieval and builds a stronger memory."""
@@ -798,14 +847,16 @@ def check(word, answer, way):
 UNDO = ('box', 'status', 'changed', 'last_bad')
 
 
-def review(state, es, right, day=None, hold=False):
+def review(state, es, right, day=None, hold=False, known=False):
     """Records a quiz answer. A second answer the same day replaces the first (a retried command or a corrected
     verdict), so answers can't stack boxes and a wrong verdict can be taken back: the word gets back the box, status
     and dates it had, and loses the seen day the first answer added. The first answer is undone only if nothing else
     changed the word since (a known, learn or flip in between stays); otherwise the new answer goes on top.
 
     Right: the word moves up a box, so its next review comes later, and the day counts as an exposure day. With hold
-    (right, but with a gender_slip), it stays in its box and comes back at the same gap.
+    (right, but with a gender_slip, or a practice answer from the phone), it stays in its box and comes back at the
+    same gap. With known (right, and "I know this" on the phone), a word not known yet becomes known as
+    /spanish-weave:known makes it.
     Wrong: a learning word starts its three clean days over and comes back tomorrow. A known word drops two boxes;
     if it wasn't even recognized, it turns shaky, so it shows up more in chat until it's known again.
     The answer's promotion (a third seen day graduates a learning word) happens here, as the save would do it, so the
@@ -833,8 +884,10 @@ def review(state, es, right, day=None, hold=False):
     elif w['status'] == 'known':
         apply_event(state, w['es'], 'asked', day)  # not recognized: shaky, first box
     else:
-        w['last_bad'] = day
+        w['last_bad'] = max(w['last_bad'] or '', day)  # a late answer never moves a newer slip back
         schedule(w, day, 0)
+    if known and w['status'] != 'known':
+        apply_event(state, w['es'], 'known', day)
     promote_word(w, day)
     added = int(not seen and day in (w.get('days') or []))
     w['reviews'] = (reviews + [[day, int(bool(right))] + before + fields() + [added]])[-10:]
