@@ -1337,6 +1337,100 @@ class Setup(Home):
         self.assertEqual([chrome.exists(), chrome.parent.exists(), chromium.parent.exists()], [False, True, False])
         self.assertFalse((self.home / 'profile').exists())
 
+    def bare_home_dirs(self):
+        """The two browser host folders in a home with no browser folders at all, and the top-most folder setup will
+        have to create for each (~/Library/Application Support/... on macOS, ~/.config/... on Linux)."""
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}):
+            dirs = sw.host_dirs()
+        return dirs, {[d for d in (folder, *folder.parents) if not d.exists()][-1] for folder in dirs}
+
+    def test_uninstall_takes_out_shared_folders_setup_made(self):
+        """Both browsers' host folders hang off folders setup also made. Whichever browser setup reached first recorded
+        the shared one; uninstall must still take it out once the other browser's folder is gone."""
+        dirs, tops = self.bare_home_dirs()
+        self.assertNotIn(self.home, tops)
+        self.run_setup()
+        self.assertEqual(sorted(sw.install_record()['host_dirs_made']), sorted(str(d) for d in dirs))
+        folder_lines = lambda out: sorted(l.split(' the empty folder ', 1)[1] for l in out.splitlines() if ' the empty folder ' in l)
+        preview = self.uninstall('--dry-run')
+        self.assertTrue(all(d.exists() for d in dirs))  # a dry run changes nothing...
+        out = self.uninstall()
+        self.assertEqual(folder_lines(preview), folder_lines(out))  # ...and names exactly what a real run removes
+        for top in tops:
+            self.assertIn(f'removed the empty folder {top} ', out)
+        self.assertEqual([top for top in tops if top.exists()], [], out)
+        self.assertEqual(sw.install_record()['host_dirs_made'], {})
+        self.assertNotIn('the empty folder', self.uninstall())  # a rerun finds nothing left to take out
+
+    def test_uninstall_leaves_folders_it_did_not_make(self):
+        (chrome, chromium), _ = self.bare_home_dirs()
+        self.run_setup()
+        (chromium.parent / 'Default').mkdir()  # Chromium installed later: its profile now shares the folder
+        for name in ('mine', 'slash', 'home', 'dots', 'elsewhere'):
+            (self.home / name).mkdir()
+        hostile = {  # an edited or copied install.json: none of these is a folder setup made
+            str(self.home / 'mine' / 'NativeMessagingHosts'): str(self.home / 'mine'),  # host folder isn't there
+            str(self.home / 'slash' / 'NativeMessagingHosts'): '/',
+            str(self.home / 'home' / 'NativeMessagingHosts'): str(self.home),
+            str(self.home / 'x' / '..' / 'dots' / 'NativeMessagingHosts'): str(self.home / 'dots'),
+            'relative/NativeMessagingHosts': 'relative',
+            str(self.home / 'elsewhere'): str(self.home / 'elsewhere'),  # not a host folder
+            str(self.home / 'null' / 'NativeMessagingHosts'): None,
+        }
+        for name in ('slash', 'home', 'dots'):
+            (self.home / name / 'NativeMessagingHosts').mkdir()
+        sw.remember(host_dirs_made=dict(sw.install_record()['host_dirs_made'], **hostile))
+        out = self.uninstall()
+        self.assertIn('Left in place:', out)
+        self.assertEqual([chrome.exists(), chrome.parent.exists(), chrome.parent.parent.exists()], [False] * 3, out)
+        self.assertEqual([chromium.exists(), chromium.parent.exists()], [False, True], out)
+        survivors = [self.home / n for n in ('mine', 'slash', 'home', 'dots', 'elsewhere')]
+        self.assertEqual([p for p in survivors if not p.exists()], [], out)
+        for name in ('slash', 'home', 'dots'):
+            self.assertTrue((self.home / name / 'NativeMessagingHosts').exists(), name)
+        for record in ([1, 2], 'x', None):  # other shapes of a broken record don't stop uninstall either
+            sw.remember(host_dirs_made=record, host_manifests=record)
+            self.assertIn('Left in place:', self.uninstall())
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root can read any folder')
+    def test_uninstall_reports_a_folder_it_cannot_look_into(self):
+        (chrome, chromium), _ = self.bare_home_dirs()
+        self.run_setup()
+        locked = chrome.parent.parent  # .../Google (or google-chrome's parent on Linux): unreadable
+        locked.chmod(0)
+        try:
+            out = self.uninstall()
+        finally:
+            locked.chmod(0o755)
+        self.assertIn('Left in place:', out)  # it finishes, and the other browser's folders still go
+        self.assertFalse(chromium.exists() or chromium.parent.exists(), out)
+        self.assertIn(str(locked), out.split('Left in place:')[1])
+
+    def test_a_later_uninstall_takes_out_shared_folders_after_a_partial_one(self):
+        (chrome, chromium), tops = self.bare_home_dirs()
+        self.run_setup()
+        shared = max(tops, key=lambda t: -len(t.parts))  # the higher top, which only one browser's entry recorded
+        (chrome.parent / 'Default').mkdir()  # Chrome installed: its folder stays
+        other = chromium / 'com.other.host.json'
+        other.write_text('{}')  # another app's host manifest: Chromium's host folder stays
+        self.uninstall()
+        self.assertEqual(sw.install_record()['host_dirs_made'], {str(chromium): str(shared)})  # it takes over the top
+        other.unlink()
+        shutil.rmtree(chrome.parent.parent)  # Chrome uninstalled
+        out = self.uninstall()
+        self.assertFalse(shared.exists(), out)
+        self.assertEqual(sw.install_record()['host_dirs_made'], {})
+
+    def test_setup_rerun_keeps_the_higher_folder_it_made(self):
+        (chrome, chromium), tops = self.bare_home_dirs()
+        self.run_setup()
+        record = sw.install_record()['host_dirs_made']
+        shutil.rmtree(chrome.parent.parent)  # Chrome's folders gone, the shared ones still there
+        self.run_setup()
+        self.assertEqual(sw.install_record()['host_dirs_made'], record)
+        self.uninstall()
+        self.assertEqual([t for t in tops if t.exists()], [])
+
     def test_uninstall_keeps_what_was_there(self):
         codex = self.home / 'codex'
         codex.mkdir()
