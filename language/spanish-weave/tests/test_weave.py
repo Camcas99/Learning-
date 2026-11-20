@@ -1344,6 +1344,12 @@ class Setup(Home):
             dirs = sw.host_dirs()
         return dirs, {[d for d in (folder, *folder.parents) if not d.exists()][-1] for folder in dirs}
 
+    @staticmethod
+    def own_folders(chrome, chromium):
+        """Chrome's host folder and the folders above it that Chromium doesn't share, highest last (macOS:
+        .../Google/Chrome/NativeMessagingHosts up to Google; Linux: ~/.config/google-chrome/... up to google-chrome)."""
+        return [f for f in (chrome, *chrome.parents) if f not in (chromium, *chromium.parents)]
+
     def test_uninstall_takes_out_shared_folders_setup_made(self):
         """Both browsers' host folders hang off folders setup also made. Whichever browser setup reached first recorded
         the shared one; uninstall must still take it out once the other browser's folder is gone."""
@@ -1382,8 +1388,12 @@ class Setup(Home):
         sw.remember(host_dirs_made=dict(sw.install_record()['host_dirs_made'], **hostile))
         out = self.uninstall()
         self.assertIn('Left in place:', out)
-        self.assertEqual([chrome.exists(), chrome.parent.exists(), chrome.parent.parent.exists()], [False] * 3, out)
-        self.assertEqual([chromium.exists(), chromium.parent.exists()], [False, True], out)
+        # Chrome's own folders go (macOS: .../Google/Chrome/..., Linux: ~/.config/google-chrome/...); the folder it
+        # shares with Chromium stays, since Chromium's profile is in there now.
+        own = self.own_folders(chrome, chromium)
+        shared = next(f for f in chrome.parents if f in chromium.parents)
+        self.assertEqual([f for f in own if f.exists()], [], out)
+        self.assertEqual([chromium.exists(), chromium.parent.exists(), shared.exists()], [False, True, True], out)
         survivors = [self.home / n for n in ('mine', 'slash', 'home', 'dots', 'elsewhere')]
         self.assertEqual([p for p in survivors if not p.exists()], [], out)
         for name in ('slash', 'home', 'dots'):
@@ -1396,7 +1406,7 @@ class Setup(Home):
     def test_uninstall_reports_a_folder_it_cannot_look_into(self):
         (chrome, chromium), _ = self.bare_home_dirs()
         self.run_setup()
-        locked = chrome.parent.parent  # .../Google (or google-chrome's parent on Linux): unreadable
+        locked = chrome.parent  # Chrome's own folder (Google/Chrome on macOS, ~/.config/google-chrome on Linux)
         locked.chmod(0)
         try:
             out = self.uninstall()
@@ -1416,7 +1426,7 @@ class Setup(Home):
         self.uninstall()
         self.assertEqual(sw.install_record()['host_dirs_made'], {str(chromium): str(shared)})  # it takes over the top
         other.unlink()
-        shutil.rmtree(chrome.parent.parent)  # Chrome uninstalled
+        shutil.rmtree(self.own_folders(chrome, chromium)[-1])  # Chrome uninstalled
         out = self.uninstall()
         self.assertFalse(shared.exists(), out)
         self.assertEqual(sw.install_record()['host_dirs_made'], {})
@@ -1425,7 +1435,7 @@ class Setup(Home):
         (chrome, chromium), tops = self.bare_home_dirs()
         self.run_setup()
         record = sw.install_record()['host_dirs_made']
-        shutil.rmtree(chrome.parent.parent)  # Chrome's folders gone, the shared ones still there
+        shutil.rmtree(self.own_folders(chrome, chromium)[-1])  # Chrome's folders gone, the shared ones still there
         self.run_setup()
         self.assertEqual(sw.install_record()['host_dirs_made'], record)
         self.uninstall()
