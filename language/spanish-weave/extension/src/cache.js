@@ -62,10 +62,3 @@ export function memoryStorage(initial = {}) {
     async getAll() { return { ...data }; },
   };
 }
-
-export const chromeStorage = {
-  get: (keys) => chrome.storage.local.get(keys),
-  set: (obj) => chrome.storage.local.set(obj),
-  remove: (keys) => chrome.storage.local.remove(keys),
-  getAll: () => chrome.storage.local.get(null),
-};

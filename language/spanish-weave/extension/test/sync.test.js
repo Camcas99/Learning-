@@ -150,6 +150,26 @@ test('sync: storage access fallback, latest site choice, stale state, site toggl
     await call({ type: 'save', siteOverride: { host: 'example.com', enabled: true } }); await wait();
     expect(el.querySelector('.sw-word')?.textContent).toBe('y');
     expect(modelCalls).toBe(1);
+
+    // The next test file fakes its own chrome. This worker keeps using the one it started with, so a leftover timer
+    // (the 10 s event flush) never empties another file's queue or talks to its native host.
+    local.pendingEvents = [{ word: 'muy', kind: 'seen', day: '2030-01-03' }];
+    const mine = globalThis.chrome;
+    const theirs = { pendingEvents: [{ word: 'y', kind: 'seen', day: '2030-01-01' }] };
+    let theirHost = 0;
+    globalThis.chrome = {
+      storage: { local: { get: async () => structuredClone(theirs), set: async (v) => { Object.assign(theirs, v); },
+        remove: async () => {} } },
+      runtime: { id: 'other', sendMessage: async () => undefined,
+        sendNativeMessage: async () => { theirHost++; return { ok: true, applied: 1 }; } },
+    };
+    try {
+      await call({ type: 'syncWords' });
+    } finally {
+      globalThis.chrome = mine;
+    }
+    expect([theirs.pendingEvents.length, theirHost]).toEqual([1, 0]);
+    expect(local.pendingEvents).toEqual([]); // its own event went to its own host
   } finally {
     globalThis.Date = RealDate;
     await win.happyDOM.close();

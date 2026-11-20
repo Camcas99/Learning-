@@ -1,7 +1,7 @@
 // Service worker: word state and the Gemini key from the Claude Code plugin (native host), a pasted Claude key, site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
 // Keys stay here; pages only get a config without them.
-import { createCache, chromeStorage } from './cache.js';
+import { createCache } from './cache.js';
 import { requestSwaps } from './engine.js';
 import { isClaude } from './anthropic.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess, swapSettings } from './settings.js';
@@ -11,8 +11,13 @@ import { swapRevision } from './revision.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { quotaError, countCall, spentToday, saveSpent } from './quota.js';
 
+// Everything here uses the chrome this worker started with. In Chrome that's the only one; in the tests each file
+// fakes its own, and a timer left over from an earlier file (the 10 s event flush) must not reach into a later one's.
+const chrome = globalThis.chrome;
 const store = chrome.storage.local;
-const cache = createCache(chromeStorage);
+const storage = { get: (keys) => store.get(keys), set: (obj) => store.set(obj), remove: (keys) => store.remove(keys),
+  getAll: () => store.get(null) };
+const cache = createCache(storage);
 const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
 // Word state syncs every SYNC_MINUTES, when the popup opens, and before a page's swap request once it is STALE_MS old.
@@ -120,24 +125,24 @@ async function swaps(msg, sender) {
       const now = await context();
       if (now.revision !== ctx.revision || !activeOn(now, sender.url)) return null;
       const host = new URL(sender.url).host;
-      const over = await quotaError(chromeStorage, host);
+      const over = await quotaError(storage, host);
       if (over) throw new Error(over);
       const { wordState, apiKey, hostKey, claudeKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'claudeKey']);
-      const fetchImpl = async (...args) => { await countCall(chromeStorage, undefined, host); return fetch(...args); };
+      const fetchImpl = async (...args) => { await countCall(storage, undefined, host); return fetch(...args); };
       const geminiKey = apiKey || hostKey;
       const keyId = geminiKey ? hashKey(geminiKey) : '';
-      const daily = await spentToday(chromeStorage, keyId);
+      const daily = await spentToday(storage, keyId);
       const loaded = new Map(daily);
       keys = hashKey(`${geminiKey || ''}\n${claudeKey || ''}`);
       const cool = cooldownFor(keys);
       try {
         return await requestSwaps({ apiKey: geminiKey, claudeKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
-          shownToday: await shownToday(chromeStorage), cooldown: cool.until, why: cool.why, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+          shownToday: await shownToday(storage), cooldown: cool.until, why: cool.why, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await locked(async () => {
           const stored = await store.get(['apiKey', 'hostKey']);
           const current = stored.apiKey || stored.hostKey;
-          await saveSpent(chromeStorage, daily, loaded, keyId, current ? hashKey(current) : '');
+          await saveSpent(storage, daily, loaded, keyId, current ? hashKey(current) : '');
         });
       }
     });
@@ -157,7 +162,7 @@ async function swaps(msg, sender) {
   }
 }
 
-const flush = () => locked(() => flushEvents({ storage: chromeStorage, send }));
+const flush = () => locked(() => flushEvents({ storage: storage, send }));
 let flushTimer = null;
 function scheduleFlush() {
   clearTimeout(flushTimer);
@@ -168,9 +173,9 @@ function scheduleFlush() {
 async function record(msg, sender) {
   const ctx = await context();
   if (!activeOn(ctx, sender.url) || !['seen', 'flip', 'peek'].includes(msg.event) || typeof msg.word !== 'string') return { ok: false };
-  const word = (await readCached(chromeStorage))?.words.find((w) => exactEs(w.es) === exactEs(msg.word));
+  const word = (await readCached(storage))?.words.find((w) => exactEs(w.es) === exactEs(msg.word));
   if (!word) return { ok: false };
-  await locked(() => queueEvents(chromeStorage, [{ word: word.es, kind: msg.event }]));
+  await locked(() => queueEvents(storage, [{ word: word.es, kind: msg.event }]));
   scheduleFlush();
   return { ok: true };
 }
@@ -181,7 +186,7 @@ async function record(msg, sender) {
 async function syncWords() {
   await flush();
   const { hostKey: before = '' } = await store.get('hostKey');
-  const res = await refresh({ storage: chromeStorage, send });
+  const res = await refresh({ storage: storage, send });
   if (res.changed) await locked(() => cache.clear());
   const { hostKey: after = '' } = await store.get('hostKey');
   if (before !== after) {
