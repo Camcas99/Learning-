@@ -23,7 +23,8 @@ iPhone through iCloud Drive ([IPHONE.md](IPHONE.md)), taps and long presses on t
 plugin for claude.ai and the Claude apps. Version 0.3.6 makes words known only through Chrome, quizzes and commands,
 never from chat sightings alone, and reads the iPhone's answer files when iOS adds `.json` or `.txt` to their names.
 Version 0.3.7 adds a progress page on the iPhone, an "I know this" answer in its quiz, and daily practice for learning
-words.
+words. Version 0.3.8 makes uninstall take out every empty folder setup made for the native host, including one two
+browsers share, and never one it didn't make.
 
 ## Set up
 

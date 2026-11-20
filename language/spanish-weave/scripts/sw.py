@@ -452,11 +452,12 @@ def setup(args):
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'Spanish Weave word state', 'path': str(launcher), 'type': 'stdio',
                 'allowed_origins': [ORIGIN]}
-    made = dict(install_record().get('host_dirs_made') or {})
+    made = {str(d): str(t) for d, t in host_dir_entries(install_record().get('host_dirs_made')).items()}
     for directory in host_dirs(args.user_data_dir):
         missing = [d for d in (directory, *directory.parents) if not d.exists()]
         if missing:  # every browser gets the manifest, installed yet or not; uninstall takes these folders out again
-            made[str(directory)] = str(missing[-1])
+            before = made.get(str(directory))  # a rerun keeps a higher folder an earlier run made
+            made[str(directory)] = before if before and Path(before) in missing[-1].parents else str(missing[-1])
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
     # The version of the copies, for check and status; the commit when this is the installed plugin's own folder.
@@ -601,6 +602,60 @@ def other_codex_hooks(data, config):
             or bool(re.search(r'^\s*\[\[?hooks\b', config, re.M)))
 
 
+def host_dir_entries(made):
+    """install.json's host_dirs_made ({host folder: the first folder above it that setup had to create}) as Paths,
+    keeping only entries setup could have written: install.json may have been edited or copied from another machine.
+    Both paths absolute and normalized (no '..'), the host folder a NativeMessagingHosts folder, its top the folder
+    itself or above it, and never the home folder or anything above it."""
+    home = {Path.home(), Path.home().resolve()}
+    above = home | {p for h in home for p in h.parents}
+    entries = {}
+    for directory, top in (made if isinstance(made, dict) else {}).items():
+        if not (isinstance(directory, str) and isinstance(top, str) and os.path.isabs(directory) and os.path.isabs(top)
+                and os.path.normpath(directory) == directory and os.path.normpath(top) == top):
+            continue
+        directory, top = Path(directory), Path(top)
+        if directory.name == 'NativeMessagingHosts' and top in (directory, *directory.parents) and top not in above:
+            entries[directory] = top
+    return entries
+
+
+def present(path):
+    """Whether path exists; True when it can't be looked at (Path.exists raises on Python 3.9, says False on newer
+    ones), so a folder kept out of reach is never taken for gone."""
+    try:
+        os.stat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def made_folders(entries):
+    """The folders setup made for host folders that are still there: from each one up to its top, deepest first, so
+    a folder two browsers' host folders share comes after both. A host folder that is gone proves nothing about the
+    folders recorded above it, so they are left alone."""
+    folders = set()
+    for directory, top in entries.items():
+        if present(directory):
+            folders.update(f for f in (directory, *directory.parents) if top in (f, *f.parents))
+    return sorted(folders, key=lambda f: (-len(f.parts), str(f)))
+
+
+def kept_entries(entries):
+    """What install.json keeps after an uninstall: entries whose host folder is still there. A removed one's top can sit
+    above a kept one's (both hang off folders setup made, like a shared ~/Library); the kept entry takes it over, so a
+    later uninstall still takes those folders out."""
+    kept = {d: t for d, t in entries.items() if present(d)}
+    for directory, top in entries.items():
+        if directory not in kept and present(top):
+            for other, other_top in kept.items():
+                if top in other_top.parents:
+                    kept[other] = top
+    return {str(d): str(t) for d, t in kept.items()}
+
+
 def uninstall(args):
     """Removes what setup put outside the state dir (a listed host manifest only if it is ours), then prints what is
     left and how to remove each piece: the state dir with one rm -rf only when nothing else is in it."""
@@ -655,36 +710,51 @@ def uninstall(args):
             why = 'other Codex hooks use it' if others else 'it was there before setup' if not added else 'changed since setup'
             was = f'; before setup it was `{before.strip()}`' if before and before.strip() != line.strip() else ''
             left.append(f'`{line.strip()}` under [features] in {config_path} ({why}{was}); kept')
-    manifests = [Path(m) for m in dict.fromkeys([str(d / f'{HOST_NAME}.json') for d in host_dirs(args.user_data_dir)]
-                                                + (record.get('host_manifests') or []))]
+    recorded = record.get('host_manifests') if isinstance(record.get('host_manifests'), list) else []
+    named = [str(d / f'{HOST_NAME}.json') for d in host_dirs(args.user_data_dir)] + [
+        m for m in recorded if isinstance(m, str)]
+    manifests, seen = [], set()
+    for name in named:  # one per file, however the home was spelled when it was recorded
+        if os.path.realpath(name) not in seen:
+            seen.add(os.path.realpath(name))
+            manifests.append(Path(name))
+    taken = set()  # real paths of what was removed (or, in a dry run, would be)
     for path in manifests:
-        if not path.exists():
+        try:
+            os.stat(path)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as error:
+            left.append(f'{path} (could not look at it: {error.strerror})')
             continue
         if not is_host_manifest(path):  # install.json may have been edited or copied from another machine
             left.append(f'{path} (not a Spanish Weave host manifest; left alone)')
             continue
         print(f'{verb} {path}')
-        if not args.dry_run:
-            try:
-                path.unlink()
-            except OSError as error:
-                left.append(f'{path} (could not remove it: {error.strerror})')
-    made = record.get('host_dirs_made') if isinstance(record.get('host_dirs_made'), dict) else {}
-    for directory, top in made.items():  # folders setup made for a browser: out again if nothing else went in
-        directory, top = Path(directory), Path(top)
-        for folder in (directory, *directory.parents):
-            if (top not in (folder, *folder.parents) or not folder.is_dir() or
-                    any(p for p in folder.iterdir() if not (args.dry_run and p.name == f'{HOST_NAME}.json'))):
-                break
-            print(f'{verb} the empty folder {folder} (setup made it)')
+        if args.dry_run:
+            taken.add(os.path.realpath(path))
+            continue
+        try:
+            path.unlink()
+            taken.add(os.path.realpath(path))
+        except OSError as error:
+            left.append(f'{path} (could not remove it: {error.strerror})')
+    entries = host_dir_entries(record.get('host_dirs_made'))
+    for folder in made_folders(entries):  # out again if nothing else went in
+        try:
+            if not folder.is_dir() or any(os.path.realpath(p) not in taken for p in folder.iterdir()):
+                continue
             if not args.dry_run:
                 folder.rmdir()
-            if folder == top or args.dry_run:
-                break
+        except OSError as error:
+            left.append(f'{folder} (setup made it, but could not remove it: {error.strerror})')
+            continue
+        print(f'{verb} the empty folder {folder} (setup made it)')
+        taken.add(os.path.realpath(folder))
     if not args.dry_run and (home / INSTALL).exists():
         swlib.write_json(home / INSTALL, dict(record, host_manifests=[str(m) for m in manifests
-                                                                       if m.exists() and is_host_manifest(m)],
-                                              host_dirs_made={d: t for d, t in made.items() if Path(d).exists()}))
+                                                                       if present(m) and is_host_manifest(m)],
+                                              host_dirs_made=kept_entries(entries)))
     backups = [p for p in (hooks_path, config_path) if backup_of(p).exists()]
     print('Left in place:')
     print('  - the Claude Code plugin, if installed; its hook keeps weaving until it is gone. Remove it before the state '
